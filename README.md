@@ -67,6 +67,46 @@ is inactive. To enable CI, use your own GitHub account to place it at
 
 ## Data
 
+### Larger indoor RGB preparation: ARKitScenes and Hypersim
+
+Download a scene-balanced RGB collection without starting training:
+
+```bash
+.venv/bin/python scripts/indoor_download.py \
+  --metadata /shared/radio-moge/chongxi/indoor-data-planning-20261021 \
+  --output /shared/radio-moge/datasets/indoor-mix-v1-20261021 \
+  --arkit-target 200000 --workers 4
+```
+
+The downloader reads selected ZIP members from the official Apple servers over
+HTTP Range, verifies ZIP CRCs and image decoding, and writes images and scene
+receipts atomically. Re-run the same command to resume: completed receipts are
+checked against image SHA256 hashes. A directory lock prevents duplicate jobs.
+Use `--pilot` with a **different output directory** to check one scene per dataset.
+
+ARKitScenes uses native 640×480 `vga_wide` RGB, samples across captures within
+each visit, separates frames by at least 0.5 seconds, and rejects exact/near
+duplicates and very low-detail frames. Frame selection is deterministic and
+quality filtering can leave a shortfall, which each scene receipt reports.
+Known validation visits are excluded from training, as are records without a
+visit ID. Camera intrinsics, nearby trajectory poses and `sky_direction` are
+retained. Files preserve native orientation; **audit and apply upright image
+orientation before using these manifests for training**. Camera metadata is
+also in the native coordinate system.
+
+Hypersim uses only publicly released official train/validation frames and the
+provided tonemapped RGB JPEGs (59,543 train and 7,386 validation in the inspected
+v1 split). ARKit validation defaults to up to 24 frames per visit. Ground-truth
+depth and test images are not part of this RGB download. The completed `train.jsonl`
+and `val.jsonl` contain relative paths; duplicate hashes and cross-split groups
+are checked before publication. `status.json` distinguishes downloading,
+complete, and incomplete/retryable states. This preparation never starts models
+or changes the GPU machine's lifecycle.
+
+Sources and licenses are retained in `metadata/`; see the
+[ARKitScenes documentation](https://github.com/apple-aiml-research/ARKitScenes/blob/main/DATA.md)
+and [Hypersim documentation](https://github.com/apple-aiml-research/ml-hypersim).
+
 ### First indoor sanity experiment: NYU Depth V2
 
 The [original labeled release](https://cs.nyu.edu/~fergus/datasets/nyu_depth_v2.html)

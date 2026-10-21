@@ -1454,6 +1454,7 @@ dependencies = [
 [package.optional-dependencies]
 data = [
     { name = "h5py" },
+    { name = "requests" },
 ]
 dev = [
     { name = "pytest" },
@@ -1477,6 +1478,7 @@ requires-dist = [
     { name = "pillow", specifier = "==11.3.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = "==8.4.2" },
     { name = "pyyaml", specifier = "==6.0.2" },
+    { name = "requests", marker = "extra == 'data'", specifier = "==2.34.2" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.14.2" },
     { name = "scipy", specifier = "==1.16.3" },
     { name = "tensorboard", specifier = "==2.20.0" },
