@@ -720,3 +720,12 @@ to the already planned 36,000; all run serially after the current experiment.
 The repeatedly viewed NYU20 panel is a fixed qualitative audit, not a new blind
 test. Follow-up loss modifications, multi-seed confirmation and RADIO LoRA are
 conditional decisions, not part of the automatic first-round queue.
+
+`scripts/compare_scene_metrics.py` pairs per-image predictions against an exact
+manifest and bootstraps scene groups within each source. It reports both
+equal-source and image-weighted differences, per-source intervals and scene
+improvement counts. Missing metrics remain explicit instead of dropping failed
+images. The intervals describe these checkpoints on this validation sample;
+they do not account for training-seed variation or repeated checkpoint selection.
+Use the same utility for the completed objective control, not only before/after
+snapshots, before attributing changes to geometric supervision.
