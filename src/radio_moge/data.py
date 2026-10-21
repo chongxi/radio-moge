@@ -2,6 +2,7 @@ import hashlib
 import json
 import math
 import random
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -131,6 +132,45 @@ class DeterministicBatches(Sampler):
                 (order[(batch * self.batch_size + j) % self.size], rng.randrange(2**63), h, w)
                 for j in range(self.batch_size)
             ]
+
+
+class MixtureBatches(Sampler):
+    """Sample source -> scene -> frame, reproducibly from the microbatch cursor.
+
+    Sampling is with replacement. Source probabilities do not depend on frame
+    counts; uniform scene sampling limits domination by long video captures.
+    """
+
+    def __init__(self, records, weights, batch_size, buckets, seed, start, count):
+        grouped = defaultdict(lambda: defaultdict(list))
+        for index, row in enumerate(records):
+            grouped[row["dataset"]][row["group"]].append(index)
+        if set(weights) != set(grouped):
+            raise ValueError("Mixture weights must name every dataset exactly once")
+        if any(not math.isfinite(v) or v <= 0 for v in weights.values()):
+            raise ValueError("Mixture weights must be finite and positive")
+        if batch_size < 1 or not buckets or start < 0 or count < 0:
+            raise ValueError("Invalid mixture batch configuration")
+        self.sources = sorted(grouped)
+        self.weights = [weights[name] for name in self.sources]
+        self.pools = {
+            name: [grouped[name][g] for g in sorted(grouped[name])] for name in self.sources
+        }
+        self.batch_size, self.buckets = batch_size, buckets
+        self.seed, self.start, self.count = seed, start, count
+
+    def __len__(self):
+        return self.count
+
+    def __iter__(self):
+        for absolute in range(self.start, self.start + self.count):
+            rng = random.Random(self.seed + absolute * 104729)
+            h, w = rng.choice(self.buckets)
+            batch = []
+            for source in rng.choices(self.sources, weights=self.weights, k=self.batch_size):
+                index = rng.choice(rng.choice(self.pools[source]))
+                batch.append((index, rng.randrange(2**63), h, w))
+            yield batch
 
 
 def evaluation_image(row, max_side=768):

@@ -13,9 +13,21 @@ from torch.utils.data import DataLoader
 
 from .checkpoint import atomic_json, atomic_save, restore_rng, rng_state
 from .config import (
-    load_config, RADIO_COMMIT, MOGE_COMMIT, RADIO_REVISION, MOGE_REPO, MOGE_REVISION,
+    load_config,
+    RADIO_COMMIT,
+    MOGE_COMMIT,
+    RADIO_REVISION,
+    MOGE_REPO,
+    MOGE_REVISION,
 )
-from .data import DeterministicBatches, TrainingImages, check_split, manifest_digest, read_manifest
+from .data import (
+    DeterministicBatches,
+    MixtureBatches,
+    TrainingImages,
+    check_split,
+    manifest_digest,
+    read_manifest,
+)
 from .evaluate import evaluate, synchronize
 from .losses import FeatureStatistics, geometry_losses, weighted_loss
 from .system import build_system
@@ -24,9 +36,20 @@ from .tracking import ExperimentTracker
 
 def make_loader(records, config, start, count, calibration=False):
     data, train = config["data"], config["train"]
-    sampler = DeterministicBatches(
-        len(records), train["batch_size"], data["buckets"], train["seed"], start, count
-    )
+    if data.get("mixture_weights"):
+        sampler = MixtureBatches(
+            records,
+            data["mixture_weights"],
+            train["batch_size"],
+            data["buckets"],
+            train["seed"],
+            start,
+            count,
+        )
+    else:
+        sampler = DeterministicBatches(
+            len(records), train["batch_size"], data["buckets"], train["seed"], start, count
+        )
     return DataLoader(
         TrainingImages(records, data["augment"] and not calibration),
         batch_sampler=sampler,
@@ -209,7 +232,12 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
         nonlocal best
         destination = output / f"eval-{step:07d}"
         metrics = evaluate(
-            system, raw_adapter, statistics, validation, config, destination,
+            system,
+            raw_adapter,
+            statistics,
+            validation,
+            config,
+            destination,
             config["evaluation"]["limit"],
         )
         metrics["feature/total"] = sum(
@@ -223,7 +251,7 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
             for key, value in metrics.items():
                 writer.add_scalar(f"eval/{key}", value, step)
         tracker.log("validation", metrics, step, image_dir=destination)
-        score = metrics.get("teacher_depth/abs_rel")
+        score = metrics.get(config["evaluation"].get("selection_metric", "teacher_depth/abs_rel"))
         if score is not None and metrics.get("postprocess_failed", 1) == 0:
             if best is None or score < best:
                 best = score

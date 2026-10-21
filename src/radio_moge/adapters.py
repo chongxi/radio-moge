@@ -4,6 +4,8 @@ import math
 import torch
 from torch import nn
 
+from .spatial_heads import AttentionSpatialHead, DPTSpatialHead, SpatialSummary
+
 
 @dataclass
 class RadioFeatures:
@@ -48,6 +50,11 @@ class GeometryAdapter(nn.Module):
         indices=(7, 15, 23, 31),
         channel_cleaning="none",
         channel_threshold=8.0,
+        spatial_width=None,
+        attention_blocks=2,
+        attention_heads=16,
+        summary_width=512,
+        summary_heads=8,
     ):
         super().__init__()
         if channel_cleaning not in {"none", "zero-channel"}:
@@ -73,7 +80,7 @@ class GeometryAdapter(nn.Module):
                 channel_cleaning=channel_cleaning, channel_threshold=self.channel_threshold
             )
         self.kind = kind
-        self.indices = tuple(indices) if kind == "fusion" else ()
+        self.indices = tuple(indices) if kind in {"fusion", "dpt", "attention"} else ()
         if kind == "linear":
             self.spatial = nn.Conv2d(spatial_dim, target_dim, 1)
             self.summary = nn.Linear(summary_dim, target_summary_dim)
@@ -95,6 +102,25 @@ class GeometryAdapter(nn.Module):
                 nn.GELU(),
                 nn.Linear(target_summary_dim, target_summary_dim),
             )
+        elif kind in {"dpt", "attention"}:
+            if not indices:
+                raise ValueError("Spatial heads require intermediate block indices")
+            width = spatial_width if spatial_width is not None else (384 if kind == "dpt" else 1280)
+            self.config.update(
+                spatial_width=width, summary_width=summary_width, summary_heads=summary_heads
+            )
+            if kind == "dpt":
+                self.spatial = DPTSpatialHead(spatial_dim, target_dim, len(indices), width)
+            else:
+                self.config.update(
+                    attention_blocks=attention_blocks, attention_heads=attention_heads
+                )
+                self.spatial = AttentionSpatialHead(
+                    spatial_dim, target_dim, len(indices), width, attention_blocks, attention_heads
+                )
+            self.summary = SpatialSummary(
+                width, summary_dim, target_summary_dim, summary_width, summary_heads
+            )
         else:
             raise ValueError(f"Unknown adapter: {kind}")
 
@@ -113,14 +139,21 @@ class GeometryAdapter(nn.Module):
         if features.summary.shape[1] != self.config["summary_dim"]:
             raise ValueError("RADIO summary width differs from adapter configuration")
         x = features.spatial.float()
-        if self.kind == "fusion":
+        if self.indices:
             if len(features.intermediates) != len(self.indices):
                 raise ValueError(
                     "Missing intermediate features: use one forward_intermediates pass"
                 )
             if any(v.shape != x.shape for v in features.intermediates):
                 raise ValueError("Intermediate and final spatial shapes must match")
-            x = sum(p(self._clean(v.float())) for p, v in zip(self.projections, features.intermediates))
+            if self.kind in {"dpt", "attention"}:
+                spatial, memory = self.spatial(
+                    tuple(self._clean(v.float()) for v in features.intermediates)
+                )
+                return EncoderFeatures(spatial, self.summary(memory, features.summary.float()))
+            x = sum(
+                p(self._clean(v.float())) for p, v in zip(self.projections, features.intermediates)
+            )
             x = x / len(self.projections)
         else:
             x = self._clean(x)

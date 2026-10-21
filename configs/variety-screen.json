@@ -1,0 +1,18 @@
+{
+  "extends": "indoor-fusion-features.json",
+  "data": {"workers": 0},
+  "train": {
+    "steps": 6000,
+    "batch_size": 16,
+    "accumulation": 2,
+    "warmup": 400,
+    "calibration_batches": 32,
+    "save_every": 1000,
+    "eval_every": 1000
+  },
+  "evaluation": {
+    "selection_metric": "macro/teacher_depth/abs_rel",
+    "visualizations": 8
+  },
+  "tracking": {"group": "variety-architecture-screen-20261021"}
+}

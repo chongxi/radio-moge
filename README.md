@@ -640,3 +640,54 @@ and aspect ratio used at training. The deployment artifact stores adapter and
 decoder weights; loading it does not construct a MoGe encoder or download weights.
 The pinned upstream source and utils3d remain required for the decoder and camera
 postprocessing. See [THIRD_PARTY.md](THIRD_PARTY.md) for upstream sources/licenses.
+# Spatial adapters and variety screen (2026-10-21)
+
+`GeometryAdapter(kind="dpt")` reassembles four RADIO intermediate grids at
+4x, 2x, 1x and 1/2x resolution, fuses them with residual 3x3 convolution blocks,
+and returns the original MoGe encoder grid. `kind="attention"` mixes the same
+four taps and uses two 1280-wide, 16-head self-attention blocks. Both use a
+summary-query attention readout of the adapted spatial features for the global
+summary/metric-scale path. Default trainable parameter counts are 29,322,752
+(DPT-inspired), 53,400,580 (attention-inspired), and 9,444,352 (existing fusion).
+The final feature outputs retain learnable absolute magnitudes.
+
+These are new adapters inspired by [DPT's reassembly/refinement](https://github.com/isl-org/DPT/blob/main/dpt/models.py)
+and [RADIO's SigLIP2 attention adaptor](https://github.com/NVlabs/RADIO/blob/4ffaf15d0ff48197c194e306772bdb5fb92db230/radio/adaptor_attn.py),
+not pretrained DPT/SigLIP2 heads. RADIO and the MoGe encoder/decoder remain frozen.
+Legacy adapter configurations and state-dict names are preserved.
+
+`scripts/download_coco_variety.py` selects 40,000 official COCO train images and
+disjoint 256-image validation/test subsets from official val2017, before model
+inference. Each image is decoded and checked against the official ZIP CRC and
+SHA256; download concurrency defaults to two threads in one process. It uses
+the official image bucket via an S3 HTTPS endpoint with valid TLS. It does not
+require depth labels. COCO's split is by image, not verified physical scene.
+
+`scripts/prepare_variety_mix.py` combines the existing 256,886 indoor training
+images, NYU's existing 1,043 training images, and the new COCO subset. NYU's
+116 validation / 290 test images remain separate; its original split files
+are untouched. The existing 20-scene NYU test visualization stays fixed.
+NYU's decoded-pixel hashes are retained separately and encoded-file hashes
+are computed for consistent cross-source duplicate checking. The preparation
+checks all paths and scene/hash splits, using the prior indoor integrity audit.
+
+Training samples a source, then a uniformly selected scene, then a frame.
+The initial source probabilities are ARKitScenes 35%, Hypersim 30%, NYU 15%,
+COCO 20%; for COCO each image is its own group. This avoids weighting long
+captures solely by their frame count. Validation uses the fixed 256 ARKit,
+256 Hypersim, 116 NYU and 256 COCO images, with an equal-source mean teacher
+AbsRel for checkpoint selection. Per-source metrics are logged. No test scores
+are used for selection; teacher agreement is not ground-truth depth accuracy.
+
+`scripts/run_variety_architectures.py` waits for the current indoor run and
+COCO download to finish, prepares the mixture, and preflights all three heads.
+It chooses one common physical batch size (16, else 8, else 4 on CUDA OOM),
+always with effective batch 32. All heads start fresh, use identical sample
+streams, augmentations, seed, loss weights and learning-rate schedules, and
+receive 6,000 feature updates followed by 2,000 geometry updates initialized
+from their own selected feature checkpoint. All feature trials precede the
+geometry trials. This is a matched-update screening budget, not equal FLOPs
+or a claim that larger heads have converged. Runtime and peak memory are logged.
+The queue uses a separate immutable checkout; it never modifies the active
+training process or stops the GPU. A failed prerequisite or unexpected error
+stops the queue for inspection. No RADIO LoRA is included in this screen.

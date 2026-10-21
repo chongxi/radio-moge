@@ -45,9 +45,38 @@ def aggregate(rows):
     }
     result = {}
     for key in sorted(keys):
-        values = [row[key] for row in rows if key in row and math.isfinite(row[key])]
+        values = [
+            row[key]
+            for row in rows
+            if isinstance(row.get(key), (int, float)) and math.isfinite(row[key])
+        ]
         if values:
             result[key] = sum(values) / len(values)
             result[f"{key}/count"] = len(values)
     result["images"] = len(rows)
+    return result
+
+
+def dataset_metrics(rows):
+    """Equal-source selection score, plus per-source diagnostics (never test tuning)."""
+    sources = sorted({row["dataset"] for row in rows if "dataset" in row})
+    result, scores = {}, []
+    for source in sources:
+        subset = [row for row in rows if row.get("dataset") == source]
+        metrics = aggregate(subset)
+        for key in (
+            "teacher_depth/abs_rel",
+            "teacher_depth/rmse",
+            "raw/points",
+            "raw/normal",
+            "scale_log_error",
+            "postprocess_failed",
+            "images",
+        ):
+            if key in metrics:
+                result[f"dataset/{source}/{key}"] = metrics[key]
+        if metrics.get("teacher_depth/abs_rel/count") == len(subset):
+            scores.append(metrics["teacher_depth/abs_rel"])
+    if sources and len(scores) == len(sources) and all("dataset" in r for r in rows):
+        result["macro/teacher_depth/abs_rel"] = sum(scores) / len(scores)
     return result

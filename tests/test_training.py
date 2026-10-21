@@ -26,6 +26,10 @@ class TinyRadio(nn.Module):
         x = self.conv(image)
         return SimpleNamespace(features=x, summary=x.mean((2, 3)))
 
+    def forward_intermediates(self, image, indices, **kwargs):
+        final = self.forward(image, "NCHW")
+        return final, tuple(final.features * (1 + i / 10) for i in indices)
+
 
 class TinyEncoder(nn.Module):
     def __init__(self):
@@ -147,3 +151,63 @@ def test_fixed_budget_training_does_not_read_or_evaluate_test_set(tmp_path, monk
     assert state["step"] == 2 and state["data_digests"]["val"] is None
     assert state["best"] is None
     assert not (tmp_path / "no-validation/best.pt").exists()
+
+
+@pytest.mark.parametrize("kind", ["dpt", "attention"])
+def test_spatial_head_geometry_training_resume_and_frozen_backbones(tmp_path, kind):
+    config = config_for(tmp_path)
+    config["train"].update(steps=4, lr=0.001, save_every=2)
+    config["data"]["val_manifest"] = None
+
+    def system_adapter():
+        system, _ = tiny_system()
+        adapter = GeometryAdapter(
+            kind,
+            8,
+            8,
+            6,
+            6,
+            indices=[0, 1, 2, 3],
+            spatial_width=16,
+            attention_heads=4,
+            summary_width=8,
+            summary_heads=2,
+        )
+        return system, adapter
+
+    config["output_dir"] = str(tmp_path / "full")
+    system, adapter = system_adapter()
+    result = train(config, system_adapter=(system, adapter))
+    assert all(
+        not p.requires_grad and p.grad is None
+        for m in (system.radio, system.encoder, system.decoder)
+        for p in m.parameters()
+    )
+    partial_config = deepcopy(config)
+    partial_config["output_dir"] = str(tmp_path / "split")
+    partial = train(partial_config, stop_after=2, system_adapter=system_adapter())
+    resumed = train(partial_config, resume=partial, system_adapter=system_adapter())
+    full, resumed = [torch.load(p, weights_only=True) for p in (result, resumed)]
+    for name, tensor in full["adapter"].items():
+        torch.testing.assert_close(tensor, resumed["adapter"][name], rtol=0, atol=0)
+
+
+def test_checkpoint_selection_uses_configured_source_macro(tmp_path, monkeypatch):
+    config = config_for(tmp_path)
+    config["output_dir"] = str(tmp_path / "macro")
+    config["train"].update(steps=2, eval_every=1, eval_at_start=True, save_every=1)
+    config["evaluation"]["selection_metric"] = "macro/teacher_depth/abs_rel"
+    scores = iter([(1.0, 0.3), (0.8, 0.2), (0.1, 0.25)])
+
+    def evaluate(*args, **kwargs):
+        pooled, macro = next(scores)
+        return {
+            "teacher_depth/abs_rel": pooled,
+            "macro/teacher_depth/abs_rel": macro,
+            "postprocess_failed": 0.0,
+        }
+
+    monkeypatch.setattr("radio_moge.train.evaluate", evaluate)
+    train(config, system_adapter=tiny_system())
+    best = torch.load(tmp_path / "macro/best.pt", weights_only=True)
+    assert best["step"] == 1 and best["best"] == 0.2

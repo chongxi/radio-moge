@@ -11,7 +11,7 @@ from .checkpoint import atomic_json
 from .data import evaluation_image, read_manifest
 from .decoder import postprocess
 from .losses import FeatureStatistics, geometry_losses
-from .metrics import aggregate, depth_metrics, fov_error, mask_iou
+from .metrics import aggregate, dataset_metrics, depth_metrics, fov_error, mask_iou
 from .system import build_system
 
 
@@ -79,6 +79,8 @@ def evaluate(system, adapter, statistics, records, config, output=None, limit=No
             branch_ms = (time.perf_counter() - start) * 1000
             target = system.decoder(target_features, image.shape[-2:])
             row = {"image": record["image"], "branch_ms": branch_ms}
+            if "dataset" in record:
+                row["dataset"] = record["dataset"]
             row.update(
                 {
                     f"feature/{k}": v.item()
@@ -132,6 +134,7 @@ def evaluate(system, adapter, statistics, records, config, output=None, limit=No
                     row[key] = None
             rows.append(row)
         summary = aggregate(rows)
+        summary.update(dataset_metrics(rows))
         if output is not None:
             atomic_json(rows, output / "per_image.json")
             atomic_json(summary, output / "metrics.json")
