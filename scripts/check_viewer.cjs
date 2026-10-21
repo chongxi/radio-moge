@@ -12,11 +12,15 @@ const path = require('node:path');
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto(url,{waitUntil:'domcontentloaded'});
     await page.waitForSelector('main[aria-busy="false"]',{timeout:60000});
+    const manifest=await (await page.request.get(new URL('manifest.json',url).href)).json();
     assert.equal(await page.locator('#total-images').textContent(),'290');
     assert.equal(await page.locator('.panel canvas').count(),6);
-    assert.equal(await page.locator('#before-score').textContent(),'0.360');
-    assert.equal(await page.locator('#after-score').textContent(),'0.122');
-    assert.equal(await page.locator('#teacher-score').textContent(),'0.095');
+    for(const branch of ['before','after','teacher']){
+      const scores=manifest.samples.map(sample=>sample.metrics[branch].abs_rel);
+      const average=scores.reduce((sum,value)=>sum+value,0)/scores.length;
+      assert.equal(await page.locator('#'+branch+'-score').textContent(),average.toFixed(3));
+    }
+    assert((await page.locator('#run-steps').textContent()).includes(String(manifest.run.steps)));
     await page.screenshot({path:path.join(output,'desktop.png'),fullPage:true});
     await page.locator('#canvas-after').hover({position:{x:50,y:50}});
     assert.match(await page.locator('#pixel-values').textContent(),/After training: [0-9.]+ m/);
