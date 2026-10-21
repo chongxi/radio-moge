@@ -6,7 +6,7 @@ from torch import nn
 
 @dataclass
 class RadioFeatures:
-    spatial: torch.Tensor  # B,C,H,W, final features normalized by RADIO
+    spatial: torch.Tensor  # B,C,H,W; RADIO's output normalizer may be Identity
     summary: torch.Tensor  # B,Ds, concatenated backbone summary tokens
     intermediates: tuple[torch.Tensor, ...] = ()
 
