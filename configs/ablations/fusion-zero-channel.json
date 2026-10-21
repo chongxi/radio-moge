@@ -1,0 +1,13 @@
+{
+  "extends": "fusion-features.json",
+  "output_dir": "/home/buildhub/shared/radio-moge/chongxi/nyuv2-zero-channel-20261021/train",
+  "adapter": {
+    "channel_cleaning": "zero-channel",
+    "channel_threshold": 8.0
+  },
+  "tracking": {
+    "name": "nyuv2-fusion-zero-channel",
+    "group": "nyuv2-zero-channel-20261021",
+    "tags": ["nyuv2", "cradio-v4-h", "moge-2-vitl-normal", "fusion-features", "zero-channel"]
+  }
+}

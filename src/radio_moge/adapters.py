@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import math
 
 import torch
 from torch import nn
@@ -17,6 +18,21 @@ class EncoderFeatures:
     summary: torch.Tensor
 
 
+def zero_dominant_channels(features: torch.Tensor, threshold: float = 8.0) -> torch.Tensor:
+    """toromi_slam's rule, independently per image, without mutating shared features.
+
+    A whole spatial channel is zeroed when its mean absolute activation exceeds
+    threshold times the median across channels. This is not a token-norm filter.
+    """
+    if features.ndim != 4:
+        raise ValueError("Channel cleaning expects B,C,H,W spatial features")
+    if not math.isfinite(threshold) or threshold <= 0:
+        raise ValueError("Channel threshold must be finite and positive")
+    magnitude = features.float().abs().mean(dim=(-2, -1))
+    hot = magnitude > threshold * magnitude.median(dim=1, keepdim=True).values
+    return features.masked_fill(hot[:, :, None, None], 0)
+
+
 class GeometryAdapter(nn.Module):
     """Maps features from ONE RADIO pass to MoGe's fused encoder interface."""
 
@@ -30,8 +46,16 @@ class GeometryAdapter(nn.Module):
         hidden_dim=2048,
         fusion_dim=512,
         indices=(7, 15, 23, 31),
+        channel_cleaning="none",
+        channel_threshold=8.0,
     ):
         super().__init__()
+        if channel_cleaning not in {"none", "zero-channel"}:
+            raise ValueError(f"Unknown channel cleaning: {channel_cleaning}")
+        if not math.isfinite(channel_threshold) or channel_threshold <= 0:
+            raise ValueError("Channel threshold must be finite and positive")
+        self.channel_cleaning = channel_cleaning
+        self.channel_threshold = float(channel_threshold)
         self.config = dict(
             kind=kind,
             spatial_dim=spatial_dim,
@@ -42,6 +66,12 @@ class GeometryAdapter(nn.Module):
             fusion_dim=fusion_dim,
             indices=list(indices),
         )
+        # Preserve the exact legacy config when cleaning is disabled. Existing
+        # checkpoint resume/init checks and exported heads keep their behavior.
+        if channel_cleaning != "none" or channel_threshold != 8.0:
+            self.config.update(
+                channel_cleaning=channel_cleaning, channel_threshold=self.channel_threshold
+            )
         self.kind = kind
         self.indices = tuple(indices) if kind == "fusion" else ()
         if kind == "linear":
@@ -68,6 +98,13 @@ class GeometryAdapter(nn.Module):
         else:
             raise ValueError(f"Unknown adapter: {kind}")
 
+    def _clean(self, features):
+        return (
+            zero_dominant_channels(features, self.channel_threshold)
+            if self.channel_cleaning == "zero-channel"
+            else features
+        )
+
     def forward(self, features: RadioFeatures) -> EncoderFeatures:
         if features.spatial.ndim != 4 or features.summary.ndim != 2:
             raise ValueError("Expected spatial B,C,H,W and summary B,Ds")
@@ -83,7 +120,9 @@ class GeometryAdapter(nn.Module):
                 )
             if any(v.shape != x.shape for v in features.intermediates):
                 raise ValueError("Intermediate and final spatial shapes must match")
-            x = sum(p(v.float()) for p, v in zip(self.projections, features.intermediates))
+            x = sum(p(self._clean(v.float())) for p, v in zip(self.projections, features.intermediates))
             x = x / len(self.projections)
+        else:
+            x = self._clean(x)
         # No output normalization: the frozen decoder needs teacher magnitudes.
         return EncoderFeatures(self.spatial(x), self.summary(features.summary.float()))

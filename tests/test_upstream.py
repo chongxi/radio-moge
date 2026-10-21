@@ -89,9 +89,11 @@ def test_upstream_postprocessing_parity_and_no_mutation(moge):
     assert torch.equal(raw["points"], original)
 
 
-def test_export_reload_has_no_encoder(moge, tmp_path, monkeypatch):
+@pytest.mark.parametrize("cleaning", ["none", "zero-channel"])
+def test_export_reload_has_no_encoder(moge, tmp_path, monkeypatch, cleaning):
     model, config = moge
-    adapter = GeometryAdapter("mlp", 32, 64, 32, 32, hidden_dim=64)
+    adapter = GeometryAdapter("mlp", 32, 64, 32, 32, hidden_dim=64,
+                              channel_cleaning=cleaning)
     head = GeometryHead(adapter, MoGeDecoder(model)).eval()
     state = head.state_dict()
     assert not any("encoder" in key or "backbone" in key for key in state)
@@ -119,10 +121,12 @@ def test_export_reload_has_no_encoder(moge, tmp_path, monkeypatch):
 
     monkeypatch.setattr(backbones, "dinov2_vitl14", forbidden_encoder)
     loaded = GeometryHead.load(path, device="cpu")
+    assert loaded.adapter.channel_cleaning == cleaning
     assert not hasattr(loaded.decoder, "encoder")
     for key, value in state.items():
         torch.testing.assert_close(value, loaded.state_dict()[key])
     features = RadioFeatures(torch.rand(1, 32, 2, 3), torch.rand(1, 64))
+    features.spatial[:, 3] = 100
     with torch.no_grad():
         expected, actual = head(features, (32, 48)), loaded(features, (32, 48))
     for key in expected:

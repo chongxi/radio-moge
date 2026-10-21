@@ -218,6 +218,17 @@ recent periodic checkpoint.
 - `mlp`: spatial `1280 → 2048 → 1024`, separate summary MLP.
 - `fusion`: project and average RADIO blocks 8/16/24/32, then spatial MLP;
   summary branch still uses the final RADIO summary.
+- Optional `adapter.channel_cleaning: zero-channel` applies the
+  [toromi_slam rule](https://github.com/chongxi/toromi_slam/blob/73d5489c39c087fe5a8b2466e0afd06e44a985fc/perception/radio_model.py#L375-L394)
+  before each spatial input projection. For each image and layer independently,
+  zero channels whose spatial mean absolute activation exceeds 8 times the median
+  across channels (`adapter.channel_threshold`, default 8). Fusion cleans each
+  selected intermediate map; MLP/linear clean the final map. Summary features and
+  shared RADIO outputs remain unchanged. The option is saved in checkpoints and
+  exported heads, so training, evaluation and deployment use the same rule.
+  Legacy configs default to `none`. `configs/ablations/fusion-zero-channel.json`
+  runs a fresh 4000-step comparison against `fusion-features.json` with the same
+  seed, data, batch size, optimizer and feature losses; only cleaning changes.
 - Input/output channel dimensions are read from the loaded models, not guessed.
 - Teacher targets are the **fused projected spatial map and final CLS token from
   the trained MoGe checkpoint**, not raw DINOv2 features.
