@@ -18,6 +18,7 @@ from radio_moge.upstream import extract_radio, load_radio, radio_input
 class ChannelStats:
     def __init__(self):
         self.means, self.squares, self.maxima, self.spatial_vars = [], [], [], []
+        self.mean_abs = []
         self.token_rms = []
         self.shapes = set()
 
@@ -27,6 +28,7 @@ class ChannelStats:
             raise ValueError("Nonfinite RADIO activation")
         self.shapes.add(tuple(value.shape[1:]))
         self.means.append(value.mean(-1).cpu())
+        self.mean_abs.append(value.abs().mean(-1).cpu())
         self.squares.append(value.square().mean(-1).cpu())
         self.maxima.append(value.abs().amax(-1).cpu())
         self.spatial_vars.append(value.var(-1, correction=0).cpu())
@@ -45,11 +47,41 @@ class ChannelStats:
         quantiles = [0.0, 0.5, 0.9, 0.99, 1.0]
         q = torch.tensor(quantiles)
         top_counts = Counter(squares.argmax(1).tolist())
+        # Match toromi_slam RadioModel.clean per image, not over a pooled batch.
+        mag = torch.cat(self.mean_abs)
+        hot = mag > 8 * mag.median(dim=1, keepdim=True).values
+        hot_counts = hot.sum(1)
+        removed_energy = (squares * hot).sum(1) / squares.sum(1)
+        detected_channels = torch.where(hot.any(0))[0].tolist()
+        zero_channel_rule = (
+            {
+                "rule": "mean(abs(feature), spatial) > 8 * median_across_channels; independently per image",
+                "num_images_triggered": int(hot.any(1).sum()),
+                "hot_count_min_mean_max": [
+                    int(hot_counts.min()),
+                    hot_counts.float().mean().item(),
+                    int(hot_counts.max()),
+                ],
+                "hot_channels_per_image": [torch.where(row)[0].tolist() for row in hot],
+                "channel_image_counts": {str(c): int(hot[:, c].sum()) for c in detected_channels},
+                "removed_energy_fraction_min_mean_max": [
+                    removed_energy.min().item(),
+                    removed_energy.mean().item(),
+                    removed_energy.max().item(),
+                ],
+                "max_mean_abs_over_median_per_image": (
+                    mag.max(1).values / mag.median(1).values
+                ).tolist(),
+            }
+            if any(shape[-1] > 1 for shape in self.shapes)
+            else None
+        )
         return {
             "num_images": len(means),
             "channel_token_shapes": sorted(self.shapes),
             "median_channel_rms": median.item(),
             "max_channel_rms_over_median": (rms.max() / median).item(),
+            "toromi_zero_channel_rule": zero_channel_rule,
             "top_energy_fraction": {
                 str(k): (energy[order[:k]].sum() / energy.sum()).item()
                 for k in (1, 2, 4, 8, 16, 32)
@@ -133,6 +165,7 @@ def main():
     report = {
         "radio_source_commit": RADIO_COMMIT,
         "radio_weights_revision": RADIO_REVISION,
+        "toromi_rule_reference": "https://github.com/chongxi/toromi_slam/blob/73d5489c39c087fe5a8b2466e0afd06e44a985fc/perception/radio_model.py",
         "manifest": config["data"]["train_manifest"],
         "sample_indices": selected,
         "sample_groups": [records[i].get("group") for i in selected],
