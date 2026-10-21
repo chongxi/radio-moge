@@ -66,6 +66,7 @@ function updateNavigation(){
 }
 function navigate(offset){const index=state.filtered.findIndex(s=>s.id===state.sample?.id); const sample=state.filtered[index+offset];if(sample)select(sample);}
 function showMetrics(){
+  if(state.comparison)$('agreement-image').textContent=fmt(state.comparison.current.teacher_agreement.samples[state.sample.id]?.abs_rel,4);
   $('metrics-body').replaceChildren();
   ['before','after','teacher'].forEach(name=>{
     const m=state.sample.metrics[name],tr=element('tr','metric-'+name);
@@ -196,6 +197,7 @@ async function init(){
   state.geometry=geometryResponse.ok?await geometryResponse.json():null;
   if(state.manifest.schema!==1||state.manifest.channels.join(',')!=='before,after,teacher,ground_truth')throw Error('The evaluation export is not ready or has an unsupported format.');
   const m=state.manifest;
+  await loadComparison();
   $('total-images').textContent=m.run.test_images;
   $('scene-count').textContent=m.run.test_scenes+' held-out scenes · '+(m.run.validation_images?m.run.validation_images+' separate validation images':'80 / 20 split');
   $('run-steps').textContent=m.run.steps+'-step checkpoint';
@@ -208,5 +210,31 @@ async function init(){
   createPanels();wire();renderList();
   const hash=new URLSearchParams(location.hash.slice(1));setMode(hash.get('mode')||(state.geometry?'cloud':'grid'));
   await select(m.samples.find(s=>s.id===hash.get('image'))||m.samples[0]);
+}
+async function loadComparison(){
+  // Optional companion file: existing standalone viewers retain their original behavior.
+  const response=await fetch('comparison.json');
+  if(response.status===404)return;
+  if(!response.ok)throw Error('Experiment comparison metadata is unavailable');
+  const comparison=await response.json(),current=comparison.models.find(m=>m.id===comparison.current_id);
+  if(!current||current.checkpoint_sha256!==state.manifest.run.checkpoint_sha256)throw Error('Comparison checkpoint differs from displayed predictions');
+  state.comparison={...comparison,current};
+  $('experiment-comparison').hidden=false;
+  $('experiment-select').replaceChildren(...comparison.models.map(model=>new Option(model.label,model.id,false,model.id===current.id)));
+  $('experiment-select').addEventListener('change',()=>{
+    const model=comparison.models.find(m=>m.id===$('experiment-select').value);
+    const destination=new URL(model.href,location.href);
+    destination.hash=new URLSearchParams({image:state.sample.id,mode:state.mode}).toString();
+    location.assign(destination.href);
+  });
+  $('experiment-wandb').href=current.wandb_url;
+  $('experiment-note').textContent=current.note;
+  $('agreement-mean').textContent=fmt(current.teacher_agreement.summary.abs_rel,4);
+  $('experiment-policy').textContent=comparison.policy;
+  comparison.stages.forEach(stage=>{
+    const row=element('tr');
+    [stage.label,stage.updates,fmt(stage.initial_teacher,4)+' → '+fmt(stage.final_teacher,4),fmt(stage.initial_sensor,4)+' → '+fmt(stage.final_sensor,4),stage.selected_step].forEach(value=>row.append(element('td','',value)));
+    $('experiment-results').append(row);
+  });
 }
 init().catch(error=>{status('');$('fatal').hidden=false;$('fatal').textContent='Could not open the viewer: '+error.message;});

@@ -29,6 +29,7 @@ function assertLinked(cameras){
       return colors.size;
     });assert(renderColors>50);
     await page.screenshot({path:path.join(output,'clouds-desktop.png'),fullPage:true});
+    await page.locator('#cloud-after canvas').scrollIntoViewIfNeeded();
     const box=await page.locator('#cloud-after canvas').boundingBox();
     await page.mouse.move(box.x+box.width*.5,box.y+box.height*.5);await page.mouse.down();
     await page.mouse.move(box.x+box.width*.7,box.y+box.height*.6,{steps:10});await page.mouse.up();
@@ -66,6 +67,24 @@ function assertLinked(cameras){
     await page.setViewportSize({width:390,height:844});
     await page.screenshot({path:path.join(output,'clouds-mobile.png'),fullPage:true});
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
+    if(await page.locator('#experiment-comparison').count() && await page.locator('#experiment-comparison').isVisible()){
+      const sample=await page.evaluate(()=>state.sample.id);
+      const oldFingerprint=await page.evaluate(()=>state.manifest.run.checkpoint_sha256);
+      await page.locator('#experiment-select').selectOption('mlp');
+      await page.waitForURL('**/mlp/**');
+      await page.waitForSelector('#cloud-view[aria-busy="false"]',{timeout:90000});
+      assert.equal(await page.evaluate(()=>state.sample.id),sample);
+      assert.notEqual(await page.evaluate(()=>state.manifest.run.checkpoint_sha256),oldFingerprint);
+      assert.equal(await page.locator('#agreement-image').textContent(),
+        await page.evaluate(()=>state.comparison.current.teacher_agreement.samples[state.sample.id].abs_rel.toFixed(4)));
+      assert.match(await page.locator('#experiment-note').textContent(),/step-0 initialization/);
+      await page.locator('#experiment-select').selectOption('fusion');
+      await page.waitForURL(url=>!url.pathname.includes('/mlp/'));
+      await page.waitForSelector('#cloud-view[aria-busy="false"]',{timeout:90000});
+      assert.equal(await page.evaluate(()=>state.sample.id),sample);
+      assert.equal(await page.evaluate(()=>state.manifest.run.checkpoint_sha256),oldFingerprint);
+      assert.equal(await page.locator('#experiment-results tr').count(),4);
+    }
     assert.deepEqual(errors,[]);
     fs.writeFileSync(path.join(output,'clouds-check.json'),JSON.stringify({passed:true,initial,renderColors,fullCounts:full.counts,errors},null,2));
     console.log('3D checks passed: rendered RGB clouds, linked orbit/zoom, overlay, native/shared cameras, full density, binary PLY, navigation, mobile.');

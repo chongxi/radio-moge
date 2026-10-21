@@ -16,6 +16,13 @@
   <div><p class="eyebrow">ONE BACKBONE. A NEW GEOMETRY HEAD.</p><h1>From features to depth.</h1><p class="lede">Explore what changed after training — on scenes the adapter never trained on.</p></div>
   <div class="run-chip"><span>NYU Depth V2</span><strong id="run-steps">Loading…</strong><small>C-RADIOv4-H · frozen MoGe-2 decoder</small></div>
 </div>
+<section id="experiment-comparison" class="experiment-comparison" hidden aria-label="Adapter comparison">
+  <div class="comparison-heading"><label>Selected adapter<select id="experiment-select" aria-label="Select adapter"></select></label><a id="experiment-wandb" target="_blank" rel="noreferrer">Training curves ↗</a></div>
+  <p id="experiment-note"></p>
+  <div class="agreement-stats"><span>Full test set · difference from MoGe-2 <strong id="agreement-mean">—</strong></span><span>This image · difference from MoGe-2 <strong id="agreement-image">—</strong></span></div>
+  <small>Depth AbsRel ↓ on MoGe-valid pixels, in metric scale. This measures agreement with MoGe, not error against the sensor.</small>
+  <details><summary>Completed experiments & checkpoint selection</summary><div class="comparison-table"><table><thead><tr><th>Training stage</th><th>Updates</th><th>MoGe AbsRel<br>start → end ↓</th><th>Sensor AbsRel<br>start → end ↓</th><th>Selected step</th></tr></thead><tbody id="experiment-results"></tbody></table></div><p id="experiment-policy"></p></details>
+</section>
 <section class="summary" aria-label="Full held-out evaluation summary">
   <div class="stat"><span>Held-out images</span><strong id="total-images">—</strong><small id="scene-count">Scene-disjoint 80 / 20 split</small></div>
   <div class="stat before"><span>Before · depth AbsRel ↓</span><strong id="before-score">—</strong><small>Initial adapter + frozen decoder</small></div>

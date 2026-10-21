@@ -454,6 +454,32 @@ with its MIT license; viewing does not contact a third-party CDN.
 
 ### Longer runs with Weights & Biases
 
+After the fixed fusion/geometry queue, combine the selected MLP and fusion
+exports into one viewer without another model forward pass:
+
+```bash
+.venv/bin/python scripts/build_comparison.py \
+  --baseline /path/to/mlp-run/heldout-viewer-3d-v1 \
+  --fusion /path/to/ablations/fusion-features/heldout-viewer-v1 \
+  --ablation-root /path/to/ablations \
+  --output /path/to/ablations/comparison-viewer-v1
+python scripts/serve_viewer.py /path/to/ablations/comparison-viewer-v1 --port 7862
+```
+
+The builder checks geometry provenance, checkpoint selection, matching test
+frames, and identical teacher/sensor targets. It computes MoGe-relative depth
+metrics from the saved float32 arrays, using the teacher validity mask and no
+scale alignment. Original exports remain unchanged. The model selector retains
+the current test frame and 2D/3D mode across both models.
+
+This comparison expects both geometry stages to select their step-zero
+initialization, with verified `mlp-selected-model-equivalence.json` and
+`fusion-selected-model-equivalence.json` audits in the ablation root. It checks
+their actual adapter fingerprints against the reused exports. The page labels
+that reuse explicitly, and separately shows internal validation before/after
+all training stages. A different selected checkpoint requires its own export;
+the builder rejects silently reusing the wrong predictions.
+
 Install the optional tracker with `uv pip install --python .venv/bin/python -e '.[tracking]'`.
 Authenticate through the W&B SDK's normal environment or credential store; never
 put an API key in YAML, source code, or a run directory.
