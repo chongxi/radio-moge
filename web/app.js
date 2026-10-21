@@ -172,7 +172,9 @@ async function init(){
   state.manifest=await response.json();
   if(state.manifest.schema!==1||state.manifest.channels.join(',')!=='before,after,teacher,ground_truth')throw Error('The evaluation export is not ready or has an unsupported format.');
   const m=state.manifest;
-  $('total-images').textContent=m.run.test_images;$('scene-count').textContent=m.run.test_scenes+' held-out scenes · 80 / 20 split';$('run-steps').textContent=m.run.steps+' steps';
+  $('total-images').textContent=m.run.test_images;
+  $('scene-count').textContent=m.run.test_scenes+' held-out scenes · '+(m.run.validation_images?m.run.validation_images+' separate validation images':'80 / 20 split');
+  $('run-steps').textContent=m.run.steps+'-step checkpoint';
   ['before','after','teacher'].forEach(name=>$(name+'-score').textContent=fmt(m.summary[name].abs_rel));
   $('protocol-text').textContent=m.run.protocol;$('baseline-text').textContent='Before-training weights: '+m.run.baseline+'.';
   $('model-info').textContent=m.run.student+' → frozen decoder. Teacher: '+m.run.teacher+'. Training images: '+m.run.train_images+'.';

@@ -48,6 +48,33 @@ def summarize(samples):
     return result
 
 
+def initial_provenance(state, initial):
+    """Accept a matching stage-start checkpoint or the legacy verified artifact."""
+    if "provenance" in initial:
+        provenance = initial["provenance"]
+    else:
+        matches = all(initial.get(k) == state.get(k) for k in (
+            "adapter_config", "config", "model_config", "data_digests", "revisions"
+        ))
+        if not matches or initial.get("step") != 0 or initial.get("cursor") != 0:
+            raise ValueError("Initial checkpoint must be step zero from the same training stage")
+        provenance = {
+            "method": "saved stage-start checkpoint",
+            "adapter_sha256": fingerprint(initial["adapter"]),
+            "trained_sha256": fingerprint(state["adapter"]),
+            "revisions": state["revisions"],
+        }
+    trusted = (provenance.get("verified")
+               or provenance.get("method") == "saved stage-start checkpoint")
+    if (not trusted
+            or initial["adapter_config"] != state["adapter_config"]
+            or provenance["trained_sha256"] != fingerprint(state["adapter"])
+            or provenance["adapter_sha256"] != fingerprint(initial["adapter"])
+            or provenance["revisions"] != state["revisions"]):
+        raise ValueError("Initial adapter provenance does not match the trained checkpoint")
+    return provenance
+
+
 @torch.no_grad()
 def export_viewer(checkpoint, initial_adapter, manifest, output, original_metrics=None):
     output = Path(output).resolve()
@@ -55,19 +82,15 @@ def export_viewer(checkpoint, initial_adapter, manifest, output, original_metric
         raise FileExistsError(f"Use a new output directory: {output}")
     state = torch.load(checkpoint, map_location="cpu", weights_only=True)
     initial = torch.load(initial_adapter, map_location="cpu", weights_only=True)
-    provenance = initial["provenance"]
-    trusted_initial = (provenance.get("verified")
-                       or provenance.get("method") == "saved stage-start checkpoint")
-    if (not trusted_initial
-            or initial["adapter_config"] != state["adapter_config"]
-            or provenance["trained_sha256"] != fingerprint(state["adapter"])
-            or provenance["adapter_sha256"] != fingerprint(initial["adapter"])
-            or provenance["revisions"] != state["revisions"]):
-        raise ValueError("Initial adapter provenance does not match the trained checkpoint")
+    provenance = initial_provenance(state, initial)
     config = state["config"]
     records = read_manifest(manifest)
     train = read_manifest(config["data"]["train_manifest"])
     check_split(train, records)
+    val_path = config["data"].get("val_manifest")
+    validation = read_manifest(val_path) if val_path else []
+    check_split(train, validation)
+    check_split(validation, records)
     system, after = build_system(config, "cuda")
     after.load_state_dict(state["adapter"])
     after.eval()
@@ -131,14 +154,22 @@ def export_viewer(checkpoint, initial_adapter, manifest, output, original_metric
         schema=1, channels=CHANNELS, dtype="float32-le", samples=samples, summary=summarize(samples),
         colormap=cv2.cvtColor(cv2.applyColorMap(np.arange(256, dtype="uint8")[:, None],
                                               cv2.COLORMAP_VIRIDIS), cv2.COLOR_BGR2RGB)[:, 0].tolist(),
-        run=dict(name="NYUv2 sanity · seed 42", steps=state["step"], train_images=len(train),
+        run=dict(name=config.get("tracking", {}).get("name", "NYUv2 sanity"),
+                 steps=state["step"], training_budget=config["train"]["steps"],
+                 checkpoint=Path(checkpoint).name, train_images=len(train),
+                 validation_images=len(validation),
                  test_images=len(records), test_scenes=len({r.get("group") for r in records}),
                  student="C-RADIOv4-H + MLP", teacher=config["models"]["moge_repo"],
                  baseline=("Seeded reconstruction; all four initial feature losses matched exactly"
                            if provenance.get("verified") else "Saved stage-start checkpoint"),
                  checkpoint_sha256=fingerprint(state["adapter"]), revisions=state["revisions"],
-                 original_evaluation_max_difference=max_difference,
-                 protocol="Scene-disjoint custom 80/20 split. Full-frame measured rawDepths; no "
+                 initial_adapter_sha256=provenance["adapter_sha256"],
+                 original_evaluation_max_difference=max_difference if original is not None else None,
+                 protocol=f"Scene-disjoint custom split: {len(train)} training images, "
+                          f"{len(validation)} validation images, {len(records)} test images. "
+                          + ("Validation teacher-depth error selects the best checkpoint. "
+                             if validation else "Fixed training budget; no validation selection. ")
+                          + "Full-frame measured rawDepths; no "
                           "scale alignment. Scores average per-image errors over valid measured "
                           "depth. Teacher pretraining may include NYUv2. Not the official benchmark."),
     )
@@ -154,7 +185,8 @@ def export_viewer(checkpoint, initial_adapter, manifest, output, original_metric
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", required=True)
-    parser.add_argument("--initial-adapter", required=True, help="Verified initial-adapter.pt from compare")
+    parser.add_argument("--initial-adapter", "--initial", required=True,
+                        help="Actual initial.pt from this stage, or verified initial-adapter.pt")
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--original-metrics", help="Original per_image.json; require unchanged scores")

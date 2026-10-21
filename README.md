@@ -327,8 +327,21 @@ cursor, and compare the trained head's error against MoGe-2 or measured depth.
 All depth panels share one range. The top summary always covers the full test
 set; the table below the images covers the selected frame.
 
-After `radio_moge.compare` has saved `initial-adapter.pt`, export the full held-out
-manifest once on the GPU:
+For new runs, pass the saved `initial.pt` directly to export the full held-out
+manifest once on the GPU. The exporter checks that it is step zero from the
+same training stage, and checks test separation from both training and validation:
+
+```bash
+.venv/bin/python -m radio_moge.viewer \
+  --checkpoint /path/to/train/best.pt --initial /path/to/train/initial.pt \
+  --manifest /path/to/dataset/test.jsonl --output /path/to/heldout-viewer
+```
+
+This computes full-test depth metrics and the viewable predictions together;
+a separate evaluation pass is unnecessary. The manifest records the selected
+checkpoint step, training budget, and internal validation size. For legacy runs
+without `initial.pt`, first use `radio_moge.compare` to create verified
+`initial-adapter.pt`, then export:
 
 ```bash
 .venv/bin/python -m radio_moge.viewer \
