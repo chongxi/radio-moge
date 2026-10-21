@@ -47,6 +47,11 @@ The CPU tests use small random models, including the actual upstream encoder,
 decoder, RADIO intermediate extraction and MoGe postprocessing. They do not
 download pretrained checkpoints or establish learned geometry quality.
 
+The GitHub Actions configuration is provided as `ci/github-actions-tests.yml`.
+BuildHub's repository credential cannot create workflow files, so this template
+is inactive. To enable CI, use your own GitHub account to place it at
+`.github/workflows/tests.yml`.
+
 ## Data
 
 Use RGB images, with separate scene/sequence groups for training and validation.
