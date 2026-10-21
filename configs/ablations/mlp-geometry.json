@@ -1,0 +1,72 @@
+{
+  "output_dir": "/home/buildhub/shared/radio-moge/chongxi/nyuv2-ablations-20261021/mlp-geometry/train",
+  "models": {
+    "moge_repo": "Ruicheng/moge-2-vitl-normal",
+    "moge_revision": "cb0e8bbd6b1e243589717c78e750b1ba4c093acf",
+    "window_size": null
+  },
+  "adapter": {
+    "kind": "mlp",
+    "hidden_dim": 2048
+  },
+  "data": {
+    "train_manifest": "/home/buildhub/shared/radio-moge/datasets/nyuv2-internal-val-s43/train.jsonl",
+    "val_manifest": "/home/buildhub/shared/radio-moge/datasets/nyuv2-internal-val-s43/val.jsonl",
+    "buckets": [
+      [
+        480,
+        640
+      ]
+    ],
+    "workers": 0,
+    "augment": true
+  },
+  "train": {
+    "seed": 42,
+    "precision": "bf16",
+    "steps": 1000,
+    "batch_size": 16,
+    "accumulation": 2,
+    "lr": 3e-05,
+    "weight_decay": 0.01,
+    "warmup": 100,
+    "clip_grad": 1.0,
+    "calibration_batches": 4,
+    "log_every": 10,
+    "save_every": 250,
+    "eval_every": 250,
+    "tensorboard": true,
+    "eval_at_start": true
+  },
+  "loss": {
+    "spatial": 1.0,
+    "summary": 1.0,
+    "cosine": 0.1,
+    "points": 1.0,
+    "mask": 0.1,
+    "scale": 0.1,
+    "gradient": 0.05,
+    "normal": 0.1
+  },
+  "evaluation": {
+    "num_tokens": 1200,
+    "max_side": 640,
+    "limit": null,
+    "visualizations": 4
+  },
+  "tracking": {
+    "enabled": true,
+    "mode": "online",
+    "project": "radio-moge",
+    "name": "nyuv2-mlp-geometry",
+    "tags": [
+      "nyuv2",
+      "cradio-v4-h",
+      "moge-2-vitl-normal",
+      "mlp-geometry"
+    ],
+    "images": 4,
+    "entity": "brainsim",
+    "group": "nyuv2-fusion-geometry-20261021"
+  }
+}

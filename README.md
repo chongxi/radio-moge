@@ -228,6 +228,47 @@ recent periodic checkpoint.
 - Encoders/adapters use BF16 autocast; decoder and losses use FP32. Frozen model
   parameters are never passed to the optimizer.
 
+The current encoder-output objective is
+`MSE((spatial_student - spatial_teacher) / spatial_RMS)` +
+`MSE((CLS_student - CLS_teacher) / CLS_RMS)` +
+`0.1 * mean(1 - cosine(spatial_student, spatial_teacher))`.
+The per-channel RMS scales are fixed after calibration on training images.
+Cosine is computed across channels at each spatial position; the CLS branch
+uses MSE only. Absolute adapter outputs, not normalized features, enter the
+frozen decoder. This retains amplitude information that cosine alone cannot supervise.
+
+### NYUv2 fusion and geometry experiments
+
+`configs/ablations/` records the concrete one-H200 follow-up to the 4,000-step
+MLP run, using the same 1,043 training and 116 internal-validation images:
+
+| Stage | Initialization | Budget | Objective |
+|---|---|---:|---|
+| `fusion-features` | Fresh four-layer adapter | 4,000 steps | Same feature loss as MLP |
+| `mlp-geometry` | Existing MLP validation-best checkpoint | 1,000 steps | Feature + decoder geometry |
+| `fusion-geometry` | Fusion validation-best checkpoint | 1,000 steps | Feature + decoder geometry |
+
+Fusion reads RADIO blocks 8/16/24/32 in one backbone pass, projects each from
+1,280 to 512 channels, averages them, then applies a 512→2,048→1,024 MLP.
+The summary branch is unchanged. This adapter has 9,444,352 parameters versus
+8,393,728 for the final-layer MLP, so this comparison also changes head capacity.
+Refinement uses LR 3e-5 and adds point-map Smooth L1 (1.0), mask BCE (0.1),
+log-scale Smooth L1 (0.1), point-gradient L1 (0.05), and normal cosine (0.1).
+These differentiable losses use **raw decoder outputs before focal recovery**;
+validation still measures fully postprocessed metric depth. Encoders and decoder
+weights remain frozen; geometry gradients pass through the decoder to the head.
+
+All stages use physical batch 16, accumulation 2, and the same 480×640 input
+bucket. `scripts/preflight_ablation.py` checks actual intermediate shapes,
+single-pass extraction, finite feature/geometry gradients and frozen weights on
+training images. `scripts/run_ablations.py` runs the three stages sequentially,
+logs separate W&B runs in one group, and stops the queue on failure. It does not
+stop the GPU or evaluate the outer test set. Checkpoint selection uses internal
+validation teacher-depth AbsRel. Geometry stages receive additional optimizer
+steps, so their improvements must not be interpreted as a controlled effect of
+geometry losses alone; equal-step feature-only continuations would be needed
+for that causal comparison.
+
 Both branches see the same crop and horizontal flip. RADIO runs at the configured
 bucket resolution; MoGe resizes that view to `14h × 14w` for RADIO's `h × w` token
 grid. Validation preserves the image aspect ratio and uses a supported RADIO grid

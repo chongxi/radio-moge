@@ -4,9 +4,16 @@ import torch
 
 from radio_moge.adapters import EncoderFeatures, GeometryAdapter, RadioFeatures
 from radio_moge.checkpoint import atomic_save, restore_rng, rng_state
+from radio_moge.config import load_config
 from radio_moge.data import DeterministicBatches, check_split
 from radio_moge.losses import FeatureStatistics, geometry_losses
 from radio_moge.metrics import depth_metrics
+
+
+def test_json_learning_rate_scientific_notation_is_numeric(tmp_path):
+    path = tmp_path / 'refine.json'
+    path.write_text('{"train": {"lr": 3e-05}}')
+    assert load_config(path)['train']['lr'] == pytest.approx(0.00003)
 
 
 @pytest.mark.parametrize("kind", ["linear", "mlp", "fusion"])
@@ -32,6 +39,8 @@ def test_statistics_preserve_absolute_magnitude():
     assert stats.loss(predicted, target)["spatial"].item() == pytest.approx(1)
     assert stats.loss(predicted, target)["summary"].item() == pytest.approx(1)
     assert stats.loss(target, target)["spatial"].item() == 0
+    # Cosine alone cannot detect amplitude errors seen by a frozen decoder.
+    assert stats.loss(predicted, target)["cosine"].item() == pytest.approx(0, abs=1e-6)
 
 
 def test_geometry_invalid_teacher_and_empty_mask_have_finite_gradients():

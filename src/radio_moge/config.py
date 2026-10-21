@@ -1,4 +1,5 @@
 from copy import deepcopy
+import json
 from pathlib import Path
 
 import yaml
@@ -13,7 +14,10 @@ MOGE_REVISION = "cb0e8bbd6b1e243589717c78e750b1ba4c093acf"
 
 def load_config(path):
     path = Path(path).resolve()
-    config = yaml.safe_load(path.read_text())
+    # JSON scientific notation such as 3e-05 is a string under PyYAML's YAML 1.1
+    # resolver. Preserve JSON number types in generated experiment configs.
+    config = (json.loads(path.read_text()) if path.suffix == '.json'
+              else yaml.safe_load(path.read_text()))
     if "extends" in config:
         base = load_config(path.parent / config.pop("extends"))
         config = merge(base, config)
