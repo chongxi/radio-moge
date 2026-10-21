@@ -319,6 +319,52 @@ all four logged losses exactly with PyTorch 2.8.0+cu128.
 
 ## Export and reuse your existing RADIO features
 
+### Interactive held-out viewer
+
+The viewer lets you browse every held-out image, filter by scene, compare depth
+maps side by side or with a swipe slider, inspect depth in meters under the
+cursor, and compare the trained head's error against MoGe-2 or measured depth.
+All depth panels share one range. The top summary always covers the full test
+set; the table below the images covers the selected frame.
+
+After `radio_moge.compare` has saved `initial-adapter.pt`, export the full held-out
+manifest once on the GPU:
+
+```bash
+.venv/bin/python -m radio_moge.viewer \
+  --checkpoint /path/to/pilot/latest.pt \
+  --initial-adapter /path/to/before-after/initial-adapter.pt \
+  --manifest /path/to/dataset/test.jsonl \
+  --original-metrics /path/to/test-final/per_image.json \
+  --output /shared/radio-moge/chongxi/heldout-viewer
+```
+
+The optional original metrics argument checks that teacher/trained scores are
+unchanged. The exporter checks train/test separation, verifies the initial and
+trained adapter fingerprints, and writes into a temporary directory before
+publishing the completed export. RGB images, compressed float32 depth planes,
+and metrics stay outside git. Allow about 1 GiB for all 290 NYUv2 frames.
+
+Copy the exported directory to the workspace and serve it with the lightweight
+server (no GPU or PyTorch needed to browse):
+
+```bash
+python3 scripts/serve_viewer.py /shared/radio-moge/chongxi/heldout-viewer --port 7860
+```
+
+Use this server: it supplies the HTTP `Content-Encoding: gzip` header needed for
+the browser to decode the lossless depth planes. It serves only the generated
+directory and disables directory listings. BuildHub's workspace preview URL
+provides the authenticated browser entry point. Source HTML, CSS and JavaScript
+are in `web/`; there is no frontend build or external asset dependency.
+
+An optional Playwright check is in `scripts/check_viewer.cjs`. With Playwright
+and Chromium installed, run `node scripts/check_viewer.cjs http://localhost:7860`.
+It checks navigation, filtering, depth decoding, swipe controls, pixel values,
+metrics, empty search results, and the mobile layout.
+
+### Deployment artifact
+
 ```bash
 .venv/bin/python -m radio_moge.export \
   --checkpoint /shared/radio-moge/chongxi/mlp-refine/best.pt \

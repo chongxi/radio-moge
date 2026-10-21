@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f4ef">
+  <title>Depth Lab · Held-out explorer</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="./" aria-label="Depth Lab home"><span class="brandmark">▱</span> Depth Lab <span class="brand-sub">RADIO × MoGe</span></a>
+  <div class="top-right"><span class="status-dot"></span><span>Held-out evaluation</span><a href="https://github.com/chongxi/radio-moge" target="_blank" rel="noreferrer">Source ↗</a></div>
+</header>
+<div class="intro">
+  <div><p class="eyebrow">ONE BACKBONE. A NEW GEOMETRY HEAD.</p><h1>From features to depth.</h1><p class="lede">Explore what changed after training — on scenes the adapter never trained on.</p></div>
+  <div class="run-chip"><span>NYU Depth V2</span><strong id="run-steps">400 steps</strong><small>C-RADIOv4-H · frozen MoGe-2 decoder</small></div>
+</div>
+<section class="summary" aria-label="Full held-out evaluation summary">
+  <div class="stat"><span>Held-out images</span><strong id="total-images">—</strong><small id="scene-count">Scene-disjoint 80 / 20 split</small></div>
+  <div class="stat before"><span>Before · depth AbsRel ↓</span><strong id="before-score">—</strong><small>Initial adapter + frozen decoder</small></div>
+  <div class="stat after"><span>After · depth AbsRel ↓</span><strong id="after-score">—</strong><small>Trained adapter + frozen decoder</small></div>
+  <div class="stat teacher"><span>MoGe-2 · depth AbsRel ↓</span><strong id="teacher-score">—</strong><small>Original encoder + decoder</small></div>
+</section>
+<div id="fatal" class="fatal" role="alert" hidden></div>
+<div class="workspace">
+  <aside class="sidebar" aria-label="Browse held-out images">
+    <div class="sidebar-head"><h2>Scene browser</h2><span id="result-count">—</span></div>
+    <label class="search"><span>⌕</span><input id="search" type="search" placeholder="Search scene or image…" aria-label="Search scene or image"></label>
+    <div class="filter-pair"><label>Scene type<select id="scene-filter"><option value="">All scenes</option></select></label><label>Order<select id="sort"><option value="original">Dataset order</option><option value="worst">Largest after error</option><option value="best">Smallest after error</option></select></label></div>
+    <div id="scene-list" class="scene-list"></div>
+    <div id="empty" class="empty" hidden>No matching images.<button id="clear-search">Clear filters</button></div>
+    <p class="sidebar-note">Every frame here belongs to the held-out 20%. Summary scores above always use the full test set.</p>
+  </aside>
+  <main>
+    <div class="image-heading"><div><p class="eyebrow" id="image-id">LOADING HELD-OUT DATA</p><h2 id="scene-name">Loading…</h2></div><div class="navigation"><span id="position">—</span><button id="previous" title="Previous image (←)" aria-label="Previous image">←</button><button id="next" title="Next image (→)" aria-label="Next image">→</button></div></div>
+    <div class="toolbar">
+      <div class="tabs" aria-label="Visualization mode"><button data-mode="grid" class="active" aria-pressed="true">Side by side</button><button data-mode="swipe" aria-pressed="false">Swipe comparison</button></div>
+      <label class="inline-control">Depth scale<select id="scale"><option value="teacher">Teacher 2–98% range</option><option value="fixed">Fixed 0–10 meters</option></select></label>
+    </div>
+    <div class="legend-row"><div class="depth-legend"><span id="near">Near</span><canvas id="colorbar" width="256" height="12" aria-label="Depth color scale"></canvas><span id="far">Far</span></div><small>One shared scale · no scale alignment · <i class="invalid-dot"></i> invalid / missing</small></div>
+    <div id="load-status" class="load-status" role="status" aria-live="polite">Loading the evaluation…</div>
+    <section id="grid-view" class="panel-grid" aria-label="Depth maps"></section>
+    <section id="swipe-view" class="swipe-view" hidden aria-label="Swipe depth comparison">
+      <div class="swipe-selects"><label>Left<select id="swipe-left"><option value="before">Before training</option><option value="after">After training</option><option value="teacher">MoGe-2</option><option value="ground_truth">Measured depth</option><option value="rgb">RGB image</option></select></label><span>↔</span><label>Right<select id="swipe-right"><option value="after">After training</option><option value="teacher">MoGe-2</option><option value="ground_truth">Measured depth</option><option value="before">Before training</option><option value="rgb">RGB image</option></select></label></div>
+      <div class="swipe-stage" id="swipe-stage"><canvas id="swipe-canvas"></canvas><div class="swipe-divider" id="swipe-divider"><span>↔</span></div><span id="left-tag" class="swipe-tag left">Before</span><span id="right-tag" class="swipe-tag right">After</span></div>
+      <label class="range-label">Comparison split<input id="swipe-range" type="range" min="0" max="100" value="50" aria-label="Comparison split"><output id="split-value">50%</output></label>
+    </section>
+    <div class="pixel-inspector"><span id="pixel-position">Hover over an image to inspect depth</span><div id="pixel-values"></div></div>
+    <div class="lower-grid">
+      <section class="metrics-card"><div class="section-label"><h3>This image, measured depth</h3><span>No scale alignment</span></div><table><thead><tr><th>Prediction</th><th>AbsRel ↓</th><th>RMSE (m) ↓</th><th>δ1 ↑</th></tr></thead><tbody id="metrics-body"></tbody></table><p id="failure-note" class="failure-note" hidden></p><small>Valid sensor pixels only. Missing predictions count as errors.</small></section>
+      <section class="reading-card"><h3>How to read this view</h3><p>Purple is nearer; yellow is farther. All depth maps use the same meter range. Values outside it are clipped for display.</p><p>The last panel shows the trained head’s relative depth error. Dark pixels agree; bright orange pixels disagree.</p><label class="inline-control">Error reference<select id="error-reference"><option value="teacher">MoGe-2</option><option value="ground_truth">Measured depth</option></select></label><div class="error-legend"><span>0%</span><i></i><span>50%+</span></div></section>
+    </div>
+    <details class="protocol"><summary>Experiment & evaluation protocol <span>+</span></summary><div><p id="protocol-text"></p><p id="baseline-text"></p><p>Both adapter branches use the same frozen MoGe-2 decoder, followed by official focal recovery and metric scaling. Viewing an image performs no training and does not change the checkpoint. Sensor depth holes are displayed in magenta.</p><p id="model-info"></p><a href="manifest.json" download>Download metrics & image index ↗</a></div></details>
+  </main>
+</div>
+<footer>DEPTH LAB <span>Frozen representations, visible results.</span><span>← / → to browse · hover to inspect</span></footer>
+</body>
+</html>
