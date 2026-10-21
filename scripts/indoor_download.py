@@ -25,6 +25,34 @@ import requests
 
 
 BASE = "https://docs-assets.developer.apple.com/ml-research/datasets"
+# Official ARKitScenes download_data.py excludes these captures' trajectories.
+# RGB may exist, but this preparation requires a pose for orientation handling.
+MISSING_TRAJECTORIES = {
+    "47334522",
+    "47334523",
+    "42897421",
+    "45261582",
+    "47333152",
+    "47333155",
+    "48458535",
+    "48018733",
+    "47429677",
+    "48458541",
+    "42897848",
+    "47895482",
+    "47333960",
+    "47430089",
+    "42899148",
+    "42897612",
+    "42899153",
+    "42446164",
+    "48018149",
+    "47332198",
+    "47334515",
+    "45663223",
+    "45663226",
+    "45663227",
+}
 METADATA_URLS = {
     "arkitscenes-raw-metadata.csv": f"{BASE}/arkitscenes/v1/raw/metadata.csv",
     "hypersim-scene-splits.csv": (
@@ -295,7 +323,12 @@ def download_arkit(task, root, session, sharpness_min):
         quota = min(
             remaining, first_quotas[capture_index] if capture_index < initial_count else remaining
         )
+        if capture_index == len(task["captures"]) - 1:
+            quota = remaining
         video, fold = capture["video_id"], capture["fold"]
+        if video in MISSING_TRAJECTORIES:
+            rejected["officially_missing_trajectory"] += 1
+            continue
         prefix = f"{BASE}/arkitscenes/v1/raw/{fold}/{video}"
         directory = root / "arkitscenes" / task["split"] / task["id"] / video
         directory.mkdir(parents=True, exist_ok=True)
@@ -373,7 +406,10 @@ def download_arkit(task, root, session, sharpness_min):
                 rejected["unavailable_capture"] += 1
                 continue
             raise
-    if not records:
+    if not records and not (
+        rejected["officially_missing_trajectory"] + rejected["unavailable_capture"]
+        == len(task["captures"])
+    ):
         raise ValueError("No valid RGB frames in scene")
     return {
         "records": records,

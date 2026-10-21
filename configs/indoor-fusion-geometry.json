@@ -1,0 +1,10 @@
+{
+  "extends": "indoor-fusion-features.json",
+  "output_dir": "/home/buildhub/shared/radio-moge/chongxi/indoor-fusion-20261021/geometry/train",
+  "train": {"steps": 10000, "lr": 0.00003, "warmup": 300},
+  "loss": {"points": 1.0, "mask": 0.1, "scale": 0.1, "gradient": 0.05, "normal": 0.1},
+  "tracking": {
+    "name": "indoor-fusion-clean-geometry",
+    "tags": ["arkitscenes", "hypersim", "fusion", "zero-channel", "geometry"]
+  }
+}

@@ -54,6 +54,28 @@ def tensor_from_pil(image):
     return torch.from_numpy(np.array(image, dtype=np.float32, copy=True)).permute(2, 0, 1) / 255
 
 
+def image_rotation(row):
+    rotation = row.get("image_rotation_cw", 0)
+    if type(rotation) is not int or rotation not in {0, 90, 180, 270}:
+        raise ValueError("image_rotation_cw must be an integer quarter turn")
+    return rotation
+
+
+def oriented_rgb(row):
+    with Image.open(row["image"]) as file:
+        image = ImageOps.exif_transpose(file).convert("RGB")
+    rotation = image_rotation(row)
+    if rotation:
+        image = image.transpose(
+            {
+                90: Image.Transpose.ROTATE_270,
+                180: Image.Transpose.ROTATE_180,
+                270: Image.Transpose.ROTATE_90,
+            }[rotation]
+        )
+    return image
+
+
 class TrainingImages(Dataset):
     """A seeded crop is shared by teacher and student, including horizontal flips."""
 
@@ -66,8 +88,7 @@ class TrainingImages(Dataset):
     def __getitem__(self, key):
         index, seed, h, w = key
         rng = random.Random(seed)
-        with Image.open(self.records[index]["image"]) as file:
-            image = ImageOps.exif_transpose(file).convert("RGB")
+        image = oriented_rgb(self.records[index])
         iw, ih = image.size
         # Largest crop at the chosen aspect ratio; random location, no geometric warping.
         cw, ch = min(iw, max(1, round(ih * w / h))), min(ih, max(1, round(iw * h / w)))
@@ -113,8 +134,7 @@ class DeterministicBatches(Sampler):
 
 
 def evaluation_image(row, max_side=768):
-    with Image.open(row["image"]) as file:
-        image = ImageOps.exif_transpose(file).convert("RGB")
+    image = oriented_rgb(row)
     original_size = image.size
     ratio = min(1, max_side / max(image.size))
     size = tuple(max(1, round(v * ratio)) for v in image.size)
@@ -126,9 +146,13 @@ def evaluation_image(row, max_side=768):
         else:
             with Image.open(row["depth"]) as file:
                 array = np.array(file)
-        if array.shape != original_size[::-1]:
+        rotation = image_rotation(row)
+        native_size = original_size[::-1] if rotation in {90, 270} else original_size
+        if array.shape != native_size[::-1]:
             raise ValueError("Depth must match the EXIF-oriented RGB dimensions")
         array = array.astype(np.float32) * float(row.get("depth_scale", 1.0))
+        if rotation:
+            array = np.rot90(array, -(rotation // 90)).copy()
         depth = torch.from_numpy(
             np.array(Image.fromarray(array).resize(size, Image.Resampling.NEAREST), copy=True)
         )

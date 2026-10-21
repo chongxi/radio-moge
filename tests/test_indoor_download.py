@@ -130,3 +130,11 @@ def test_resume_detects_corruption_and_finalize_detects_leakage(tmp_path):
         )
     with pytest.raises(ValueError, match="Cross-split"):
         download.finalize(tmp_path, tasks)
+
+
+def test_official_missing_trajectory_is_accounted_without_network(tmp_path):
+    task = dict(target=135, captures=[dict(video_id="47333152", fold="Training")])
+    result = download.download_arkit(task, tmp_path, None, 4)
+    assert result["records"] == []
+    assert result["shortfall"] == 135
+    assert result["rejections"]["officially_missing_trajectory"] == 1

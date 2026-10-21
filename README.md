@@ -107,6 +107,36 @@ Sources and licenses are retained in `metadata/`; see the
 [ARKitScenes documentation](https://github.com/apple-aiml-research/ARKitScenes/blob/main/DATA.md)
 and [Hypersim documentation](https://github.com/apple-aiml-research/ml-hypersim).
 
+After the downloader reports `complete`, prepare the training manifests:
+
+```bash
+.venv/bin/python scripts/prepare_indoor.py \
+  --source /shared/radio-moge/datasets/indoor-mix-v1-20261021 \
+  --output /shared/radio-moge/datasets/indoor-mix-ready-v1-20261021
+```
+
+This verifies every saved RGB hash, checks scene/hash isolation, and derives
+quarter-turn orientation from the world-Z-up trajectory. Near-vertical or
+ambiguous views use a strong capture-level pose consensus, or are excluded.
+The original `sky_direction` label is retained for auditing; it is not blindly
+trusted. RGB and optional depth are rotated consistently by the shared data
+loader. Original files stay intact, and prepared camera metadata is transformed
+to the upright camera frame. `val.jsonl` samples 256 images per dataset across
+scenes; `val-full.jsonl` preserves the larger independent validation collection.
+Inspect the orientation audit before the full run.
+
+The authorized larger run uses `configs/indoor-fusion-features.json` (30,000
+updates), followed by `configs/indoor-fusion-geometry.json` (10,000 updates from
+the selected feature checkpoint). Both use intermediate fusion and channel
+cleaning, frozen RADIO/MoGe, and effective batch 32. The supervisor
+`scripts/run_indoor_training.py` requires a completed prepared dataset and the
+recorded training authorization. Each stage tests physical batch 32 first,
+falling back to batch 16 with two accumulation steps only on CUDA OOM. Preflight
+verifies finite adapter gradients, frozen model parameters, and one RADIO pass
+per microbatch. W&B records each training stage separately. A failed stage stops
+the queue and leaves logs/checkpoints for inspection; the supervisor never stops
+the GPU machine.
+
 ### First indoor sanity experiment: NYU Depth V2
 
 The [original labeled release](https://cs.nyu.edu/~fergus/datasets/nyu_depth_v2.html)

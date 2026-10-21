@@ -1,0 +1,27 @@
+{
+  "extends": "ablations/fusion-zero-channel.json",
+  "output_dir": "/home/buildhub/shared/radio-moge/chongxi/indoor-fusion-20261021/features/train",
+  "data": {
+    "train_manifest": "/home/buildhub/shared/radio-moge/datasets/indoor-mix-ready-v1-20261021/train.jsonl",
+    "val_manifest": "/home/buildhub/shared/radio-moge/datasets/indoor-mix-ready-v1-20261021/val.jsonl",
+    "buckets": [[480, 640], [640, 480]],
+    "workers": 0
+  },
+  "train": {
+    "steps": 30000,
+    "batch_size": 32,
+    "accumulation": 1,
+    "warmup": 1000,
+    "calibration_batches": 64,
+    "log_every": 20,
+    "save_every": 1000,
+    "eval_every": 1000
+  },
+  "evaluation": {"visualizations": 8},
+  "tracking": {
+    "name": "indoor-fusion-clean-features",
+    "group": "indoor-fusion-20261021",
+    "tags": ["arkitscenes", "hypersim", "fusion", "zero-channel", "features"],
+    "images": 8
+  }
+}
