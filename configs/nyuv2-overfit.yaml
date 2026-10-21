@@ -1,0 +1,11 @@
+extends: nyuv2.yaml
+output_dir: /shared/radio-moge/chongxi/nyuv2-overfit-s42
+data:
+  train_manifest: /shared/radio-moge/datasets/nyuv2-labeled-s42/overfit.jsonl
+  augment: false
+train:
+  steps: 100
+  accumulation: 1
+  warmup: 10
+  calibration_batches: 16
+  save_every: 50

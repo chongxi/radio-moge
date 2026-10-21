@@ -37,7 +37,7 @@ For lightweight **CPU development/tests** instead of CUDA dependencies:
 uv venv --python 3.11
 uv pip install --python .venv/bin/python torch==2.8.0 torchvision==0.23.0 \
   --index-url https://download.pytorch.org/whl/cpu
-uv pip install --python .venv/bin/python -e '.[dev,upstream]'
+uv pip install --python .venv/bin/python -e '.[dev,upstream,data]'
 .venv/bin/python scripts/setup_upstream.py
 OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 .venv/bin/pytest -q
 .venv/bin/ruff check src scripts tests
@@ -53,6 +53,64 @@ is inactive. To enable CI, use your own GitHub account to place it at
 `.github/workflows/tests.yml`.
 
 ## Data
+
+### First indoor sanity experiment: NYU Depth V2
+
+The [original labeled release](https://cs.nyu.edu/~fergus/datasets/nyu_depth_v2.html)
+contains 1,449 RGB/depth pairs from 464 indoor scenes. Prepare it with:
+
+```bash
+uv pip install --python .venv/bin/python -e '.[data]'
+.venv/bin/python scripts/prepare_nyuv2.py
+```
+
+This downloads the original ~2.8 GiB MAT file and extracts one frame at a time.
+Allow approximately 6 GiB of disk space including the source. Data, manifests,
+source checksum, scene counts and a training-only preview go under
+`/shared/radio-moge/datasets/nyuv2-labeled-s42/`. The completed directory is
+published atomically, and existing datasets are never overwritten. Use
+`--source`, `--output`, `--seed`, or `--test-fraction` to prepare a different copy.
+
+The **80/20 split groups whole scenes** (seed 42), removes identical RGB frames,
+and conservatively merges scene suffixes. It targets the image ratio while
+keeping each scene entirely in one split. Actual counts are in
+`dataset_info.json`; `overfit.jsonl` contains 32 training images only.
+
+The prepared seed-42 split has **1,159 training images / 375 scenes** and
+**290 test images / 89 scenes** (79.99% / 20.01%). No duplicate RGB frames were
+found, and paths, scene groups and decoded RGB hashes are disjoint across splits.
+
+Training uses RGB and MoGe teacher targets. The extracted depth is the aligned,
+measured **`rawDepths` in meters**, with missing/nonpositive/nonfinite values
+masked out. Final evaluation uses all valid pixels at full-frame resolution,
+without scale alignment or the standard NYUv2 benchmark crop. This is a custom
+sanity split, **not** a comparable official NYUv2 benchmark result. Teacher
+pretraining may include these scenes; the split tests the new adapter's transfer.
+Use `--depth-key depths` and a new output directory if you explicitly want
+inpainted depth targets instead.
+
+On the GPU, first check learning on the 32-image training subset, then start a
+fresh fixed-budget run on all 80% (do not initialize it from the overfit run):
+
+```bash
+.venv/bin/python -m radio_moge.train --config configs/nyuv2-overfit.yaml
+.venv/bin/python -m radio_moge.train --config configs/nyuv2.yaml
+.venv/bin/python -m radio_moge.evaluate \
+  --checkpoint /shared/radio-moge/chongxi/nyuv2-mlp-s42/latest.pt \
+  --manifest /shared/radio-moge/datasets/nyuv2-labeled-s42/test.jsonl \
+  --output /shared/radio-moge/chongxi/nyuv2-mlp-s42/test-final
+```
+
+The main pilot uses 400 optimizer steps, effective batch 32, a 480×640 RADIO
+view (1,200 tokens), and feature distillation only. **`val_manifest: null`
+disables checkpoint selection and all periodic evaluation.** Only the final
+checkpoint is evaluated on the full 20%; no `--limit` means all test images.
+Report teacher–student agreement plus **both models' errors against measured
+depth**, failures, scale, FOV and boundary examples. If this result motivates
+tuning, create an internal validation split inside the 80% before comparing
+architectures or selecting checkpoints; do not repeatedly tune on the 20% test.
+
+### Other image collections
 
 Use RGB images, with separate scene/sequence groups for training and validation.
 No ground-truth depth is needed for distillation. With one folder per scene:

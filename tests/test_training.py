@@ -122,3 +122,20 @@ def test_resume_rejects_changed_data(tmp_path):
     config["train"]["lr"] *= 2
     with pytest.raises(ValueError, match="identical config"):
         train(config, resume=state, system_adapter=tiny_system())
+
+
+def test_fixed_budget_training_does_not_read_or_evaluate_test_set(tmp_path, monkeypatch):
+    config = config_for(tmp_path)
+    config["data"]["val_manifest"] = None
+    config["data"]["test_manifest"] = str(tmp_path / "must-not-be-opened.jsonl")
+    config["train"].update(steps=2, eval_every=1)
+    config["output_dir"] = str(tmp_path / "no-validation")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Fixed-budget training must not evaluate the held-out test set")
+
+    monkeypatch.setattr("radio_moge.train.evaluate", forbidden)
+    state = torch.load(train(config, system_adapter=tiny_system()), weights_only=True)
+    assert state["step"] == 2 and state["data_digests"]["val"] is None
+    assert state["best"] is None
+    assert not (tmp_path / "no-validation/best.pt").exists()

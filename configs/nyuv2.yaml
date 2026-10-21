@@ -1,0 +1,15 @@
+# Fixed-budget 80/20 sanity experiment. Test images are never read by the trainer.
+extends: mlp.yaml
+output_dir: /shared/radio-moge/chongxi/nyuv2-mlp-s42
+data:
+  train_manifest: /shared/radio-moge/datasets/nyuv2-labeled-s42/train.jsonl
+  val_manifest: null
+  buckets: [[480, 640]]  # Native 4:3 view, 1200 tokens, no aspect-ratio cropping.
+train:
+  steps: 400  # 12,800 image presentations (~11 passes over the training split).
+  warmup: 40
+  save_every: 100
+evaluation:
+  num_tokens: 1200
+  max_side: 640
+  limit: null

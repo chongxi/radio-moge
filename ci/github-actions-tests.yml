@@ -11,7 +11,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv venv --python 3.11
       - run: uv pip install --python .venv/bin/python torch==2.8.0 torchvision==0.23.0 --index-url https://download.pytorch.org/whl/cpu
-      - run: uv pip install --python .venv/bin/python -e '.[dev,upstream]'
+      - run: uv pip install --python .venv/bin/python -e '.[dev,upstream,data]'
       - run: .venv/bin/python scripts/setup_upstream.py
       - run: .venv/bin/ruff check src scripts tests
       - run: .venv/bin/pytest -q

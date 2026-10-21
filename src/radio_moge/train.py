@@ -73,9 +73,13 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
         )
     set_seed(settings["seed"])
     records = read_manifest(config["data"]["train_manifest"])
-    validation = read_manifest(config["data"]["val_manifest"])
+    val_path = config["data"].get("val_manifest")
+    validation = read_manifest(val_path) if val_path else []
     check_split(records, validation)
-    digests = {"train": manifest_digest(records), "val": manifest_digest(validation)}
+    digests = {
+        "train": manifest_digest(records),
+        "val": manifest_digest(validation) if validation else None,
+    }
     output = Path(config["output_dir"])
     output.mkdir(parents=True, exist_ok=True)
     if any(output.iterdir()) and not resume:
@@ -247,7 +251,7 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
                         writer.add_scalar(f"train/{key}", value, step)
             if step % settings["save_every"] == 0:
                 save("latest.pt")
-            if step % settings["eval_every"] == 0 and not stop:
+            if validation and step % settings["eval_every"] == 0 and not stop:
                 metrics = evaluate(
                     system,
                     raw_adapter,
