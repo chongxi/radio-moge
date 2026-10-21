@@ -3,6 +3,7 @@
 extends: nyuv2.yaml
 output_dir: /shared/radio-moge/chongxi/nyuv2-long-s42
 data:
+  workers: 0  # Batch 16 exceeds small container /dev/shm limits with worker prefetch.
   train_manifest: /shared/radio-moge/datasets/nyuv2-internal-val-s43/train.jsonl
   val_manifest: /shared/radio-moge/datasets/nyuv2-internal-val-s43/val.jsonl
 train:
