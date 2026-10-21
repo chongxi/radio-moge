@@ -34,6 +34,43 @@ def run_child(command, log):
         return process.wait()
 
 
+def export_result(train_dir, output, visualization_manifest=None):
+    output.mkdir(parents=True, exist_ok=True)
+    commands = [
+        [
+            sys.executable,
+            "-u",
+            "-m",
+            "radio_moge.export",
+            "--checkpoint",
+            str(train_dir / "best.pt"),
+            "--output",
+            str(output / "head.pt"),
+        ]
+    ]
+    if visualization_manifest:
+        commands.append(
+            [
+                sys.executable,
+                "-u",
+                "-m",
+                "radio_moge.viewer",
+                "--checkpoint",
+                str(train_dir / "best.pt"),
+                "--initial",
+                str(train_dir / "initial.pt"),
+                "--manifest",
+                str(visualization_manifest),
+                "--output",
+                str(output / "heldout-20"),
+            ]
+        )
+    for index, command in enumerate(commands):
+        result = run_child(command, output / f"export-{index}.log")
+        if result:
+            raise RuntimeError(f"Export failed with exit code {result}: {output}")
+
+
 def configurations(dataset, root, revision, batch_size=16):
     info = json.loads((dataset / "dataset_info.json").read_text())
     base = load_config(ROOT / "configs/variety-screen.json")
@@ -51,16 +88,18 @@ def configurations(dataset, root, revision, batch_size=16):
             config["adapter"].update(adapter)
             config["output_dir"] = str(root / head / stage / "train")
             config["tracking"].update(
-                name=f"variety-{head}-{stage}", tags=["variety", head, stage, "screen-6000-2000"]
+                name=f"variety-{head}-{stage}", tags=["variety", head, stage, "screen-6000-6000"]
             )
             if stage == "geometry":
-                config["train"].update(steps=2000, lr=0.00003, warmup=200)
+                config["train"].update(steps=6000, lr=0.00003, warmup=200)
                 config["loss"].update(points=1.0, mask=0.1, scale=0.1, gradient=0.05, normal=0.1)
             configs[(head, stage)] = config
     return configs
 
 
 def run(args):
+    from summarize_variety_screen import summarize
+
     args.root.mkdir(parents=True, exist_ok=True)
     lock = (args.root / ".queue.lock").open("w")
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -97,6 +136,12 @@ def run(args):
         prior_lock = (args.predecessor / ".training.lock").open("r+")
         fcntl.flock(prior_lock, fcntl.LOCK_EX)
         fcntl.flock(prior_lock, fcntl.LOCK_UN)
+        record(stage="exporting_predecessor")
+        export_result(
+            args.predecessor / "geometry/train",
+            args.root / "predecessor-final",
+            args.visualization_manifest,
+        )
         record(stage="preparing_data")
         from prepare_variety_mix import prepare
 
@@ -106,7 +151,7 @@ def run(args):
             dict(
                 heads=HEADS,
                 features_steps=6000,
-                geometry_steps=2000,
+                geometry_steps=6000,
                 effective_batch=32,
                 selection="macro/teacher_depth/abs_rel",
                 data_weights=info["mixture_weights"],
@@ -185,7 +230,15 @@ def run(args):
                     raise RuntimeError(f"{head}/{stage} ended early")
                 del checkpoint
                 state["completed"].append(f"{head}/{stage}")
+                atomic_json(summarize(args.root), args.root / "comparison.json")
                 record()
+        for head in HEADS:
+            record(stage="exporting", head=head)
+            export_result(
+                args.root / head / "geometry/train",
+                args.root / head / "final",
+                args.visualization_manifest,
+            )
         record(stage="complete", finished=time.time())
     except BaseException as error:
         record(stage="failed", error=f"{type(error).__name__}: {error}")
@@ -197,6 +250,7 @@ if __name__ == "__main__":
     for key in ["root", "predecessor", "base", "dataset", "coco"]:
         parser.add_argument("--" + key, type=Path)
     parser.add_argument("--revision")
+    parser.add_argument("--visualization-manifest", type=Path)
     parser.add_argument("--preflight-config")
     parser.add_argument("--preflight-output")
     parser.add_argument("--geometry", action="store_true")

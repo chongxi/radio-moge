@@ -684,10 +684,18 @@ COCO download to finish, prepares the mixture, and preflights all three heads.
 It chooses one common physical batch size (16, else 8, else 4 on CUDA OOM),
 always with effective batch 32. All heads start fresh, use identical sample
 streams, augmentations, seed, loss weights and learning-rate schedules, and
-receive 6,000 feature updates followed by 2,000 geometry updates initialized
+receive 6,000 feature updates followed by 6,000 geometry updates initialized
 from their own selected feature checkpoint. All feature trials precede the
 geometry trials. This is a matched-update screening budget, not equal FLOPs
 or a claim that larger heads have converged. Runtime and peak memory are logged.
+The geometry budget extends past the 3,000–4,000-update delay before RMSE
+improvement seen in the preceding experiment; 2,000 updates are not a rejection gate.
 The queue uses a separate immutable checkout; it never modifies the active
 training process or stops the GPU. A failed prerequisite or unexpected error
 stops the queue for inspection. No RADIO LoRA is included in this screen.
+The queue first exports the predecessor's selected head and fixed 20-scene
+viewer, then exports each candidate after its complete training budget.
+`scripts/summarize_variety_screen.py` writes initial/selected/final metrics,
+per-source scores, curves, observed step time and memory. It ranks candidates
+only when every candidate has completed the corresponding stage. RMSE remains
+visible without changing the preregistered macro-AbsRel checkpoint selection.
