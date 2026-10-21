@@ -1,0 +1,26 @@
+# Start fresh: the sanity checkpoint saw all original training scenes, including
+# the new internal validation scenes. Keep the original 290-frame test set aside.
+extends: nyuv2.yaml
+output_dir: /shared/radio-moge/chongxi/nyuv2-long-s42
+data:
+  train_manifest: /shared/radio-moge/datasets/nyuv2-internal-val-s43/train.jsonl
+  val_manifest: /shared/radio-moge/datasets/nyuv2-internal-val-s43/val.jsonl
+train:
+  steps: 4000
+  batch_size: 16
+  accumulation: 2
+  warmup: 200
+  calibration_batches: 4  # Same 64-image calibration budget as the small batch run.
+  eval_at_start: true
+  eval_every: 250
+  save_every: 250
+evaluation:
+  limit: null
+  visualizations: 4
+tracking:
+  enabled: true
+  mode: online
+  project: radio-moge
+  name: nyuv2-mlp-4000-clean-validation
+  tags: [nyuv2, cradio-v4-h, moge-2-vitl-normal, feature-distillation]
+  images: 4

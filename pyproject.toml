@@ -18,6 +18,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest==8.4.2", "ruff==0.14.2"]
 data = ["h5py==3.15.1"]
+tracking = ["wandb==0.31.0"]
 upstream = ["utils3d-moge @ git+https://github.com/EasternJournalist/utils3d-moge.git@62f09d58509485564e24d5d9f6aac9ee9ebc0c37"]
 
 [project.scripts]

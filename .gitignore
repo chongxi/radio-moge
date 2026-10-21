@@ -13,3 +13,4 @@ data/
 *.npz
 .env
 *-console.log
+wandb/

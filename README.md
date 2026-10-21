@@ -363,6 +363,43 @@ and Chromium installed, run `node scripts/check_viewer.cjs http://localhost:7860
 It checks navigation, filtering, depth decoding, swipe controls, pixel values,
 metrics, empty search results, and the mobile layout.
 
+### Longer runs with Weights & Biases
+
+Install the optional tracker with `uv pip install --python .venv/bin/python -e '.[tracking]'`.
+Authenticate through the W&B SDK's normal environment or credential store; never
+put an API key in YAML, source code, or a run directory.
+
+Create an internal validation split from the original training manifest:
+
+```bash
+.venv/bin/python scripts/make_validation_split.py \
+  --train-manifest /shared/radio-moge/datasets/nyuv2-labeled-s42/train.jsonl \
+  --output /shared/radio-moge/datasets/nyuv2-internal-val-s43
+.venv/bin/python -m radio_moge.train --config configs/nyuv2-long.yaml
+```
+
+This reserves 116 images in 39 scenes for validation, leaving 1,043 images in
+336 training scenes. The original 290-image test split is unchanged. Start
+fresh: the pilot checkpoint has already seen the newly reserved validation
+scenes, so initializing from it would contaminate validation.
+
+The 4,000-step configuration trains only the adapter, with physical batch 16
+and accumulation 2 (effective batch 32). W&B logs losses, learning rate, gradient
+norm, GPU memory, throughput, decoded depth metrics, and four fixed validation
+image comparisons every 250 steps, including a step-zero baseline. All 116
+validation frames are evaluated through the frozen MoGe decoder and camera
+postprocessing. Checkpoint selection uses validation teacher-depth error.
+Feature loss and decoded geometry can move differently; inspect both curves.
+
+The trainer prints the run URL and saves it in `wandb-run.json`. `--resume`
+requires the same config/manifests and run directory, and reconnects to the same
+online run. `--init` starts a separate optimization stage. Use `tracking.mode:
+offline` to collect SDK logs without uploading, then `wandb sync` separately;
+offline sessions do not support seamless online resume. JSONL metrics,
+TensorBoard, checkpoints and predictions remain available locally regardless
+of the dashboard. The optional `tracking.entity` selects a W&B workspace;
+otherwise the connected account's default is used.
+
 ### Deployment artifact
 
 ```bash

@@ -19,6 +19,7 @@ from .data import DeterministicBatches, TrainingImages, check_split, manifest_di
 from .evaluate import evaluate, synchronize
 from .losses import FeatureStatistics, geometry_losses, weighted_loss
 from .system import build_system
+from .tracking import ExperimentTracker
 
 
 def make_loader(records, config, start, count, calibration=False):
@@ -146,16 +147,18 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
         moge_weights=config["models"].get("moge_revision", MOGE_REVISION),
     )
     atomic_json(config, output / "config.json")
-    atomic_json(
-        {
-            "revisions": revisions,
-            "data_digests": digests,
-            "adapter": raw_adapter.config,
-            "torch": str(torch.__version__),
-            "device": str(accelerator.device),
-        },
-        output / "provenance.json",
-    )
+    provenance = {
+        "revisions": revisions,
+        "data_digests": digests,
+        "adapter": raw_adapter.config,
+        "torch": str(torch.__version__),
+        "device": str(accelerator.device),
+        "train_images": len(records),
+        "validation_images": len(validation),
+        "code_revision": config.get("code_revision"),
+    }
+    atomic_json(provenance, output / "provenance.json")
+    tracker = ExperimentTracker(config, output, resume=bool(resume), provenance=provenance)
     writer = None
     if settings.get("tensorboard", True):
         from torch.utils.tensorboard import SummaryWriter
@@ -200,10 +203,38 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
     geometry_enabled = any(
         config["loss"].get(k, 0) for k in ("points", "mask", "scale", "gradient", "normal")
     )
+    success = False
+
+    def validate():
+        nonlocal best
+        destination = output / f"eval-{step:07d}"
+        metrics = evaluate(
+            system, raw_adapter, statistics, validation, config, destination,
+            config["evaluation"]["limit"],
+        )
+        metrics["feature/total"] = sum(
+            metrics.get(f"feature/{key}", 0) * config["loss"].get(key, 0)
+            for key in ("spatial", "summary", "cosine")
+        )
+        with (output / "validation.jsonl").open("a") as file:
+            file.write(json.dumps({"step": step, **metrics}, allow_nan=False) + "\n")
+        print(json.dumps({"validation_step": step, **metrics}), flush=True)
+        if writer:
+            for key, value in metrics.items():
+                writer.add_scalar(f"eval/{key}", value, step)
+        tracker.log("validation", metrics, step, image_dir=destination)
+        score = metrics.get("teacher_depth/abs_rel")
+        if score is not None and metrics.get("postprocess_failed", 1) == 0:
+            if best is None or score < best:
+                best = score
+                save("best.pt")
+
     try:
         if not resume:
             # Preserve the actual stage-start weights for decoded before/after comparisons.
             save("initial.pt")
+        if validation and not resume and settings.get("eval_at_start", False):
+            validate()
         while step < total and not stop:
             adapter.train()
             optimizer.zero_grad(set_to_none=True)
@@ -255,37 +286,23 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
                 if writer:
                     for key, value in row.items():
                         writer.add_scalar(f"train/{key}", value, step)
+                tracker.log("train", row, step)
             if step % settings["save_every"] == 0:
                 save("latest.pt")
             if validation and step % settings["eval_every"] == 0 and not stop:
-                metrics = evaluate(
-                    system,
-                    raw_adapter,
-                    statistics,
-                    validation,
-                    config,
-                    output / f"eval-{step:07d}",
-                    config["evaluation"]["limit"],
-                )
-                if writer:
-                    for key, value in metrics.items():
-                        writer.add_scalar(f"eval/{key}", value, step)
-                # Do not select a checkpoint whose focal recovery failed on some images.
-                score = metrics.get("teacher_depth/abs_rel")
-                if score is not None and metrics.get("postprocess_failed", 1) == 0:
-                    if best is None or score < best:
-                        best = score
-                        save("best.pt")
+                validate()
         save("latest.pt")
         for module in (system.radio, system.encoder, system.decoder):
             if any(p.grad is not None or p.requires_grad for p in module.parameters()):
                 raise AssertionError("Frozen models accumulated gradients or became trainable")
+        success = True
         return output / "latest.pt"
     finally:
         for sig, handler in old_handlers.items():
             signal.signal(sig, handler)
         if writer:
             writer.close()
+        tracker.finish(success=success)
         accelerator.end_training()
 
 
