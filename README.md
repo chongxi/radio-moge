@@ -324,6 +324,19 @@ all four logged losses exactly with PyTorch 2.8.0+cu128.
 The viewer lets you browse every held-out image, filter by scene, compare depth
 maps side by side or with a swipe slider, inspect depth in meters under the
 cursor, and compare the trained head's error against MoGe-2 or measured depth.
+The default **3D point clouds** tab compares the trained head with MoGe-2 using
+linked orbit, zoom and pan controls. Switch between RGB, depth coloring, and a
+two-color overlay (orange: trained head, teal: MoGe-2). Density and point size are
+adjustable; each visible cloud can be downloaded as a binary PLY file.
+
+Each model uses its **own recovered intrinsics**, official metric depth, and
+predicted validity mask. No scale alignment, independent centering or geometric
+registration is applied. The optional shared MoGe-2 camera mode reprojects both
+depth maps with the teacher's intrinsics to isolate depth differences; it is a
+diagnostic view. Coordinates in the browser and PLY are x right, y up, z backward,
+in meters. PLY exports use the currently selected projection and density.
+Single-view clouds contain observed surfaces only, not unseen room geometry.
+
 All depth panels share one range. The top summary always covers the full test
 set; the table below the images covers the selected frame.
 
@@ -338,7 +351,9 @@ same training stage, and checks test separation from both training and validatio
 ```
 
 This computes full-test depth metrics and the viewable predictions together;
-a separate evaluation pass is unnecessary. The manifest records the selected
+a separate evaluation pass is unnecessary. Camera metadata and validity masks
+are saved in `geometry/`, with a check that depth unprojection matches the
+official MoGe point map. The manifest records the selected
 checkpoint step, training budget, and internal validation size. For legacy runs
 without `initial.pt`, first use `radio_moge.compare` to create verified
 `initial-adapter.pt`, then export:
@@ -375,6 +390,26 @@ An optional Playwright check is in `scripts/check_viewer.cjs`. With Playwright
 and Chromium installed, run `node scripts/check_viewer.cjs http://localhost:7860`.
 It checks navigation, filtering, depth decoding, swipe controls, pixel values,
 metrics, empty search results, and the mobile layout.
+
+`scripts/check_clouds.cjs` additionally verifies actual WebGL rendering, linked
+cameras, overlay, projection switching, PLY downloads, scene navigation, and
+mobile layout. `node scripts/test_cloud_math.mjs` checks pixel-center projection,
+axis conversion, masking and invalid depth handling.
+
+For an existing export that predates camera metadata, add it without replacing
+the saved depth maps or recomputing test scores:
+
+```bash
+.venv/bin/python -m radio_moge.pointcloud \
+  --checkpoint /path/to/train/best.pt --manifest /path/to/dataset/test.jsonl \
+  --viewer /path/to/heldout-viewer
+```
+
+This repeat inference pass verifies the checkpoint fingerprint, held-out split,
+image order, and parity with every existing depth plane before publishing camera
+metadata. It does not train or select a checkpoint. Copy the updated `web/`
+contents into the viewer to enable the UI. Three.js 0.180.0 is bundled locally
+with its MIT license; viewing does not contact a third-party CDN.
 
 ### Longer runs with Weights & Biases
 

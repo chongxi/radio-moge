@@ -3,6 +3,7 @@
 import argparse
 from copy import deepcopy
 import gzip
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -20,6 +21,7 @@ from .config import ROOT
 from .data import check_split, evaluation_image, read_manifest
 from .decoder import postprocess
 from .metrics import depth_metrics
+from .pointcloud import verify_geometry
 from .system import build_system
 
 CHANNELS = ["before", "after", "teacher", "ground_truth"]
@@ -100,6 +102,9 @@ def export_viewer(checkpoint, initial_adapter, manifest, output, original_metric
     staging = Path(tempfile.mkdtemp(prefix=f".{output.name}.", dir=output.parent))
     assets = staging / "assets"
     assets.mkdir()
+    geometry_dir = staging / "geometry"
+    geometry_dir.mkdir()
+    geometry_samples = []
     samples = []
     original = json.loads(Path(original_metrics).read_text()) if original_metrics else None
     if original is not None and [r["image"] for r in original] != [r["image"] for r in records]:
@@ -112,12 +117,18 @@ def export_viewer(checkpoint, initial_adapter, manifest, output, original_metric
         with autocast(config, "cuda"):
             features, target = system.encode(image, after.indices, config["evaluation"]["num_tokens"])
             encodings = {"before": before(features), "after": after(features), "teacher": target}
-        depths, metrics, failures = {}, {}, {}
+        depths, metrics, failures, cameras = {}, {}, {}, {}
         for name, encoded in encodings.items():
             raw = system.decoder(encoded, (height, width))
             try:
                 pred = postprocess(raw, image, config["models"].get("moge_source"))
                 depth = pred["depth"]
+                if name in {"after", "teacher"}:
+                    k, mask, error = verify_geometry(depth[0].cpu().numpy(), pred)
+                    filename = f"{index:04d}-{name}-mask.png"
+                    Image.fromarray(mask.astype("uint8") * 255).save(geometry_dir / filename)
+                    cameras[name] = dict(intrinsics=k, mask=f"geometry/{filename}",
+                                         valid_points=int(mask.sum()), projection_max_error_m=error)
             except (ValueError, np.linalg.LinAlgError) as error:
                 failures[name] = str(error)
                 depth = torch.full((1, height, width), float("nan"), device=image.device)
@@ -146,6 +157,7 @@ def export_viewer(checkpoint, initial_adapter, manifest, output, original_metric
             rgb=f"assets/{stem}.jpg", thumbnail=f"assets/{stem}-thumb.jpg",
             depth=f"assets/{stem}.depth.gz", range=bounds, metrics=metrics, failures=failures,
         ))
+        geometry_samples.append(dict(id=record.get("id", stem), **cameras))
         if (index + 1) % 20 == 0 or index == 0:
             print(f"Exported {index + 1}/{len(records)} held-out frames", flush=True)
     if original is not None and max_difference > 1e-5:
@@ -174,8 +186,19 @@ def export_viewer(checkpoint, initial_adapter, manifest, output, original_metric
                           "depth. Teacher pretraining may include NYUv2. Not the official benchmark."),
     )
     atomic_json(manifest_data, staging / "manifest.json")
+    if all("after" in s and "teacher" in s for s in geometry_samples):
+        atomic_json(dict(schema=1, samples=geometry_samples,
+                         checkpoint_sha256=manifest_data["run"]["checkpoint_sha256"],
+                         depth_manifest_sha256=hashlib.sha256(
+                             (staging / "manifest.json").read_bytes()).hexdigest(),
+                         coordinates="OpenCV: x right, y down, z forward; meters",
+                         projection="Normalized intrinsics, pixel-center sampling",
+                         policy="Each model's own recovered intrinsics; no alignment."),
+                    geometry_dir / "manifest.json")
     for source in (ROOT / "web").iterdir():
-        if source.suffix in {".html", ".js", ".css", ".svg"}:
+        if source.is_dir():
+            shutil.copytree(source, staging / source.name)
+        elif source.suffix in {".html", ".js", ".mjs", ".css", ".svg"}:
             shutil.copy2(source, staging / source.name)
     os.rename(staging, output)
     print(json.dumps({"output": str(output), "images": len(samples), "summary": summarize(samples),

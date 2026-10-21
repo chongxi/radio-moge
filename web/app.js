@@ -4,6 +4,22 @@ const names = {rgb:'RGB image', before:'Before training', after:'After training'
 const panelKeys = ['rgb','before','after','teacher','ground_truth','error'];
 const cache = new Map();
 const state = {manifest:null, filtered:[], sample:null, data:null, rendered:{}, mode:'grid', generation:0, controller:null, split:50};
+let cloudViewer=null, cloudPromise=null;
+async function showClouds(){
+  if(state.mode!=='cloud'||!state.data)return;
+  const generation=state.generation;
+  try{
+    if(!cloudPromise)cloudPromise=(async()=>{
+      const module=await import('./pointcloud.mjs');
+      if(!state.geometry)throw Error('Camera metadata has not been exported for this run.');
+      cloudViewer=module.createCloudViewer(state.geometry,state.manifest);
+      return cloudViewer;
+    })();
+    const viewer=await cloudPromise;
+    if(generation!==state.generation||state.mode!=='cloud')return;
+    viewer.show(true);await viewer.load(state.sample,state.data);
+  }catch(error){$('cloud-status').textContent='3D unavailable: '+error.message;$('cloud-view').setAttribute('aria-busy','false');}
+}
 const fmt = (v,n=3) => Number.isFinite(v) ? v.toFixed(n) : '—';
 const pretty = text => text.replaceAll('_',' ');
 const valid = v => Number.isFinite(v) && v > 0;
@@ -83,7 +99,7 @@ async function select(sample){
   try{
     const data=await fetchSample(sample,state.controller.signal);
     if(generation!==state.generation)return;
-    state.data=data;render();status('');
+    state.data=data;render();status('');showClouds();
     document.querySelector('main').setAttribute('aria-busy','false');
   }catch(error){if(error.name!=='AbortError'&&generation===state.generation)status('Could not load this image: '+error.message);}
 }
@@ -132,8 +148,14 @@ function drawSwipe(){
   $('swipe-divider').style.left=state.split+'%';$('split-value').textContent=Math.round(state.split)+'%';
 }
 function setMode(mode){
-  state.mode=mode==='swipe'?'swipe':'grid';
+  state.mode=['cloud','swipe','grid'].includes(mode)?mode:'cloud';
   $('grid-view').hidden=state.mode!=='grid';$('swipe-view').hidden=state.mode!=='swipe';
+  $('cloud-view').hidden=state.mode!=='cloud';
+  document.querySelector('.legend-row').hidden=state.mode==='cloud';
+  document.querySelector('.pixel-inspector').hidden=state.mode==='cloud';
+  document.querySelector('.lower-grid').hidden=state.mode==='cloud';
+  $('scale').closest('label').hidden=state.mode==='cloud';
+  cloudViewer?.show(state.mode==='cloud');showClouds();
   document.querySelectorAll('[data-mode]').forEach(b=>{const active=b.dataset.mode===state.mode;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
   updateURL();drawSwipe();
 }
@@ -170,6 +192,8 @@ function wire(){
 async function init(){
   const response=await fetch('manifest.json');if(!response.ok)throw Error('Evaluation index is unavailable');
   state.manifest=await response.json();
+  const geometryResponse=await fetch('geometry/manifest.json');
+  state.geometry=geometryResponse.ok?await geometryResponse.json():null;
   if(state.manifest.schema!==1||state.manifest.channels.join(',')!=='before,after,teacher,ground_truth')throw Error('The evaluation export is not ready or has an unsupported format.');
   const m=state.manifest;
   $('total-images').textContent=m.run.test_images;
@@ -182,7 +206,7 @@ async function init(){
   const colors=new ImageData(256,1);m.colormap.forEach((c,i)=>colors.data.set([...c,255],i*4));
   const bar=$('colorbar'),ctx=bar.getContext('2d'),temp=document.createElement('canvas');temp.width=256;temp.height=1;temp.getContext('2d').putImageData(colors,0,0);ctx.drawImage(temp,0,0,256,12);
   createPanels();wire();renderList();
-  const hash=new URLSearchParams(location.hash.slice(1));setMode(hash.get('mode'));
+  const hash=new URLSearchParams(location.hash.slice(1));setMode(hash.get('mode')||(state.geometry?'cloud':'grid'));
   await select(m.samples.find(s=>s.id===hash.get('image'))||m.samples[0]);
 }
 init().catch(error=>{status('');$('fatal').hidden=false;$('fatal').textContent='Could not open the viewer: '+error.message;});

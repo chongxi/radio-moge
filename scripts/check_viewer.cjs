@@ -10,7 +10,8 @@ const path = require('node:path');
   try {
     const page=await browser.newPage({viewport:{width:1512,height:1100},deviceScaleFactor:1});
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
-    await page.goto(url,{waitUntil:'domcontentloaded'});
+    const gridURL=new URL(url);gridURL.hash='mode=grid';
+    await page.goto(gridURL.href,{waitUntil:'domcontentloaded'});
     await page.waitForSelector('main[aria-busy="false"]',{timeout:60000});
     const manifest=await (await page.request.get(new URL('manifest.json',url).href)).json();
     assert.equal(await page.locator('#total-images').textContent(),'290');

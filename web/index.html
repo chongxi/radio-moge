@@ -4,8 +4,8 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f5f4ef">
   <title>Depth Lab · Held-out explorer</title>
-  <link rel="stylesheet" href="styles.css">
-  <script src="app.js" defer></script>
+  <link rel="stylesheet" href="styles.css?v=3d1">
+  <script src="app.js?v=3d1" defer></script>
 </head>
 <body>
 <header class="topbar">
@@ -35,11 +35,28 @@
   <main>
     <div class="image-heading"><div><p class="eyebrow" id="image-id">LOADING HELD-OUT DATA</p><h2 id="scene-name">Loading…</h2></div><div class="navigation"><span id="position">—</span><button id="previous" title="Previous image (←)" aria-label="Previous image">←</button><button id="next" title="Next image (→)" aria-label="Next image">→</button></div></div>
     <div class="toolbar">
-      <div class="tabs" aria-label="Visualization mode"><button data-mode="grid" class="active" aria-pressed="true">Side by side</button><button data-mode="swipe" aria-pressed="false">Swipe comparison</button></div>
+      <div class="tabs" aria-label="Visualization mode"><button data-mode="cloud" aria-pressed="false">3D point clouds</button><button data-mode="grid" class="active" aria-pressed="true">Depth maps</button><button data-mode="swipe" aria-pressed="false">Swipe comparison</button></div>
       <label class="inline-control">Depth scale<select id="scale"><option value="teacher">Teacher 2–98% range</option><option value="fixed">Fixed 0–10 meters</option></select></label>
     </div>
     <div class="legend-row"><div class="depth-legend"><span id="near">Near</span><canvas id="colorbar" width="256" height="12" aria-label="Depth color scale"></canvas><span id="far">Far</span></div><small>One shared scale · no scale alignment · <i class="invalid-dot"></i> invalid / missing</small></div>
     <div id="load-status" class="load-status" role="status" aria-live="polite">Loading the evaluation…</div>
+    <section id="cloud-view" hidden aria-label="3D point cloud comparison" aria-busy="true">
+      <div class="cloud-toolbar">
+        <label>Compare<select id="cloud-layout"><option value="side">Side by side · linked cameras</option><option value="overlay">Overlay both models</option></select></label>
+        <label>Color<select id="cloud-color"><option value="rgb">RGB texture</option><option value="depth">Depth · shared scale</option><option value="model">Model · orange / teal</option></select></label>
+        <label>Projection<select id="cloud-camera"><option value="native">Each model’s camera</option><option value="shared">Shared MoGe-2 camera</option></select></label>
+        <label>Density<select id="cloud-density"><option value="4">Light · 1 in 16 pixels</option><option value="2" selected>Standard · 1 in 4 pixels</option><option value="1">Full resolution</option></select></label>
+        <label>Point size<input id="cloud-size" type="range" min="1" max="6" step=".5" value="2" aria-label="3D point size"></label>
+      </div>
+      <div class="cloud-actions"><div><button id="cloud-reset">Oblique view</button><button id="cloud-front">Camera view</button></div><span><i class="model-dot after"></i> Trained model <i class="model-dot teacher"></i> MoGe-2</span></div>
+      <p id="cloud-status" role="status" aria-live="polite">Preparing 3D comparison…</p>
+      <div id="cloud-panels" class="cloud-panels">
+        <article id="cloud-card-after" class="cloud-card after"><div class="panel-title"><span id="cloud-title-after">Trained model</span><small id="cloud-count-after"></small></div><div id="cloud-after" class="cloud-stage"></div><div class="cloud-caption"><span id="cloud-info-after"></span><button id="download-after">Download PLY</button></div></article>
+        <article id="cloud-card-teacher" class="cloud-card teacher"><div class="panel-title"><span>MoGe-2</span><small id="cloud-count-teacher"></small></div><div id="cloud-teacher" class="cloud-stage"></div><div class="cloud-caption"><span id="cloud-info-teacher"></span><button id="download-teacher">Download PLY</button></div></article>
+      </div>
+      <p id="cloud-projection-note" class="cloud-note"></p>
+      <p class="cloud-note">RGB colors come from the input image. Model colors: orange = trained head, teal = MoGe-2. Predicted invalid points are hidden. These are visible surfaces from a single image; unseen surfaces are not reconstructed.</p>
+    </section>
     <section id="grid-view" class="panel-grid" aria-label="Depth maps"></section>
     <section id="swipe-view" class="swipe-view" hidden aria-label="Swipe depth comparison">
       <div class="swipe-selects"><label>Left<select id="swipe-left"><option value="before">Before training</option><option value="after">After training</option><option value="teacher">MoGe-2</option><option value="ground_truth">Measured depth</option><option value="rgb">RGB image</option></select></label><span>↔</span><label>Right<select id="swipe-right"><option value="after">After training</option><option value="teacher">MoGe-2</option><option value="ground_truth">Measured depth</option><option value="before">Before training</option><option value="rgb">RGB image</option></select></label></div>
