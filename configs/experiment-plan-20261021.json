@@ -1,0 +1,56 @@
+{
+  "purpose": "Separate geometric-objective value, data-mixture transfer and spatial-adapter architecture.",
+  "gpu_policy": "Finish the active 10000-step geometry run unchanged; never stop GPU; serial trials.",
+  "workstreams": [
+    {
+      "question": "Does geometric supervision improve decoded geometry beyond further feature training?",
+      "experiments": [
+        {"id": "G0", "action": "Use the feature-best checkpoint as the common initial state."},
+        {"id": "G1", "action": "Finish current joint feature+geometry continuation", "updates": 10000, "state": "running"},
+        {"id": "G2", "action": "Feature-only continuation from G0 using the unchanged predecessor code", "updates": 10000, "state": "queued"}
+      ],
+      "matched": ["initial adapter and feature statistics", "data and sample/augmentation stream", "optimizer reset and schedule", "batch", "validation and selection"],
+      "intervention": "Zero only points/mask/scale/gradient/normal loss weights in G2.",
+      "readouts": ["initial, validation-selected and final checkpoint", "AbsRel and RMSE curves", "scale error", "point-derived geometry versus independent normal-head loss", "same20 NYU scene pointclouds", "paired per-scene differences with bootstrap uncertainty"],
+      "interpretation": "G1 vs G0 measures before/after change; G1 vs G2 tests geometric supervision conditional on this training seed. Teacher agreement and sensor ground-truth accuracy are distinct claims.",
+      "conditional_improvements": [
+        "If scale remains dominant, compare a log-metric-scale objective with the current scale objective, holding the adapter and other terms fixed.",
+        "If point-derived shape stagnates while normal-head loss falls, compare point/depth-derived shape supervision with the independent-normal objective.",
+        "Investigate differentiability and units before adding any loss through focal/shift postprocessing; oracle teacher substitutions are diagnostics, not deployable gains."
+      ]
+    },
+    {
+      "question": "Does the broader data mixture improve transfer without losing indoor geometry?",
+      "sources": {"arkitscenes_existing": 197542, "hypersim_existing": 59344, "nyu_training": 1043, "coco_training_target": 40000},
+      "new_mix_probabilities": {"arkitscenes": 0.35, "hypersim": 0.30, "nyuv2": 0.15, "coco2017": 0.20},
+      "sampling": "Uniform scenes within a selected source, then uniform frames; COCO image IDs do not verify physical-scene independence.",
+      "experiments": [
+        {"id": "D0", "run": "fusion_indoor", "training": "Existing ARKit/Hypersim only, relative weights7:6", "feature_updates": 6000, "geometry_updates": 6000},
+        {"id": "D1", "run": "fusion", "training": "New four-source mixture", "feature_updates": 6000, "geometry_updates": 6000}
+      ],
+      "matched": ["fusion architecture and fresh initialization", "optimizer schedules and loss weights", "effective batch32", "common884-image validation and selection"],
+      "split_policy": "NYU1043train/116val/290test remain isolated. COCO40000train/256val/256test selected before inference. Check paths, source provenance, exact hashes and known scene groups; exact hashes do not rule out near duplicates.",
+      "interpretation": "The causal intervention is the broader mixture plus its sampling allocation, not image count alone. Report each source and equal-source aggregate; COCO RGB distillation has no sensor depth ground truth.",
+      "further_data_gate": "Use source-specific validation failures to choose further licensed metric-depth or geometric domains; do not keep adding similar frames merely to increase counts."
+    },
+    {
+      "question": "Does a spatial head improve results with the data and budget fixed?",
+      "experiments": [
+        {"id": "A0", "run": "fusion", "architecture": "Existing fusion baseline", "parameters": 9444352},
+        {"id": "A1", "run": "dpt", "architecture": "Four-scale reassembly and residual spatial convolution; spatial summary readout", "parameters": 29322752},
+        {"id": "A2", "run": "attention", "architecture": "Two1280-wide16-head transformer blocks and spatial summary readout", "parameters": 53400580}
+      ],
+      "budget_each": {"feature_updates": 6000, "geometry_updates": 6000, "effective_batch": 32, "seed": 42},
+      "matched": ["new mixture", "sample and augmentation stream", "feature/geometry losses", "optimizer schedule", "checkpoint selection and validation"],
+      "frozen": ["RADIOv4-H", "MoGe teacher encoder", "MoGe decoder"],
+      "readouts": ["macro and source-specific errors", "geometry-stage gain relative to own feature best", "training fit vs validation transfer", "same20 scene pointclouds", "parameters, step time and peak memory"],
+      "limitations": "Equal updates/examples, not equal FLOPs or convergence. DPT and attention change inductive bias as well as capacity; this is not a parameter-count-only experiment.",
+      "decision_gate": "If a candidate shows a coherent improvement beyond scene-level uncertainty, confirm baseline and candidate with additional seeds at a common budget. If error patterns suggest a frozen-representation bottleneck, separately test LoRA on upper RADIO blocks with the chosen head, data and losses fixed. Neither follow-up is automatically launched."
+    }
+  ],
+  "selection": {"current_objective_control": "teacher_depth/abs_rel", "new_screen": "macro/teacher_depth/abs_rel", "failure_gate": "zero postprocess failures", "policy": "Report RMSE and all last checkpoints without changing selection after seeing results."},
+  "evaluation_policy": "Use internal validation for selection and diagnosis. The existing20 NYU test scenes have already been inspected and are a fixed qualitative audit, not a fresh blind test. Keep remaining test evaluation separate from tuning; include NYU sensor-depth scores and new COCO test teacher agreement with their respective limitations.",
+  "queue_order": ["Finish currentG1 and COCO download", "Export G1 selected head and same20 scenes", "G2 feature-only10000 and comparison/export", "Prepare and audit broader mixture", "Common preflight across all four screening arms", "D0,D1,A1,A2 feature6000 each", "D0,D1,A1,A2 geometry6000 each from own feature best", "Export four selected heads and same20 scenes; compare data and architecture separately"],
+  "additional_updates": {"already_planned_architecture_screen": 36000, "new_geometry_control": 10000, "new_data_control": 12000, "total_after_current_run": 58000},
+  "deliverables": ["geometry-objective comparison with causal-control limitations", "dataset provenance, split and sampling audit", "data-mixture comparison on common validation", "architecture results and cost table", "fixed20 pointcloud viewer", "evidence-based recommendation for the next loss, data or LoRA experiment"]
+}

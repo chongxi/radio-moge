@@ -39,7 +39,7 @@ def metrics(row):
     return {k: v for k, v in row.items() if k in METRICS or k.startswith("dataset/")}
 
 
-def stage_summary(directory):
+def stage_summary(directory, criterion=CRITERION):
     validation = read_rows(directory / "validation.jsonl")
     training = read_rows(directory / "train.jsonl")
     if not validation:
@@ -47,11 +47,11 @@ def stage_summary(directory):
     eligible = [
         r
         for r in validation
-        if isinstance(r.get(CRITERION), (int, float))
-        and math.isfinite(r[CRITERION])
+        if isinstance(r.get(criterion), (int, float))
+        and math.isfinite(r[criterion])
         and r.get("postprocess_failed") == 0
     ]
-    best = min(eligible, key=lambda r: r[CRITERION]) if eligible else None
+    best = min(eligible, key=lambda r: r[criterion]) if eligible else None
     config = json.loads((directory / "config.json").read_text())
     finished = bool(training and training[-1]["step"] == config["train"]["steps"])
     result = {
@@ -61,7 +61,7 @@ def stage_summary(directory):
         "initial": {"step": validation[0]["step"], **metrics(validation[0])},
         "last": {"step": validation[-1]["step"], **metrics(validation[-1])},
         "selected": {"step": best["step"], **metrics(best)} if best else None,
-        "selection_metric": CRITERION,
+        "selection_metric": criterion,
         "validation_curve": [{"step": r["step"], **metrics(r)} for r in validation],
         "median_logged_step_seconds": median([r["seconds"] for r in training])
         if training
@@ -69,11 +69,20 @@ def stage_summary(directory):
         "peak_training_memory_gib": max((r.get("peak_memory_gib", 0) for r in training), default=0),
         "config": str(directory / "config.json"),
     }
-    if best and CRITERION in validation[0]:
-        result["selected_minus_initial_macro_abs_rel"] = best[CRITERION] - validation[0][CRITERION]
+    if best and criterion in validation[0]:
+        result["selected_minus_initial_score"] = best[criterion] - validation[0][criterion]
     if (directory / "wandb-run.json").exists():
         result["wandb"] = json.loads((directory / "wandb-run.json").read_text())
     return result
+
+
+def geometry_control_summary(predecessor, control):
+    return {
+        "joint_geometry": stage_summary(predecessor / "geometry/train", "teacher_depth/abs_rel"),
+        "feature_only": stage_summary(control / "train", "teacher_depth/abs_rel"),
+        "contrast": "Same feature-best initialization, original code/data/order/schedule and10000 updates; geometry loss weights are the intervention.",
+        "limits": "One training seed. Validation-selected and final scores are descriptive; scene-paired uncertainty and fixed-test audit still required. Teacher agreement does not establish sensor-ground-truth gains.",
+    }
 
 
 def summarize(root):
@@ -95,6 +104,11 @@ def summarize(root):
         "selection_metric": CRITERION,
         "heads": heads,
         "completed_stage_rankings": rankings,
+        "data_mixture_control": {
+            stage: stage_summary(root / "fusion_indoor" / stage / "train")
+            for stage in ["features", "geometry"]
+        },
+        "data_contrast": "Compare fusion_indoor with fusion on identical common validation. This tests the added sources and sampling policy together, not sample count alone.",
         "limits": "One seed, matched optimizer updates and examples, not equal FLOPs or convergence. "
         "Internal teacher-agreement validation; not ground-truth accuracy. "
         "RMSE is reported without replacing the checkpoint-selection criterion. "

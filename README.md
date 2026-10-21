@@ -699,3 +699,24 @@ viewer, then exports each candidate after its complete training budget.
 per-source scores, curves, observed step time and memory. It ranks candidates
 only when every candidate has completed the corresponding stage. RMSE remains
 visible without changing the preregistered macro-AbsRel checkpoint selection.
+
+The three workstreams and decision gates are recorded in
+`configs/experiment-plan-20261021.json`. With `--geometry-control-repo` pointing
+to the unchanged predecessor checkout, the queue additionally runs a 10,000-step
+feature-only continuation from the exact same feature-best checkpoint, using the
+predecessor's code, data, seed, learning rate, warmup and optimizer reset. Only
+the geometry loss weights are zeroed. Its initial adapter/statistics are checked
+against the geometry run, and both selected and final results are reported.
+This control distinguishes geometric supervision from additional optimization.
+
+A fourth screening arm, `fusion_indoor`, keeps the fusion architecture, common
+validation, fresh initialization and 6,000+6,000 budget, but trains only on the
+existing ARKit/Hypersim images with their conditional mixture weights. Comparing
+it with `fusion` measures the new data mixture and sampling policy together;
+it does not identify a pure dataset-size effect. Architecture rankings still
+compare only the three heads on the identical new mixture. Each stage uses a
+common physical batch across all four arms. These controls add 22,000 updates
+to the already planned 36,000; all run serially after the current experiment.
+The repeatedly viewed NYU20 panel is a fixed qualitative audit, not a new blind
+test. Follow-up loss modifications, multi-seed confirmation and RADIO LoRA are
+conditional decisions, not part of the automatic first-round queue.

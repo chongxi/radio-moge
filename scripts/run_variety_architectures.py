@@ -98,7 +98,8 @@ def configurations(dataset, root, revision, batch_size=16):
 
 
 def run(args):
-    from summarize_variety_screen import summarize
+    from experiment_controls import add_indoor_control, feature_continuation
+    from summarize_variety_screen import geometry_control_summary, summarize
 
     args.root.mkdir(parents=True, exist_ok=True)
     lock = (args.root / ".queue.lock").open("w")
@@ -142,6 +143,70 @@ def run(args):
             args.root / "predecessor-final",
             args.visualization_manifest,
         )
+        if args.geometry_control_repo:
+            # Use the predecessor's actual implementation as well as its data and
+            # optimizer schedule. This branch changes only the geometry loss weights.
+            directory = args.root / "geometry-objective-control"
+            original = json.loads((args.predecessor / "geometry/config.json").read_text())
+            config = feature_continuation(original, directory / "train")
+            config_path = directory / "config.json"
+            atomic_json(config, config_path)
+            environment = dict(os.environ, PYTHONPATH=str(args.geometry_control_repo / "src"))
+            command = [
+                sys.executable,
+                "-u",
+                "-m",
+                "radio_moge.train",
+                "--config",
+                str(config_path),
+                "--init",
+                str(args.predecessor / "features/train/best.pt"),
+            ]
+            with (directory / "console.log").open("w") as file:
+                process = subprocess.Popen(
+                    command,
+                    cwd=args.geometry_control_repo,
+                    env=environment,
+                    stdout=file,
+                    stderr=subprocess.STDOUT,
+                )
+                record(stage="geometry_objective_control", training_pid=process.pid)
+                result = process.wait()
+            if result:
+                raise RuntimeError(f"Feature-only objective control exited {result}")
+            import torch
+
+            checkpoint = torch.load(
+                directory / "train/latest.pt", map_location="cpu", mmap=True, weights_only=True
+            )
+            if checkpoint["step"] != config["train"]["steps"]:
+                raise RuntimeError("Feature-only objective control ended early")
+            del checkpoint
+            control_initial = torch.load(
+                directory / "train/initial.pt", map_location="cpu", mmap=True, weights_only=True
+            )
+            original_initial = torch.load(
+                args.predecessor / "geometry/train/initial.pt",
+                map_location="cpu",
+                mmap=True,
+                weights_only=True,
+            )
+            for key in ("adapter", "statistics"):
+                if control_initial[key].keys() != original_initial[key].keys() or not all(
+                    torch.equal(value, original_initial[key][name])
+                    for name, value in control_initial[key].items()
+                ):
+                    raise RuntimeError(
+                        "Objective control did not start from identical weights/statistics"
+                    )
+            del control_initial, original_initial
+            state["completed"].append("geometry-objective-control")
+            atomic_json(
+                geometry_control_summary(args.predecessor, directory),
+                args.root / "geometry-objective-comparison.json",
+            )
+            record(stage="exporting_geometry_control")
+            export_result(directory / "train", directory / "final", args.visualization_manifest)
         record(stage="preparing_data")
         from prepare_variety_mix import prepare
 
@@ -156,6 +221,7 @@ def run(args):
                 selection="macro/teacher_depth/abs_rel",
                 data_weights=info["mixture_weights"],
                 ordering="All feature stages, then all geometry stages from their own best.",
+                controls=["feature-only matched10000", "fusion indoor-only matched6000+6000"],
                 purpose="Matched-budget architecture screen, not a convergence comparison.",
                 gpu_policy="Keep existing GPU running",
             ),
@@ -165,6 +231,9 @@ def run(args):
         # remain matched across all three heads, including geometry normalization.
         for batch in [16, 8, 4]:
             configs = configurations(args.dataset, args.root, args.revision, batch)
+            add_indoor_control(
+                configs, args.base / "indoor-mix-ready-v1-20261021/train.jsonl", args.root
+            )
             oom = False
             for (head, stage), config in configs.items():
                 directory = args.root / head / stage
@@ -195,7 +264,7 @@ def run(args):
         else:
             raise RuntimeError("No common safe batch size passed preflight")
         for stage in ["features", "geometry"]:
-            for head in HEADS:
+            for head in ["fusion_indoor", *HEADS]:
                 directory = args.root / head / stage
                 config = configs[(head, stage)]
                 command = [
@@ -232,7 +301,7 @@ def run(args):
                 state["completed"].append(f"{head}/{stage}")
                 atomic_json(summarize(args.root), args.root / "comparison.json")
                 record()
-        for head in HEADS:
+        for head in ["fusion_indoor", *HEADS]:
             record(stage="exporting", head=head)
             export_result(
                 args.root / head / "geometry/train",
@@ -251,6 +320,7 @@ if __name__ == "__main__":
         parser.add_argument("--" + key, type=Path)
     parser.add_argument("--revision")
     parser.add_argument("--visualization-manifest", type=Path)
+    parser.add_argument("--geometry-control-repo", type=Path)
     parser.add_argument("--preflight-config")
     parser.add_argument("--preflight-output")
     parser.add_argument("--geometry", action="store_true")
