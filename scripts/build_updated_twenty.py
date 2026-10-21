@@ -128,6 +128,7 @@ def build(args):
         "checkpoint_step": current["run"]["steps"],
         "adapter_sha256": current["run"]["checkpoint_sha256"],
         "initial_adapter_sha256": current["run"]["initial_adapter_sha256"],
+        "continuation_objective": args.continuation_objective,
         "geometry_initial_sensor": current["summary"]["before"],
         "verification": "Exact fixed20 order; full-resolution teacher and sensor parity with old export; stage-start depth matches prior feature-best snapshot; sensor scores reproduced.",
         "limits": "Previously inspected20 NYU scenes, not a fresh blind test. No selection on these20. Own intrinsics and metric depth, no alignment.",
@@ -156,10 +157,17 @@ def build(args):
         "新模型：特征阶段最佳第 29,000 步。本次展示采用几何第 3,000 步验证时保留的最佳权重。"
     )
     assert old_caption in html
-    html = html.replace(
-        old_caption,
-        f"新模型：30,000 步特征训练 + 10,000 步几何训练完成；验证集选中几何第 {current['run']['steps']:,} 步。",
-    )
+    if args.continuation_objective == "features-only":
+        caption = (
+            "新模型：30,000 步特征训练后，从最佳权重继续 10,000 步仅特征训练；"
+            f"验证集选中续训第 {current['run']['steps']:,} 步。"
+        )
+    else:
+        caption = (
+            "新模型：30,000 步特征训练 + 10,000 步几何训练完成；"
+            f"验证集选中几何第 {current['run']['steps']:,} 步。"
+        )
+    html = html.replace(old_caption, caption)
     html = html.replace(
         "模型在查看这批结果之前已固定。",
         "模型由独立验证集选择。这 20 张图此前已经查看过，是固定可视化审计，非全新盲测。",
@@ -184,4 +192,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("baseline", "candidate", "previous-data", "output"):
         parser.add_argument("--" + name, required=True, type=Path)
+    parser.add_argument(
+        "--continuation-objective",
+        choices=["features-only", "features-and-geometry"],
+        default="features-and-geometry",
+    )
     build(parser.parse_args())
