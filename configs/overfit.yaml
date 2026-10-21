@@ -1,0 +1,14 @@
+extends: mlp.yaml
+output_dir: /shared/radio-moge/chongxi/overfit-mlp
+data:
+  train_manifest: data/overfit.jsonl
+  buckets: [[560, 560]]
+  workers: 0
+  augment: false
+train:
+  steps: 1000
+  accumulation: 1
+  warmup: 50
+  calibration_batches: 16
+  save_every: 100
+  eval_every: 250

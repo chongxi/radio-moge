@@ -1,0 +1,6 @@
+extends: mlp.yaml
+output_dir: /shared/radio-moge/chongxi/fusion-pilot
+adapter:
+  kind: fusion
+  indices: [7, 15, 23, 31]
+  fusion_dim: 512

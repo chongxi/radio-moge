@@ -1,0 +1,14 @@
+extends: mlp.yaml
+output_dir: /shared/radio-moge/chongxi/mlp-refine
+train:
+  steps: 5000
+  lr: 0.00003
+  warmup: 100
+loss:
+  spatial: 1.0
+  summary: 1.0
+  cosine: 0.1
+  points: 1.0
+  mask: 0.1
+  scale: 0.1
+  gradient: 0.05

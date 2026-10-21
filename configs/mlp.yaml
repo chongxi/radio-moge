@@ -1,0 +1,41 @@
+output_dir: /shared/radio-moge/chongxi/mlp-pilot
+models:
+  window_size: null  # Keep identical to the shared production RADIO pass.
+adapter:
+  kind: mlp
+  hidden_dim: 2048
+data:
+  train_manifest: data/train.jsonl
+  val_manifest: data/val.jsonl
+  buckets: [[448, 672], [560, 560], [672, 448]]
+  workers: 2
+  augment: true
+train:
+  seed: 42
+  precision: bf16
+  steps: 10000
+  batch_size: 2
+  accumulation: 16
+  lr: 0.0003
+  weight_decay: 0.01
+  warmup: 500
+  clip_grad: 1.0
+  calibration_batches: 32
+  log_every: 10
+  save_every: 250
+  eval_every: 500
+  tensorboard: true
+loss:
+  spatial: 1.0
+  summary: 1.0
+  cosine: 0.1
+  points: 0.0
+  mask: 0.0
+  scale: 0.0
+  gradient: 0.0
+  normal: 0.0
+evaluation:
+  num_tokens: 1200
+  max_side: 768
+  limit: 64
+  visualizations: 8
