@@ -201,6 +201,9 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
         config["loss"].get(k, 0) for k in ("points", "mask", "scale", "gradient", "normal")
     )
     try:
+        if not resume:
+            # Preserve the actual stage-start weights for decoded before/after comparisons.
+            save("initial.pt")
         while step < total and not stop:
             adapter.train()
             optimizer.zero_grad(set_to_none=True)

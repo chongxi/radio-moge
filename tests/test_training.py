@@ -99,10 +99,18 @@ def test_training_overfits_and_resume_is_identical(tmp_path):
     config = config_for(tmp_path)
     config["output_dir"] = str(tmp_path / "full")
     full_path = train(config, system_adapter=tiny_system())
+    initial = torch.load(tmp_path / "full/initial.pt", weights_only=True)
+    assert initial["step"] == initial["cursor"] == 0
+    _, fresh_adapter = tiny_system()
+    for key, value in fresh_adapter.state_dict().items():
+        torch.testing.assert_close(value, initial["adapter"][key], rtol=0, atol=0)
     split_config = deepcopy(config)
     split_config["output_dir"] = str(tmp_path / "split")
     partial = train(split_config, stop_after=5, system_adapter=tiny_system())
     resumed_path = train(split_config, resume=partial, system_adapter=tiny_system())
+    split_initial = torch.load(tmp_path / "split/initial.pt", weights_only=True)
+    for key, value in initial["adapter"].items():
+        torch.testing.assert_close(value, split_initial["adapter"][key], rtol=0, atol=0)
     full = torch.load(full_path, weights_only=True)
     resumed = torch.load(resumed_path, weights_only=True)
     assert full["step"] == resumed["step"] == 12

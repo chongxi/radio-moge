@@ -12,7 +12,8 @@ Deployment: existing RADIO pass ─┬─ existing perception adapters
                                 └─ our adapter + MoGe decoder
 ```
 
-This is an experimental codebase, not a trained model. The default teacher is
+This is an experimental codebase with an initial 400-step NYUv2 sanity run.
+The default teacher is
 [`Ruicheng/moge-2-vitl-normal`](https://huggingface.co/Ruicheng/moge-2-vitl-normal),
 the largest released MoGe-2 checkpoint (**331M parameters**). It uses the largest
 MoGe-2 backbone, DINOv2 ViT-L/14, and includes the normal-output decoder head.
@@ -22,7 +23,10 @@ The encoder interface remains a 1024-channel spatial map and 1024-dimensional
 class token. The frozen decoder/export includes the normal head; the initial
 NYUv2 pilot still trains on encoder features. Its pinned teacher revision is
 `cb0e8bbd6b1e243589717c78e750b1ba4c093acf`, recorded in each run configuration.
-Transfer quality and H200 memory/throughput must be measured.
+The initial run reached depth AbsRel 0.122 versus the teacher's 0.095 on the custom
+290-image held-out split below. Training took 3m30s on one H200 with 4.07 GiB peak
+allocated memory. These are a short feature-distillation pilot's results, not
+teacher parity or an official NYUv2 benchmark score.
 The current runner deliberately supports **one process / one GPU**.
 
 ## Setup
@@ -234,7 +238,7 @@ RADIO pass; change these together for ablations. No second RADIO pass is require
 ### Outputs and resume
 
 Runs contain `config.json`, `provenance.json`, `train.jsonl`, TensorBoard events,
-`latest.pt`, optional `best.pt`, and validation directories with per-image metrics
+`initial.pt`, `latest.pt`, optional `best.pt`, and validation directories with per-image metrics
 and PNG comparisons. PNG columns are RGB, teacher depth, student depth, relative
 depth error. Teacher/student panels share a depth range; magenta marks invalid pixels.
 
@@ -276,6 +280,42 @@ Timing reports adapter + decoder separately from CPU/GPU postprocessing; it
 excludes the shared RADIO forward and teacher. These are diagnostic timings, not
 a standalone RADIO-vs-MoGe benchmark. Training logs report optimizer-step time,
 images/second and peak allocated GPU memory.
+
+### Depth before and after training
+
+Every new training stage saves its actual starting weights to `initial.pt`.
+Render RGB, initial adapter depth, trained adapter depth, and MoGe-2 depth:
+
+```bash
+.venv/bin/python -m radio_moge.compare \
+  --checkpoint /shared/radio-moge/chongxi/mlp-pilot/latest.pt \
+  --initial /shared/radio-moge/chongxi/mlp-pilot/initial.pt \
+  --manifest data/val.jsonl \
+  --output /shared/radio-moge/chongxi/mlp-pilot/before-after \
+  --count 8
+```
+
+This runs the **frozen MoGe decoder and official focal/metric-scale postprocessing
+for all three branches**, reusing one RADIO pass per image for both adapters.
+It selects the first image of distinct scene types, then distinct scenes, in
+manifest order, before inference. Each comparison uses one shared depth color
+range (the teacher's 2nd–98th percentiles, labeled in meters); values outside the
+range are clipped. No scale alignment is performed. Predicted validity masks
+do not hide errors; nonpositive/nonfinite depths are magenta. Raw decoder point-z
+is saved separately and never substituted for postprocessed metric depth.
+
+Outputs include labeled PNGs, `overview.png`, full-resolution `.npz` depth arrays,
+per-image metrics in `results.json`, selection metadata, and baseline provenance.
+These selected examples are diagnostics, not a replacement for the full held-out
+evaluation. Comparing existing checkpoints does not retrain or select weights.
+
+For the first legacy run, which did not save `initial.pt`, replace `--initial`
+with `--reconstruct-from-log /path/to/pilot/train.jsonl`. This rebuilds the seeded
+initialization using the pinned models and **requires reproducing all first-step
+feature losses on the original training batches** before rendering. It aborts if
+the losses fail to match. This mode supports feature-only training; it is not a
+general way to recover arbitrary checkpoints. The first run's replay matched
+all four logged losses exactly with PyTorch 2.8.0+cu128.
 
 ## Export and reuse your existing RADIO features
 
