@@ -171,7 +171,10 @@ def export_viewer(checkpoint, initial_adapter, manifest, output, original_metric
                  checkpoint=Path(checkpoint).name, train_images=len(train),
                  validation_images=len(validation),
                  test_images=len(records), test_scenes=len({r.get("group") for r in records}),
-                 student="C-RADIOv4-H + MLP", teacher=config["models"]["moge_repo"],
+                 student=("C-RADIOv4-H + intermediate fusion"
+                          if state["adapter_config"].get("kind") == "fusion"
+                          else "C-RADIOv4-H + MLP"),
+                 teacher=config["models"]["moge_repo"],
                  baseline=("Seeded reconstruction; all four initial feature losses matched exactly"
                            if provenance.get("verified") else "Saved stage-start checkpoint"),
                  checkpoint_sha256=fingerprint(state["adapter"]), revisions=state["revisions"],
