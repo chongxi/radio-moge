@@ -2,11 +2,20 @@ import json
 from types import SimpleNamespace
 
 import torch
+import pytest
 
 from radio_moge.checkpoint import rng_state
 from radio_moge.tracking import ExperimentTracker
 from test_training import config_for, tiny_system
 from radio_moge.train import train
+
+
+def test_real_sdk_offline_smoke(tmp_path):
+    pytest.importorskip("wandb")
+    tracker = ExperimentTracker({"tracking": {"enabled": True, "mode": "offline"}}, tmp_path)
+    tracker.log("train", {"total": 1.0}, 1)
+    tracker.finish()
+    assert json.loads((tmp_path / "wandb-run.json").read_text())["mode"] == "offline"
 
 
 class FakeRun:
@@ -30,6 +39,7 @@ class FakeRun:
 
 def fake_sdk(monkeypatch):
     calls, runs = [], []
+    monkeypatch.setattr("radio_moge.tracking.secrets.token_hex", lambda n: "same-run")
 
     def init(**kwargs):
         torch.rand(1)

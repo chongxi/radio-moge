@@ -3,6 +3,7 @@
 from contextlib import contextmanager
 import json
 from pathlib import Path
+import secrets
 
 from .checkpoint import atomic_json, restore_rng, rng_state
 
@@ -40,7 +41,7 @@ class ExperimentTracker:
             self.run = wandb.init(
                 project=previous["project"] if previous else settings.get("project", "radio-moge"),
                 entity=previous["entity"] if previous else settings.get("entity"),
-                id=previous["id"] if previous else wandb.util.generate_id(),
+                id=previous["id"] if previous else secrets.token_hex(4),
                 resume="must" if previous and mode == "online" else None,
                 name=settings.get("name", output.name),
                 group=settings.get("group"),
