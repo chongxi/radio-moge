@@ -12,7 +12,9 @@ import torch
 from torch.utils.data import DataLoader
 
 from .checkpoint import atomic_json, atomic_save, restore_rng, rng_state
-from .config import load_config, RADIO_COMMIT, MOGE_COMMIT, RADIO_REVISION, MOGE_REVISION
+from .config import (
+    load_config, RADIO_COMMIT, MOGE_COMMIT, RADIO_REVISION, MOGE_REPO, MOGE_REVISION,
+)
 from .data import DeterministicBatches, TrainingImages, check_split, manifest_digest, read_manifest
 from .evaluate import evaluate, synchronize
 from .losses import FeatureStatistics, geometry_losses, weighted_loss
@@ -140,7 +142,8 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
         radio_source=RADIO_COMMIT,
         moge_source=MOGE_COMMIT,
         radio_weights=RADIO_REVISION,
-        moge_weights=MOGE_REVISION,
+        moge_repo=config["models"].get("moge_repo", MOGE_REPO),
+        moge_weights=config["models"].get("moge_revision", MOGE_REVISION),
     )
     atomic_json(config, output / "config.json")
     atomic_json(

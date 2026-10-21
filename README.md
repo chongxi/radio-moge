@@ -13,7 +13,16 @@ Deployment: existing RADIO pass ─┬─ existing perception adapters
 ```
 
 This is an experimental codebase, not a trained model. The default teacher is
-`Ruicheng/moge-2-vitl`. Transfer quality and H200 memory/throughput must be measured.
+[`Ruicheng/moge-2-vitl-normal`](https://huggingface.co/Ruicheng/moge-2-vitl-normal),
+the largest released MoGe-2 checkpoint (**331M parameters**). It uses the largest
+MoGe-2 backbone, DINOv2 ViT-L/14, and includes the normal-output decoder head.
+The non-normal ViT-L model is 326M; the normal ViT-B and ViT-S models are 104M
+and 35M respectively ([official model table](https://github.com/microsoft/MoGe#-pretrained-models)).
+The encoder interface remains a 1024-channel spatial map and 1024-dimensional
+class token. The frozen decoder/export includes the normal head; the initial
+NYUv2 pilot still trains on encoder features. Its pinned teacher revision is
+`cb0e8bbd6b1e243589717c78e750b1ba4c093acf`, recorded in each run configuration.
+Transfer quality and H200 memory/throughput must be measured.
 The current runner deliberately supports **one process / one GPU**.
 
 ## Setup

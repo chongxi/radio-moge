@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
 
 from .adapters import RadioFeatures
-from .config import ROOT, RADIO_COMMIT, MOGE_COMMIT, RADIO_REVISION, MOGE_REVISION
+from .config import ROOT, RADIO_COMMIT, MOGE_COMMIT, RADIO_REVISION, MOGE_REPO, MOGE_REVISION
 
 
 def source_path(name, commit, override=None):
@@ -36,7 +36,9 @@ def import_moge(path=None):
 def load_moge(config, device):
     cls = import_moge(config.get("moge_source"))
     checkpoint_path = config.get("moge_checkpoint") or hf_hub_download(
-        "Ruicheng/moge-2-vitl", "model.pt", revision=MOGE_REVISION
+        config.get("moge_repo", MOGE_REPO),
+        "model.pt",
+        revision=config.get("moge_revision", MOGE_REVISION),
     )
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True, mmap=True)
     model = cls(**checkpoint["model_config"])

@@ -1,5 +1,7 @@
 output_dir: /shared/radio-moge/chongxi/mlp-pilot
 models:
+  moge_repo: Ruicheng/moge-2-vitl-normal  # Largest released MoGe-2 checkpoint: 331M.
+  moge_revision: cb0e8bbd6b1e243589717c78e750b1ba4c093acf
   window_size: null  # Keep identical to the shared production RADIO pass.
 adapter:
   kind: mlp
