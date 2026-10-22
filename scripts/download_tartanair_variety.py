@@ -55,6 +55,12 @@ def fetch_catalog(url=CATALOG):
             return data
 
 
+def rgb_archives(catalog):
+    # The official list contains '<relative ZIP path> <size in GB>' per line.
+    paths = [line.split()[0] for line in catalog.splitlines() if line.strip()]
+    return sorted({path for path in paths if path.endswith("/image_left.zip")})
+
+
 def family(environment):
     return FAMILIES.get(environment, environment)
 
@@ -246,13 +252,7 @@ def run(args):
             catalog_path = output / "official-archive-list.txt"
             if not catalog_path.exists():
                 atomic_write(catalog_path, fetch_catalog())
-            archives = sorted(
-                {
-                    line.strip()
-                    for line in catalog_path.read_text().splitlines()
-                    if line.strip().endswith("/image_left.zip")
-                }
-            )
+            archives = rgb_archives(catalog_path.read_text())
             if not archives:
                 raise ValueError("No official RGB archive entries")
             index = []

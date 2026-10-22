@@ -91,7 +91,7 @@ def test_small_group_capacity_is_redistributed_without_oversampling():
 
 
 def test_gzip_http_catalog_is_cached_as_utf8():
-    expected = b"hospital/Easy/image_left.zip\n"
+    expected = b"hospital/Easy/image_left.zip 7.192729599\nhospital/Easy/depth_left.zip 2.1\n"
     compressed = gzip.compress(expected)
 
     class Handler(BaseHTTPRequestHandler):
@@ -109,6 +109,8 @@ def test_gzip_http_catalog_is_cached_as_utf8():
         worker = threading.Thread(target=server.handle_request)
         worker.start()
         try:
-            assert download.fetch_catalog(f"http://127.0.0.1:{server.server_port}/") == expected
+            data = download.fetch_catalog(f"http://127.0.0.1:{server.server_port}/")
+            assert data == expected
+            assert download.rgb_archives(data.decode()) == ["hospital/Easy/image_left.zip"]
         finally:
             worker.join(timeout=5)
