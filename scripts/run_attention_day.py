@@ -57,7 +57,7 @@ def ready(plan, config):
         )
     ):
         raise ValueError("Data preparation checks did not pass")
-    expected_manifests = {"train.jsonl", "val-selection.jsonl"}
+    expected_manifests = {"train.jsonl", "val-selection.jsonl", "test-irs-official.jsonl"}
     expected_manifests.update(f"{s}.jsonl" for s in HELDOUT)
     expected_manifests.update(f"{s}-{n}.jsonl" for s in ("val", "test") for n in SOURCES)
     if set(info["manifest_sha256"]) != expected_manifests:

@@ -100,9 +100,23 @@ def prepare(base, sources, output, validation_per_source=128):
     for name, folder in sources.items():
         paths.update({f"{name}/{s}": folder / f"{s}.jsonl" for s in ("train", "val", "test")})
         paths[f"{name}/info"] = folder / "dataset_info.json"
+    paths["irs/official-test"] = sources["irs"] / "test-official.jsonl"
     before = {key: digest(path) for key, path in paths.items()}
     old = {s: read_manifest(base / f"{s}.jsonl") for s in ("train", *HELDOUT)}
     new = {name: source_rows(name, folder) for name, folder in sources.items()}
+    irs_info = json.loads((sources["irs"] / "dataset_info.json").read_text())
+    official_test = read_manifest(paths["irs/official-test"])
+    if (
+        irs_info.get("extra_holdout_manifests") != ["test-official.jsonl"]
+        or irs_info.get("official_test_rgb") != len(official_test)
+        or any(
+            r.get("dataset") != "irs"
+            or r.get("split") != "official-test"
+            or r.get("official_split") != "test"
+            for r in official_test
+        )
+    ):
+        raise ValueError("Original IRS test audit must remain separate and complete")
     if set(r["dataset"] for r in old["train"]) != set(WEIGHTS) - set(SOURCES):
         raise ValueError("Unexpected base source mixture")
     for split in HELDOUT:
@@ -117,7 +131,11 @@ def prepare(base, sources, output, validation_per_source=128):
                     raise ValueError("Copying held-out bytes would change relative path meaning")
     if not {r["image"] for r in old["val"]} <= {r["image"] for r in old["val-full"]}:
         raise ValueError("Original fixed validation is not a full-validation subset")
-    all_rows = list(old.values()) + [rows for splits in new.values() for rows in splits.values()]
+    all_rows = (
+        list(old.values())
+        + [rows for splits in new.values() for rows in splits.values()]
+        + [official_test]
+    )
     if any(
         r.get("sha256_kind") != "encoded_file_bytes" or not r.get("sha256")
         for rows in all_rows
@@ -133,6 +151,18 @@ def prepare(base, sources, output, validation_per_source=128):
         for r in rows
         if r.get("decoded_rgb_sha256")
     }
+    official_encoded = {r["sha256"] for r in official_test}
+    official_decoded = {
+        r["decoded_rgb_sha256"] for r in official_test if r.get("decoded_rgb_sha256")
+    }
+    if {r["sha256"] for r in old["train"] + old["val"]} & official_encoded or {
+        r["decoded_rgb_sha256"] for r in old["train"] + old["val"] if r.get("decoded_rgb_sha256")
+    } & official_decoded:
+        raise ValueError(
+            "IRS official test overlaps established training/selection; inspect before mixing"
+        )
+    encoded.update(official_encoded)
+    decoded.update(official_decoded)
     excluded = []
     for split in ("test", "val", "train"):
         for name in SOURCES:
@@ -183,7 +213,7 @@ def prepare(base, sources, output, validation_per_source=128):
     temporary.mkdir()
     for split in HELDOUT:
         (temporary / f"{split}.jsonl").write_bytes((base / f"{split}.jsonl").read_bytes())
-    generated = {"train": training, "val-selection": selection}
+    generated = {"train": training, "val-selection": selection, "test-irs-official": official_test}
     generated.update({f"{s}-{n}": new[n][s] for n in SOURCES for s in ("val", "test")})
     for split, rows in generated.items():
         with (temporary / f"{split}.jsonl").open("w") as file:
@@ -206,6 +236,7 @@ def prepare(base, sources, output, validation_per_source=128):
         new_counts={n: {s: len(rows) for s, rows in new[n].items()} for n in SOURCES},
         verified_samples=samples,
         exact_duplicate_exclusions=len(excluded),
+        audit_only_manifests=["test-irs-official.jsonl"],
         verification=dict(
             all_paths_exist=True,
             split_groups_paths_hashes_disjoint=True,

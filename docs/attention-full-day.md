@@ -14,9 +14,19 @@ scene-level partitions and write `train.jsonl`, `val.jsonl`, `test.jsonl` plus a
 `dataset_info.json` with `stage: ready`, matching `counts`, and
 `verification.rgb_decode_all: true`, `scope: all_eligible_rgb`. Full TartanAir
 must have `selection_mode: all_left_rgb_frames`; pilot/subset data is refused.
-Source extraction and its actual-archive
-validation remain outstanding while downloads are queued; the merge script is
-not an archive extractor.
+`scripts/prepare_archive_rgb.py` performs serial extraction into a separate
+prepared directory, verifies each archive against its download SHA256, decodes
+all selected RGB and writes resumable per-archive receipts. ZIP members also
+pass their CRC; the streaming IRS reader checks the entire gzip CRC and compressed
+hash, including skipped native-depth labels. Original files and archives stay
+intact. The merge script itself does not extract archives.
+
+For Structured3D, run it with `--dataset structured3d --source DOWNLOAD_ROOT
+--output PREPARED_ROOT`. For IRS, use `--dataset irs` plus `--metadata` pointing to
+the directory containing `irs_train.list`/`irs_test.list`, and `--family-policy
+configs/irs-scene-families-v1.json`. Both refuse incomplete source downloads.
+Preparation must be checked against the actual downloaded archive inventory;
+unexpected/unlisted IRS RGB prevents a misleading full-data readiness result.
 
 Missing Structured3D `perspective_full_09` stays explicit; other ZIPs are
 independent. Full/empty variants of a scene share one partition. IRS stereo
@@ -24,6 +34,15 @@ views, lighting and texture variants must share a scene family. Its official
 frame-level test list is retained outside training and is not described as an
 unseen-scene benchmark. Do not equate 76 IRS directory names with 76 independent
 environments: suffix variants and related layouts require grouping first.
+The versioned IRS policy groups those 76 directories into 17 conservative
+families. Seeded selection reserves one training family per domain, then holds
+out two families for validation and two for test. Primary partitions use only
+official training-list frames. Official test-list RGB is preserved in
+`test-official.jsonl`, excluded from optimizer/selection even when identical
+pixels appear under another filename, and included in the merged data as
+`test-irs-official.jsonl` for separate auditing. This is a conservative directory
+policy, not proof of independent synthetic assets. Held-out families are fixed
+before inspecting model performance.
 
 Run `scripts/prepare_full_attention_mix.py` with `--base`, `--tartanair`,
 `--structured3d`, `--irs`, `--output`. Output must be a sibling of the base so

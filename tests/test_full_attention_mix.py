@@ -48,6 +48,26 @@ def sources(root):
             )
         )
         result[name] = folder
+    irs = result["irs"]
+    image = irs / "official.png"
+    Image.new("RGB", (20, 20), (99, 18, 21)).save(image)
+    (irs / "test-official.jsonl").write_text(
+        json.dumps(
+            dict(
+                image=image.name,
+                dataset="irs",
+                split="official-test",
+                official_split="test",
+                group="irs:train",
+                sha256=prep.digest(image),
+                sha256_kind="encoded_file_bytes",
+            )
+        )
+        + "\n"
+    )
+    info = json.loads((irs / "dataset_info.json").read_text())
+    info.update(official_test_rgb=1, extra_holdout_manifests=["test-official.jsonl"])
+    (irs / "dataset_info.json").write_text(json.dumps(info))
     return base, result
 
 
@@ -77,6 +97,28 @@ def test_complete_mixture_preserves_holdouts_and_excludes_cross_source_leak(tmp_
     assert all((output / f"{s}.jsonl").read_bytes() == data for s, data in original.items())
     assert set(result["train_sources"]) == set(prep.WEIGHTS)
     assert abs(sum(result["mixture_weights"].values()) - 1) < 1e-12
+    assert result["audit_only_manifests"] == ["test-irs-official.jsonl"]
+
+
+def test_irs_official_test_pixels_cannot_reenter_through_another_source(tmp_path):
+    base, new = sources(tmp_path)
+    irs_test = json.loads((new["irs"] / "test-official.jsonl").read_text())
+    leak = dict(
+        irs_test,
+        image=str(new["irs"] / irs_test["image"]),
+        dataset="structured3d",
+        split="train",
+        group="structured3d:another-scene",
+    )
+    with (new["structured3d"] / "train.jsonl").open("a") as file:
+        file.write(json.dumps(leak) + "\n")
+    info_path = new["structured3d"] / "dataset_info.json"
+    info = json.loads(info_path.read_text())
+    info["counts"]["train"] += 1
+    info_path.write_text(json.dumps(info))
+    result = prep.prepare(base, new, tmp_path / "out", validation_per_source=1)
+    assert result["exact_duplicate_exclusions"] == 1
+    assert result["train_images"] == 7 and result["selection_images"] == 4
 
 
 def test_archive_completion_or_absent_source_cannot_start_mixture(tmp_path):
