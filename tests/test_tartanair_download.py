@@ -5,6 +5,7 @@ import io
 from pathlib import Path
 import sys
 import threading
+from types import SimpleNamespace
 import zlib
 
 from PIL import Image
@@ -114,3 +115,94 @@ def test_gzip_http_catalog_is_cached_as_utf8():
             assert download.rgb_archives(data.decode()) == ["hospital/Easy/image_left.zip"]
         finally:
             worker.join(timeout=5)
+
+
+def test_full_inventory_keeps_every_frame_without_crossing_family_splits():
+    index = []
+    for env in ("hospital", "office", "office2", "seasonsforest_winter"):
+        for frame in range(7):
+            index.append(
+                dict(
+                    archive=f"{env}/Easy/image_left.zip",
+                    member=f"{env}/Easy/P000/image_left/{frame:06}_left.png",
+                    environment=env,
+                    family=download.family(env),
+                    split=download.split_for(env),
+                )
+            )
+    selected = download.select_all(list(reversed(index)))
+    assert len(selected) == 28
+    assert {r["member"] for r in selected} == {r["member"] for r in index}
+    assert all(r["split"] == "val" for r in selected if r["environment"] == "office2")
+    with pytest.raises(ValueError, match="Repeated"):
+        download.select_all(index + index[:1])
+    bad = dict(index[0], environment="office2")
+    with pytest.raises(ValueError, match="split policy"):
+        download.select_all([bad])
+
+
+def test_full_download_reuses_valid_rgb_and_refuses_corrupt_source(tmp_path):
+    task = dict(
+        member="hospital/Easy/P000/image_left/000000_left.png",
+        archive="hospital/Easy/image_left.zip",
+        environment="hospital",
+        family="hospital",
+        trajectory="hospital/Easy/P000",
+        split="train",
+    )
+    data = png(9)
+    task.update(bytes=len(data), crc32=zlib.crc32(data))
+    source = tmp_path / "old"
+    path = source / "rgb" / task["member"]
+    path.parent.mkdir(parents=True)
+    path.write_bytes(data)
+    target = tmp_path / "full"
+    result = download.fetch(task, target, source)
+    assert result["sha256"] == download.validate_rgb(data, task)["sha256"]
+    assert (target / result["image"]).stat().st_ino == path.stat().st_ino
+    path.write_bytes(b"corrupt")
+    with pytest.raises(ValueError, match="CRC"):
+        download.fetch(task, tmp_path / "another", source)
+    assert not (tmp_path / "another" / "rgb" / task["member"]).exists()
+
+
+def test_new_selection_cannot_overwrite_existing_download_state(tmp_path):
+    import json
+
+    status = b'{"stage":"complete","done":28}'
+    (tmp_path / "status.json").write_bytes(status)
+    (tmp_path / "plan.json").write_text(json.dumps({"settings": {"selection": "subset"}}))
+    args = SimpleNamespace(output=tmp_path, all_frames=True, reuse_root=None, seed=42)
+    with pytest.raises(ValueError, match="new directory"):
+        download.run(args)
+    assert (tmp_path / "status.json").read_bytes() == status
+
+
+def test_reuse_wait_never_downloads_while_source_active(tmp_path, monkeypatch):
+    import fcntl
+    import json
+
+    source, output = tmp_path / "source", tmp_path / "output"
+    source.mkdir()
+    output.mkdir()
+    p = source / "status.json"
+    p.write_text(json.dumps(dict(stage="downloading", done=4, total=8)))
+    sleeps = []
+
+    def finish_source(delay):
+        sleeps.append(delay)
+        assert (
+            json.loads((output / "status.json").read_text())["stage"] == "waiting_for_reuse_source"
+        )
+        p.write_text(json.dumps(dict(stage="complete", done=8, total=8)))
+
+    monkeypatch.setattr(download.time, "sleep", finish_source)
+    download.wait_for_reuse_source(source, output, {}, True)
+    assert sleeps == [30]
+    with (source / ".download.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(ValueError, match="finish downloading"):
+            download.wait_for_reuse_source(source, output, {}, False)
+    p.write_text(json.dumps(dict(stage="failed")))
+    with pytest.raises(ValueError, match="failed"):
+        download.wait_for_reuse_source(source, output, {}, True)

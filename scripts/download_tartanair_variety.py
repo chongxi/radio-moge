@@ -1,4 +1,4 @@
-"""Download a bounded, reproducible TartanAir RGB subset from official ZIPs.
+"""Download a reproducible subset or all TartanAir left RGB from official ZIPs.
 
 Whole environment families are held out. Only left RGB is fetched, using HTTP
 ranges, with ZIP CRC, complete image decoding, and encoded/decoded SHA256 checks.
@@ -117,6 +117,19 @@ def select(index, targets, seed, stride):
     return sorted(selected, key=lambda r: (r["archive"], r["member"]))
 
 
+def select_all(index):
+    """Keep every indexed frame and preserve the established family holdouts."""
+    identities = {(r["archive"], r["member"]) for r in index}
+    if len(identities) != len(index):
+        raise ValueError("Repeated archive/member in full RGB inventory")
+    for row in index:
+        if row["family"] != family(row["environment"]) or row["split"] != split_for(
+            row["environment"]
+        ):
+            raise ValueError("Full inventory violates environment-family split policy")
+    return sorted(index, key=lambda r: (r["archive"], r["member"]))
+
+
 def archive_index(archive, output):
     parts = PurePosixPath(archive).parts
     if len(parts) != 3 or parts[1] not in {"Easy", "Hard"} or parts[2] != "image_left.zip":
@@ -177,11 +190,24 @@ def validate_rgb(data, task):
     )
 
 
-def fetch(task, output):
+def fetch(task, output, reuse_root=None):
     path = output / "rgb" / task["member"]
     if path.exists():
         data = path.read_bytes()
         info = validate_rgb(data, task)  # A corrupted resume fails closed.
+    elif reuse_root is not None and (reuse_root / "rgb" / task["member"]).is_file():
+        source = reuse_root / "rgb" / task["member"]
+        data = source.read_bytes()
+        info = validate_rgb(data, task)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.link(source, path)
+        except OSError as error:
+            import errno
+
+            if error.errno != errno.EXDEV:
+                raise
+            atomic_write(path, data)
     else:
         if getattr(LOCAL, "archive", None) != task["archive"]:
             if hasattr(LOCAL, "remote"):
@@ -223,16 +249,57 @@ def deduplicate(records):
     return kept, rejected
 
 
+def wait_for_reuse_source(source, output, state, wait):
+    """Serialize the full download after the existing subset, without signaling it."""
+    while True:
+        previous = json.loads((source / "status.json").read_text())
+        if previous["stage"] == "failed":
+            raise ValueError("Reuse source download failed; inspect it before continuing")
+        if previous["stage"] == "complete":
+            with (source / ".download.lock").open("a") as lock:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    pass
+                else:
+                    if json.loads((source / "status.json").read_text())["stage"] == "complete":
+                        return
+        if not wait:
+            raise ValueError("Reuse source must finish downloading first")
+        state.update(
+            stage="waiting_for_reuse_source",
+            reuse_source=str(source),
+            source_done=previous.get("done"),
+            source_total=previous.get("total"),
+            updated=time.time(),
+        )
+        write_json(output / "status.json", state)
+        time.sleep(30)
+
+
 def run(args):
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     lock = (output / ".download.lock").open("w")
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    settings = dict(
-        seed=args.seed,
-        stride=args.stride,
-        targets=dict(train=args.train_images, val=args.val_images, test=args.test_images),
+    all_frames = getattr(args, "all_frames", False)
+    reuse_root = getattr(args, "reuse_root", None)
+    if reuse_root is not None:
+        reuse_root = reuse_root.resolve()
+        if reuse_root == output:
+            raise ValueError("Reuse source must differ from destination")
+    settings = (
+        dict(selection="all_left_rgb_frames", seed=args.seed)
+        if all_frames
+        else dict(
+            seed=args.seed,
+            stride=args.stride,
+            targets=dict(train=args.train_images, val=args.val_images, test=args.test_images),
+        )
     )
+    plan_path = output / "plan.json"
+    if plan_path.exists() and json.loads(plan_path.read_text())["settings"] != settings:
+        raise ValueError("Resume requires identical selection settings; use a new directory")
     state = dict(
         stage="planning",
         pid=os.getpid(),
@@ -243,26 +310,44 @@ def run(args):
     )
     write_json(output / "status.json", state)
     try:
-        plan_path = output / "plan.json"
+        if reuse_root is not None:
+            wait_for_reuse_source(reuse_root, output, state, getattr(args, "wait_for_reuse", False))
+            state.update(stage="planning", updated=time.time())
+            write_json(output / "status.json", state)
         if plan_path.exists():
             plan = json.loads(plan_path.read_text())
-            if plan["settings"] != settings:
-                raise ValueError("Resume requires identical subset settings")
         else:
             catalog_path = output / "official-archive-list.txt"
             if not catalog_path.exists():
-                atomic_write(catalog_path, fetch_catalog())
+                reused_catalog = reuse_root / catalog_path.name if reuse_root else None
+                atomic_write(
+                    catalog_path,
+                    reused_catalog.read_bytes()
+                    if reused_catalog is not None and reused_catalog.exists()
+                    else fetch_catalog(),
+                )
             archives = rgb_archives(catalog_path.read_text())
             if not archives:
                 raise ValueError("No official RGB archive entries")
             index = []
             for i, archive in enumerate(archives):
+                if reuse_root:
+                    environment, difficulty, _ = PurePosixPath(archive).parts
+                    cache_name = f"{environment}-{difficulty}.json"
+                    source_cache = reuse_root / "indices" / cache_name
+                    target_cache = output / "indices" / cache_name
+                    if source_cache.exists() and not target_cache.exists():
+                        atomic_write(target_cache, source_cache.read_bytes())
                 index += archive_index(archive, output)
                 state.update(
                     indexed_archives=i + 1, archives_total=len(archives), updated=time.time()
                 )
                 write_json(output / "status.json", state)
-            tasks = select(index, settings["targets"], args.seed, args.stride)
+            tasks = (
+                select_all(index)
+                if all_frames
+                else select(index, settings["targets"], args.seed, args.stride)
+            )
             plan = dict(
                 settings=settings,
                 tasks=tasks,
@@ -277,7 +362,7 @@ def run(args):
         with ThreadPoolExecutor(max_workers=args.workers) as pool:
             for start in range(0, len(plan["tasks"]), 128):
                 for row in pool.map(
-                    lambda task: fetch(task, output), plan["tasks"][start : start + 128]
+                    lambda task: fetch(task, output, reuse_root), plan["tasks"][start : start + 128]
                 ):
                     records.append(row)
                 state.update(
@@ -286,7 +371,7 @@ def run(args):
                 write_json(output / "status.json", state)
         kept, rejected = deduplicate(records)
         counts = {}
-        for split in settings["targets"]:
+        for split in ("train", "val", "test"):
             rows = [r for r in kept if r["split"] == split]
             if not rows:
                 raise ValueError(f"No surviving images in {split}")
@@ -299,6 +384,8 @@ def run(args):
                 stage="ready",
                 counts=counts,
                 settings=settings,
+                selection_mode="all_left_rgb_frames" if all_frames else "bounded_subset",
+                reuse_source=str(reuse_root) if reuse_root is not None else None,
                 selected_counts=plan["selected_counts"],
                 exact_duplicates=len(rejected),
                 environment_splits=plan["environment_splits"],
@@ -320,6 +407,15 @@ def run(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--all-frames", action="store_true", help="All left RGB; no quotas or temporal stride"
+    )
+    parser.add_argument(
+        "--reuse-root", type=Path, help="Completed previous dataset; verified files are reused"
+    )
+    parser.add_argument(
+        "--wait-for-reuse", action="store_true", help="Wait for reuse source to finish; no overlap"
+    )
     parser.add_argument("--train-images", type=int, default=50000)
     parser.add_argument("--val-images", type=int, default=512)
     parser.add_argument("--test-images", type=int, default=512)
