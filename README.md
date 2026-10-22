@@ -640,6 +640,10 @@ and aspect ratio used at training. The deployment artifact stores adapter and
 decoder weights; loading it does not construct a MoGe encoder or download weights.
 The pinned upstream source and utils3d remain required for the decoder and camera
 postprocessing. See [THIRD_PARTY.md](THIRD_PARTY.md) for upstream sources/licenses.
+For the public IRS dataset, see [the resumable IRS downloader](docs/irs-download.md).
+It supports listing, small access probes, and serial full-archive downloads without
+manually copied OneDrive tokens.
+
 # Spatial adapters and variety screen (2026-10-21)
 
 `GeometryAdapter(kind="dpt")` reassembles four RADIO intermediate grids at
