@@ -1,5 +1,6 @@
 from copy import deepcopy
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -134,6 +135,71 @@ def test_resume_rejects_changed_data(tmp_path):
     config["train"]["lr"] *= 2
     with pytest.raises(ValueError, match="identical config"):
         train(config, resume=state, system_adapter=tiny_system())
+
+
+def test_wall_clock_budget_survives_resume_and_saves_complete_update(tmp_path, monkeypatch):
+    clock = [0.0]
+    monkeypatch.setattr("radio_moge.train.time.monotonic", lambda: clock[0])
+    original_step = torch.optim.AdamW.step
+
+    def timed_step(optimizer, *args, **kwargs):
+        result = original_step(optimizer, *args, **kwargs)
+        clock[0] += 1.0
+        return result
+
+    monkeypatch.setattr(torch.optim.AdamW, "step", timed_step)
+    config = config_for(tmp_path)
+    config["data"]["val_manifest"] = None
+    config["train"]["max_seconds"] = 5.0
+    config["output_dir"] = str(tmp_path / "clock-full")
+    full = torch.load(train(config, system_adapter=tiny_system()), weights_only=True)
+    assert full["step"] == 5 and full["cursor"] == 10
+
+    config["output_dir"] = str(tmp_path / "clock-resumed")
+    checkpoint = train(config, stop_after=2, system_adapter=tiny_system())
+    assert torch.load(checkpoint, weights_only=True)["wall_clock_elapsed_seconds"] == 2.0
+    clock[0] += 1000.0  # Paused time is excluded; the original five-second budget is retained.
+    resumed = torch.load(
+        train(config, resume=checkpoint, system_adapter=tiny_system()), weights_only=True
+    )
+    assert resumed["step"] == 5 and resumed["cursor"] == 10
+    assert resumed["wall_clock_elapsed_seconds"] == 5.0
+    for key in full["adapter"]:
+        torch.testing.assert_close(full["adapter"][key], resumed["adapter"][key], rtol=0, atol=0)
+    report = json.loads((Path(config["output_dir"]) / "stop-report.json").read_text())
+    assert report["reason"] == "wall_clock_budget"
+    # A second resume cannot silently receive a fresh five-second budget.
+    again = torch.load(
+        train(config, resume=checkpoint, system_adapter=tiny_system()), weights_only=True
+    )
+    assert again["step"] == 5
+
+
+def test_deadline_evaluates_final_checkpoint_once(tmp_path, monkeypatch):
+    clock = [0.0]
+    evaluated = []
+    monkeypatch.setattr("radio_moge.train.time.monotonic", lambda: clock[0])
+    original_step = torch.optim.AdamW.step
+
+    def timed_step(optimizer, *args, **kwargs):
+        result = original_step(optimizer, *args, **kwargs)
+        clock[0] += 1
+        return result
+
+    def evaluate(*args, **kwargs):
+        evaluated.append(str(args[6]))
+        return {"teacher_depth/abs_rel": 0.1, "postprocess_failed": 0.0}
+
+    monkeypatch.setattr(torch.optim.AdamW, "step", timed_step)
+    monkeypatch.setattr("radio_moge.train.evaluate", evaluate)
+    config = config_for(tmp_path)
+    config["train"].update(max_seconds=3, eval_at_start=False, eval_every=100)
+    config["output_dir"] = str(tmp_path / "final-eval")
+    checkpoint = train(config, system_adapter=tiny_system())
+    state = torch.load(checkpoint, weights_only=True)
+    assert state["step"] == 3 and state["best"] == 0.1 and len(evaluated) == 1
+    train(config, resume=checkpoint, system_adapter=tiny_system())
+    assert len(evaluated) == 1
 
 
 def test_fixed_budget_training_does_not_read_or_evaluate_test_set(tmp_path, monkeypatch):

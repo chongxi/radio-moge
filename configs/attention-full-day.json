@@ -1,0 +1,39 @@
+{
+  "extends": "variety-screen.json",
+  "output_dir": "/home/buildhub/shared/radio-moge/chongxi/data-expansion-attention-20261022/attention-24h/train",
+  "adapter": {
+    "kind": "attention",
+    "spatial_width": 1280,
+    "attention_blocks": 2,
+    "attention_heads": 16,
+    "summary_width": 512,
+    "summary_heads": 8
+  },
+  "data": {
+    "train_manifest": "/home/buildhub/shared/radio-moge/datasets/attention-full-mix-v1-20261022/train.jsonl",
+    "val_manifest": "/home/buildhub/shared/radio-moge/datasets/attention-full-mix-v1-20261022/val-selection.jsonl",
+    "mixture_weights": {
+      "arkitscenes": 0.175,
+      "hypersim": 0.15,
+      "nyuv2": 0.075,
+      "coco2017": 0.1,
+      "tartanair": 0.2,
+      "structured3d": 0.15,
+      "irs": 0.15
+    }
+  },
+  "train": {
+    "steps": 120000,
+    "max_seconds": 86400,
+    "lr": 0.00003,
+    "warmup": 1000,
+    "save_every": 1000,
+    "eval_every": 2000,
+    "log_every": 20
+  },
+  "tracking": {
+    "name": "attention-full-data-24h",
+    "group": "data-expansion-attention-20261022",
+    "tags": ["attention", "seven-sources", "single-h200", "24h", "features"]
+  }
+}

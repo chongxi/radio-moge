@@ -79,10 +79,16 @@ def validate_config(config):
         raise ValueError("Invalid training resolution bucket")
     if any(v < 0 for v in config["loss"].values()):
         raise ValueError("Loss weights must be nonnegative")
+    if train.get("max_seconds") is not None and (
+        not math.isfinite(train["max_seconds"]) or train["max_seconds"] <= 0
+    ):
+        raise ValueError("max_seconds must be finite and positive")
 
 
 def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
     """Single-device experiment runner. system_adapter allows small CPU integration tests."""
+    invocation_started = time.monotonic()
+    elapsed_before = 0.0
     validate_config(config)
     if resume and init:
         raise ValueError("Choose resume (same run) or init (new stage), not both")
@@ -148,6 +154,7 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
             optimizer.load_state_dict(state["optimizer"])
             scheduler.load_state_dict(state["scheduler"])
             step, cursor, best = state["step"], state["cursor"], state["best"]
+            elapsed_before = state.get("wall_clock_elapsed_seconds", 0.0)
             restore_rng(state["rng"])
     adapter, optimizer = accelerator.prepare(adapter, optimizer)
     # Manual accumulation uses complete windows and a known data cursor. Accelerate's
@@ -198,6 +205,15 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
         sig: signal.signal(sig, request_stop) for sig in (signal.SIGINT, signal.SIGTERM)
     }
 
+    def elapsed_seconds():
+        # Includes loading, validation and checkpoint I/O in each invocation.
+        # Time between invocations does not consume the experiment budget.
+        return elapsed_before + time.monotonic() - invocation_started
+
+    def budget_exhausted():
+        limit = settings.get("max_seconds")
+        return limit is not None and elapsed_seconds() >= limit
+
     def save(filename):
         atomic_save(
             {
@@ -215,6 +231,7 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
                 "model_config": system.model_config,
                 "data_digests": digests,
                 "revisions": revisions,
+                "wall_clock_elapsed_seconds": elapsed_seconds(),
             },
             output / filename,
         )
@@ -227,9 +244,10 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
         config["loss"].get(k, 0) for k in ("points", "mask", "scale", "gradient", "normal")
     )
     success = False
+    last_validation_step = None
 
     def validate():
-        nonlocal best
+        nonlocal best, last_validation_step
         destination = output / f"eval-{step:07d}"
         metrics = evaluate(
             system,
@@ -251,6 +269,7 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
             for key, value in metrics.items():
                 writer.add_scalar(f"eval/{key}", value, step)
         tracker.log("validation", metrics, step, image_dir=destination)
+        last_validation_step = step
         score = metrics.get(config["evaluation"].get("selection_metric", "teacher_depth/abs_rel"))
         if score is not None and metrics.get("postprocess_failed", 1) == 0:
             if best is None or score < best:
@@ -263,7 +282,7 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
             save("initial.pt")
         if validation and not resume and settings.get("eval_at_start", False):
             validate()
-        while step < total and not stop:
+        while step < total and not stop and not budget_exhausted():
             adapter.train()
             optimizer.zero_grad(set_to_none=True)
             synchronize(accelerator.device)
@@ -317,9 +336,55 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
                 tracker.log("train", row, step)
             if step % settings["save_every"] == 0:
                 save("latest.pt")
-            if validation and step % settings["eval_every"] == 0 and not stop:
+            if (
+                validation
+                and step % settings["eval_every"] == 0
+                and not stop
+                and not budget_exhausted()
+            ):
                 validate()
         save("latest.pt")
+        if settings.get("max_seconds") is not None:
+            reason = (
+                "signal" if stop else "wall_clock_budget" if budget_exhausted() else "step_limit"
+            )
+            stopped_at = elapsed_seconds()
+            atomic_json(
+                dict(
+                    reason=reason,
+                    step=step,
+                    elapsed_seconds=stopped_at,
+                    max_seconds=settings["max_seconds"],
+                    final_evaluation="pending",
+                ),
+                output / "stop-report.json",
+            )
+            # A deadline can fall between validation boundaries. Evaluate that
+            # final checkpoint once; no additional optimizer steps are taken.
+            # On resume, an existing completed evaluation must not be appended again.
+            existing = output / "validation.jsonl"
+            already_validated = last_validation_step == step or (
+                existing.exists()
+                and any(
+                    json.loads(line)["step"] == step
+                    for line in existing.read_text().splitlines()
+                    if line.strip()
+                )
+            )
+            if validation and not stop and not already_validated:
+                validate()
+            save("latest.pt")
+            atomic_json(
+                dict(
+                    reason=reason,
+                    step=step,
+                    elapsed_seconds=elapsed_seconds(),
+                    optimizer_stopped_elapsed_seconds=stopped_at,
+                    max_seconds=settings["max_seconds"],
+                    final_evaluation="skipped_on_signal" if stop else "complete",
+                ),
+                output / "stop-report.json",
+            )
         for module in (system.radio, system.encoder, system.decoder):
             if any(p.grad is not None or p.requires_grad for p in module.parameters()):
                 raise AssertionError("Frozen models accumulated gradients or became trainable")
