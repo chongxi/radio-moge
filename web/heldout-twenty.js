@@ -1,6 +1,6 @@
 import * as THREE from './lib/three.module.min.js';
 import {OrbitControls} from './lib/OrbitControls.js';
-const D=window.CLOUD_DATA,$=id=>document.getElementById(id),names=['old','new','teacher'],labels=['旧 Fusion · 1,043 张训练图','新 Fusion · 256,886 张训练图','MoGe 教师'],tints=[0x77aaff,0xffa060,0x44d5b1];
+const D=window.CLOUD_DATA,$=id=>document.getElementById(id),names=['old','new','teacher'],labels=D.labels||['旧 Fusion · 1,043 张训练图','新 Fusion · 256,886 张训练图','MoGe 教师'],tints=[0x77aaff,0xffa060,0x44d5b1];
 let current=null,views=[],clouds=[],busy=false,token=0;
 const linear=v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;};
 $('sample').innerHTML=D.samples.map((s,i)=>`<option value="${i}">${i+1}. ${s.scene} · ${s.id}</option>`).join('');
