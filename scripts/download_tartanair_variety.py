@@ -22,7 +22,7 @@ import zlib
 from PIL import Image
 import requests
 
-from indoor_download import RemoteZip, atomic_write, fetch_small, write_json
+from indoor_download import RemoteZip, atomic_write, write_json
 
 BASE = (
     "https://airlab-cloud.andrew.cmu.edu:8080/swift/v1/"
@@ -41,6 +41,18 @@ FAMILIES = {
 VALIDATION = {"office", "japanesealley"}
 TEST = {"seasonsforest", "amusement"}
 LOCAL = threading.local()
+
+
+def fetch_catalog(url=CATALOG):
+    # GitHub can gzip metadata. Decode transport compression before caching UTF-8.
+    with requests.Session() as session:
+        with session.get(url, timeout=(15, 60), stream=True) as response:
+            response.raise_for_status()
+            data = response.raw.read(16 * 1024**2 + 1, decode_content=True)
+            if len(data) > 16 * 1024**2:
+                raise ValueError("Archive catalog exceeds metadata size bound")
+            data.decode("utf-8")
+            return data
 
 
 def family(environment):
@@ -233,7 +245,7 @@ def run(args):
         else:
             catalog_path = output / "official-archive-list.txt"
             if not catalog_path.exists():
-                atomic_write(catalog_path, fetch_small(requests.Session(), CATALOG))
+                atomic_write(catalog_path, fetch_catalog())
             archives = sorted(
                 {
                     line.strip()

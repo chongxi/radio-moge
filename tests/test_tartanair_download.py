@@ -1,7 +1,10 @@
 import importlib.util
+import gzip
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import io
 from pathlib import Path
 import sys
+import threading
 import zlib
 
 from PIL import Image
@@ -85,3 +88,27 @@ def test_corrupted_resume_fails_without_network(tmp_path):
 def test_small_group_capacity_is_redistributed_without_oversampling():
     assert download.quotas({"tiny": 1, "large": 9}, 6) == {"large": 5, "tiny": 1}
     assert download.quotas({"tiny": 1, "large": 9}, 30) == {"large": 9, "tiny": 1}
+
+
+def test_gzip_http_catalog_is_cached_as_utf8():
+    expected = b"hospital/Easy/image_left.zip\n"
+    compressed = gzip.compress(expected)
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Content-Length", str(len(compressed)))
+            self.end_headers()
+            self.wfile.write(compressed)
+
+        def log_message(self, *_):
+            pass
+
+    with HTTPServer(("127.0.0.1", 0), Handler) as server:
+        worker = threading.Thread(target=server.handle_request)
+        worker.start()
+        try:
+            assert download.fetch_catalog(f"http://127.0.0.1:{server.server_port}/") == expected
+        finally:
+            worker.join(timeout=5)
