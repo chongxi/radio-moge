@@ -1,0 +1,16 @@
+{
+  "status": "bounded_screen_authorized",
+  "purpose": "Find the adapter with the best generalization on the existing data, using early feedback before expanding compute.",
+  "data_policy": "Freeze existing ARKitScenes/Hypersim/NYU/COCO manifests and sampling. New dataset candidates are table-only: no downloads or cleaning.",
+  "ranked_architectures": ["fusion", "dpt", "attention"],
+  "indoor_control": "Retain existing fusion_indoor results as the data contrast, outside the architecture ranking. Its additional geometry run is deferred.",
+  "first_rung": {"steps": 1000, "run_next": ["dpt", "attention"], "baseline": "Existing fusion validation at exactly 1000 steps", "automatic_elimination": false},
+  "second_rung": {"steps": 3000, "condition": "Review first-rung integrity, per-domain metrics, fit and learning speed. Prefer all viable candidates at a common budget before excluding a slower learner.", "baseline": "Existing fusion validation at exactly 3000 steps"},
+  "expansion": {"steps": 6000, "candidates": "Fusion baseline plus the strongest one or two spatial heads after review", "geometry": "Short matched geometry pilots for finalists, then expand only if useful; cancel the previous unconditional four-arm 6000-step geometry queue."},
+  "numerical_protocol": "Use the pinned 2268c42 trainer/configs, original 6000-step learning-rate horizon, batch16 accumulation2, fixed sample stream and losses. --stop-after only changes the stopping point; --resume restores optimizer, scheduler, RNG and data cursor.",
+  "selection": "Keep macro teacher-depth AbsRel on common884 validation as preregistered. Report per-domain metrics, NYU sensor AbsRel/RMSE, selected and last checkpoints, failures, speed and memory separately.",
+  "feedback": "Publish same-step metrics after every rung and inspect decoded geometry. Use paired scene uncertainty before expansion decisions. Reuse the fixed20 qualitative audit; held-out tests are final assessments, not per-rung tuning targets.",
+  "innovation": "Allow a compact local-convolution plus global-attention residual adapter if existing-head evidence identifies a useful gap. Any new candidate first receives the same bounded rung, data and metric protocol; it is not automatically launched now.",
+  "claims": "One-seed screening compares equal updates/examples, not equal FLOPs or convergence. Early curves guide experiments; no universal generalization winner can be inferred from the first rung.",
+  "gpu_policy": "Never stop GPU; train serially and preserve resumable checkpoints."
+}
