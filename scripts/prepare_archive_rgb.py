@@ -362,9 +362,11 @@ def run(args):
     state = json.loads((source / "status.json").read_text())
     if state["stage"] not in {"archives_complete", "archives_complete_with_missing_assets"}:
         raise ValueError("All source archives must finish downloading and verifying first")
-    # Keep the writer lock throughout extraction; a resume/download cannot replace inputs.
-    source_lock = (source / ".download.lock").open("a")
-    fcntl.flock(source_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    # Observe that the downloader finished and released its writer lock. Do not
+    # hold it while reading: the next queued dataset uses that same release as
+    # its start condition. Per-archive hashes/stats detect input changes below.
+    with (source / ".download.lock").open("a") as source_lock:
+        fcntl.flock(source_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     missing = state.get("missing", [])
     if args.dataset == "structured3d":
         if missing not in ([], ["Structured3D_perspective_full_09.zip"]):

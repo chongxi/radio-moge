@@ -151,7 +151,8 @@ def test_official_test_and_heldout_pixel_duplicates_win_over_training(tmp_path):
     assert len((tmp_path / "test-official.jsonl").read_text().splitlines()) == 1
 
 
-def test_full_structured_ready_gate_and_resume_detects_corrupted_output(tmp_path):
+def test_full_structured_ready_gate_and_resume_detects_corrupted_output(tmp_path, monkeypatch):
+    import fcntl
     source, out = tmp_path / "source", tmp_path / "prepared"
     (source / "archives").mkdir(parents=True)
     (source / "receipts").mkdir()
@@ -175,6 +176,15 @@ def test_full_structured_ready_gate_and_resume_detects_corrupted_output(tmp_path
     assert not out.exists()
     status["stage"] = "archives_complete_with_missing_assets"
     (source / "status.json").write_text(json.dumps(status))
+    original_extract = prep.extract_zip
+
+    def check_next_dataset_is_not_blocked(*args, **kwargs):
+        # IRS waits for Structured3D's download writer lock, not its RGB reader.
+        with (source / ".download.lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return original_extract(*args, **kwargs)
+
+    monkeypatch.setattr(prep, "extract_zip", check_next_dataset_is_not_blocked)
     result = prep.run(args)
     assert result["stage"] == "ready" and result["counts"] == dict(train=1, val=1, test=1)
     assert prep.run(args)["counts"] == result["counts"]
