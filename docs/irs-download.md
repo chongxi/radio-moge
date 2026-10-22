@@ -61,7 +61,14 @@ For this project's current setup, bulk datasets belong on the GPU machine at
 disk. `/shared/radio-moge/datasets/` in the CPU workspace holds separately copied
 backups. Run only one bulk dataset download/copy at a time. This script's lock
 prevents duplicate downloads into the same IRS output directory; it does not
-coordinate other dataset jobs or automatically join their queue.
+coordinate arbitrary dataset jobs. To join this project's serial queue, add
+`--wait-for-dataset /path/to/predecessor-dataset` with `--download`. IRS then
+records `waiting_for_preceding_dataset` and makes no download requests until
+the predecessor records completion and releases `.download.lock`. A predecessor
+with a known missing source archive may record
+`archives_complete_with_missing_assets`; this allows the next dataset to start
+but does not imply the missing source asset was recovered. Failed or interrupted
+predecessors stop the queue for inspection.
 
 The OneDrive web endpoints can change. If listing fails, inspect the official
 share in a browser and update the web-flow implementation; a failure of the

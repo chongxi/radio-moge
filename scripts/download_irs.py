@@ -336,6 +336,33 @@ def download_one(client, item, output, record, retries=5):
     return result
 
 
+def wait_for_dataset(source, record):
+    """Wait for a verified predecessor and its writer lock before starting IRS."""
+    completed = {"complete", "archives_complete", "archives_complete_with_missing_assets"}
+    while True:
+        previous = json.loads((source / "status.json").read_text())
+        stage = previous["stage"]
+        if stage in {"failed", "interrupted"}:
+            raise DownloadError(
+                "Preceding dataset stopped unsuccessfully; inspect before continuing"
+            )
+        if stage in completed:
+            # A completion record alone is insufficient while its writer is active.
+            with (source / ".download.lock").open("a") as lock:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    pass
+                else:
+                    return
+        record(
+            stage="waiting_for_preceding_dataset",
+            predecessor=str(source),
+            predecessor_stage=stage,
+        )
+        time.sleep(30)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
@@ -347,6 +374,11 @@ def main():
         "--download", action="store_true", help="Download and verify selected archives"
     )
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--wait-for-dataset",
+        type=Path,
+        help="With --download, wait for this dataset's completion status and released lock",
+    )
     parser.add_argument("--share-url", default=SHARE)
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument(
@@ -359,6 +391,10 @@ def main():
     args = parser.parse_args()
     if args.download and args.output is None:
         parser.error("--download requires --output")
+    if args.wait_for_dataset and not args.download:
+        parser.error("--wait-for-dataset requires --download")
+    if args.wait_for_dataset and args.wait_for_dataset.resolve() == args.output.resolve():
+        parser.error("Preceding dataset must differ from IRS output")
     if args.retries < 0:
         parser.error("--retries must be nonnegative")
     status_path = None
@@ -368,6 +404,17 @@ def main():
             lock = (args.output / ".download.lock").open("a")
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             status_path = args.output / "status.json"
+        state = dict(pid=os.getpid(), started_at=time.time(), completed=[], training_ready=False)
+
+        def record(**changes):
+            state.update(changes, updated_at=time.time())
+            atomic_json(status_path, state)
+            emit(changes)
+
+        if args.wait_for_dataset:
+            wait_for_dataset(args.wait_for_dataset, record)
+        if args.download:
+            record(stage="resolving_inventory")
         client = IRSClient(args.share_url)
         items = client.refresh()
         selected = select_items(items, args.files, args.include_small)
@@ -385,13 +432,6 @@ def main():
                 emit(probe(client, item))
             return
         atomic_json(args.output / "inventory.json", inventory)
-        state = dict(pid=os.getpid(), started_at=time.time(), completed=[], training_ready=False)
-
-        def record(**changes):
-            state.update(changes, updated_at=time.time())
-            atomic_json(status_path, state)
-            emit(changes)
-
         for item in selected:
             download_one(client, item, args.output, record, args.retries)
             state["completed"].append(item["name"])

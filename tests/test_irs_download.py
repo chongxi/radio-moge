@@ -1,4 +1,5 @@
 import gzip
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -137,6 +138,38 @@ def test_default_selection_is_full_release_without_duplicate_small_subset():
     assert all("item_url" not in x for x in selected)
     with pytest.raises(download.DownloadError, match="Missing"):
         download.select_items({})
+
+
+def test_queue_waits_for_verified_completion_and_released_lock(tmp_path, monkeypatch):
+    source = tmp_path / "predecessor"
+    source.mkdir()
+    status = source / "status.json"
+    download.atomic_json(status, {"stage": "downloading"})
+    held = (source / ".download.lock").open("a")
+    fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    events = []
+
+    def advance(_):
+        if len(events) == 1:
+            download.atomic_json(status, {"stage": "archives_complete_with_missing_assets"})
+        elif len(events) == 2:
+            held.close()
+        else:
+            pytest.fail("Queue did not advance after predecessor lock release")
+
+    monkeypatch.setattr(download.time, "sleep", advance)
+    download.wait_for_dataset(source, lambda **event: events.append(event))
+    assert [e["predecessor_stage"] for e in events] == [
+        "downloading",
+        "archives_complete_with_missing_assets",
+    ]
+
+
+@pytest.mark.parametrize("stage", ["failed", "interrupted"])
+def test_failed_predecessor_cannot_start_irs(tmp_path, stage):
+    download.atomic_json(tmp_path / "status.json", {"stage": stage})
+    with pytest.raises(download.DownloadError, match="Preceding dataset"):
+        download.wait_for_dataset(tmp_path, lambda **kw: None)
 
 
 def test_requests_only_web_flow_and_source_identity(monkeypatch):
