@@ -93,10 +93,21 @@ def structured_row(name, archive_name):
     )
 
 
-def irs_member(name):
+def irs_member(name, archive_name=None):
     parts = safe_member(name).parts
     if not parts or not re.fullmatch(r"[lr]_\d+\.png", parts[-1]):
         return None
+    # The split Home/Office release archives omit the category directory that
+    # appears in the official lists. Restore only that known, archive-specific
+    # prefix; extract_tar still checks every resulting path against the lists.
+    category = {
+        "Home-1.tar.gz": "Home",
+        "Home-2.tar.gz": "Home",
+        "Office-1.tar.gz": "Office",
+        "Office-2.tar.gz": "Office",
+    }.get(archive_name)
+    if len(parts) == 2 and category is not None:
+        return str(PurePosixPath(category, *parts))
     matches = [
         i
         for i, p in enumerate(parts)
@@ -236,7 +247,7 @@ def extract_tar(path, receipt, output, official, progress=lambda **kw: None):
                     safe_member(member.name)
                     if not (member.isfile() or member.isdir()):
                         raise ValueError("Archive links/special files are not permitted")
-                    canonical = irs_member(member.name) if member.isfile() else None
+                    canonical = irs_member(member.name, path.name) if member.isfile() else None
                     if canonical is not None:
                         if canonical not in official:
                             unexpected.append(canonical)

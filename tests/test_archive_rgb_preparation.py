@@ -151,6 +151,47 @@ def test_official_test_and_heldout_pixel_duplicates_win_over_training(tmp_path):
     assert len((tmp_path / "test-official.jsonl").read_text().splitlines()) == 1
 
 
+@pytest.mark.parametrize(
+    "archive,category,scene,split",
+    [
+        ("Home-1.tar.gz", "Home", "ArchVizInterior03Data", "official-test"),
+        ("Home-2.tar.gz", "Home", "ModernHotelRoom", "val"),
+        ("Office-1.tar.gz", "Office", "ModernModularOffice", "test"),
+        ("Office-2.tar.gz", "Office", "OfficeMedley3", "train"),
+    ],
+)
+def test_irs_split_archives_restore_category_without_changing_official_split(
+    tmp_path, archive, category, scene, split
+):
+    path, out = tmp_path / archive, tmp_path / "prepared"
+    official, members = {}, [(f"{scene}/d_00001.exr", b"unused label")]
+    for eye in ("l", "r"):
+        member = f"{scene}/{eye}_00001.png"
+        canonical = f"{category}/{member}"
+        official[canonical] = dict(
+            image="rgb/" + canonical, dataset="irs", split=split, group=f"irs:family:{scene}"
+        )
+        members.append((member, rgb(40 + (eye == "r"))))
+    path.write_bytes(tar_bytes(members))
+    rows = prep.extract_tar(path, receipt(path), out, official)
+    assert {r["image"] for r in rows} == {r["image"] for r in official.values()}
+    assert all(r["split"] == split and r["group"] == f"irs:family:{scene}" for r in rows)
+    for row, (member, data) in zip(rows, members[1:]):
+        assert row["source_member"] == member
+        assert (out / row["image"]).read_bytes() == data
+    # Known archive prefixes do not permit RGB absent from the official lists.
+    with pytest.raises(ValueError, match="unlisted RGB"):
+        prep.extract_tar(path, receipt(path), tmp_path / "unlisted", {})
+
+
+def test_irs_missing_category_requires_known_split_archive():
+    for archive in (None, "Store.tar.gz", "Restaurant.tar.gz", "Other.tar.gz"):
+        with pytest.raises(ValueError, match="Unexpected IRS RGB member layout"):
+            prep.irs_member("Scene/l_00001.png", archive)
+    with pytest.raises(ValueError, match="Unsafe"):
+        prep.irs_member("../Scene/l_00001.png", "Home-1.tar.gz")
+
+
 def test_full_structured_ready_gate_and_resume_detects_corrupted_output(tmp_path, monkeypatch):
     import fcntl
     source, out = tmp_path / "source", tmp_path / "prepared"
