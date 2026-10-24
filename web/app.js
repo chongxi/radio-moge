@@ -200,10 +200,11 @@ async function init(){
   await loadComparison();
   $('total-images').textContent=m.run.test_images;
   $('scene-count').textContent=m.run.test_scenes+' held-out scenes · '+(m.run.validation_images?m.run.validation_images+' separate validation images':'80 / 20 split');
-  $('run-steps').textContent=m.run.steps+'-step checkpoint';
+  const checkpointRole={selected:'Validation-selected',last:'Final',snapshot:'Snapshot'}[m.run.checkpoint_role];
+  $('run-steps').textContent=(checkpointRole?checkpointRole+' · ':'')+m.run.steps+'-step checkpoint';
   ['before','after','teacher'].forEach(name=>$(name+'-score').textContent=fmt(m.summary[name].abs_rel));
   $('protocol-text').textContent=m.run.protocol;$('baseline-text').textContent='Before-training weights: '+m.run.baseline+'.';
-  $('model-info').textContent=m.run.student+' → frozen decoder. Teacher: '+m.run.teacher+'. Training images: '+m.run.train_images+'.';
+  $('model-info').textContent=m.run.student+' → frozen decoder. Teacher: '+m.run.teacher+'. Training images: '+m.run.train_images+'.'+(m.run.budget_description?' '+m.run.budget_description:'');
   [...new Set(m.samples.map(s=>s.scene_type))].sort().forEach(type=>$('scene-filter').add(new Option(pretty(type),type)));
   const colors=new ImageData(256,1);m.colormap.forEach((c,i)=>colors.data.set([...c,255],i*4));
   const bar=$('colorbar'),ctx=bar.getContext('2d'),temp=document.createElement('canvas');temp.width=256;temp.height=1;temp.getContext('2d').putImageData(colors,0,0);ctx.drawImage(temp,0,0,256,12);

@@ -27,6 +27,29 @@ from .system import build_system
 CHANNELS = ["before", "after", "teacher", "ground_truth"]
 
 
+def checkpoint_metadata(state, role=None):
+    """Describe the saved checkpoint separately from the experiment limits."""
+    if role not in (None, "selected", "last", "snapshot"):
+        raise ValueError("Unknown checkpoint role")
+    settings = state["config"]["train"]
+    kind = state["adapter_config"].get("kind", "mlp")
+    labels = {"linear": "linear", "mlp": "MLP", "fusion": "intermediate fusion",
+              "dpt": "DPT", "attention": "Attention"}
+    seconds = settings.get("max_seconds")
+    budget = f"Training limit: {settings['steps']:,} optimizer steps."
+    if seconds is not None:
+        budget = (f"Training limits: {seconds / 3600:g} hours of cumulative live trainer time "
+                  f"(including loading, validation and checkpoint I/O), or "
+                  f"{settings['steps']:,} optimizer steps, whichever comes first.")
+    elapsed = state.get("wall_clock_elapsed_seconds")
+    if elapsed is not None:
+        budget += f" Recorded live time at this checkpoint: {elapsed / 3600:.2f} hours."
+    return dict(student="C-RADIOv4-H + " + labels.get(kind, kind),
+                checkpoint_role=role, training_budget=settings["steps"],
+                training_max_seconds=seconds, checkpoint_elapsed_seconds=elapsed,
+                budget_description=budget)
+
+
 def write_depths(path, arrays):
     """Lossless little-endian float32 planes; browser receives decoded HTTP gzip."""
     shape = arrays[0].shape
@@ -78,7 +101,8 @@ def initial_provenance(state, initial):
 
 
 @torch.no_grad()
-def export_viewer(checkpoint, initial_adapter, manifest, output, original_metrics=None):
+def export_viewer(checkpoint, initial_adapter, manifest, output, original_metrics=None,
+                  checkpoint_role=None):
     output = Path(output).resolve()
     if output.exists():
         raise FileExistsError(f"Use a new output directory: {output}")
@@ -93,6 +117,7 @@ def export_viewer(checkpoint, initial_adapter, manifest, output, original_metric
     validation = read_manifest(val_path) if val_path else []
     check_split(train, validation)
     check_split(validation, records)
+    checkpoint_info = checkpoint_metadata(state, checkpoint_role)
     system, after = build_system(config, "cuda")
     after.load_state_dict(state["adapter"])
     after.eval()
@@ -167,13 +192,10 @@ def export_viewer(checkpoint, initial_adapter, manifest, output, original_metric
         colormap=cv2.cvtColor(cv2.applyColorMap(np.arange(256, dtype="uint8")[:, None],
                                               cv2.COLORMAP_VIRIDIS), cv2.COLOR_BGR2RGB)[:, 0].tolist(),
         run=dict(name=config.get("tracking", {}).get("name", "NYUv2 sanity"),
-                 steps=state["step"], training_budget=config["train"]["steps"],
+                 steps=state["step"], **checkpoint_info,
                  checkpoint=Path(checkpoint).name, train_images=len(train),
                  validation_images=len(validation),
                  test_images=len(records), test_scenes=len({r.get("group") for r in records}),
-                 student=("C-RADIOv4-H + intermediate fusion"
-                          if state["adapter_config"].get("kind") == "fusion"
-                          else "C-RADIOv4-H + MLP"),
                  teacher=config["models"]["moge_repo"],
                  baseline=("Seeded reconstruction; all four initial feature losses matched exactly"
                            if provenance.get("verified") else "Saved stage-start checkpoint"),
@@ -216,8 +238,11 @@ def main():
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--original-metrics", help="Original per_image.json; require unchanged scores")
+    parser.add_argument("--checkpoint-role", choices=("selected", "last", "snapshot"),
+                        help="Label the exported checkpoint's role without inferring it from its name")
     args = parser.parse_args()
-    export_viewer(args.checkpoint, args.initial_adapter, args.manifest, args.output, args.original_metrics)
+    export_viewer(args.checkpoint, args.initial_adapter, args.manifest, args.output,
+                  args.original_metrics, args.checkpoint_role)
 
 
 if __name__ == "__main__":
