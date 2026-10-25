@@ -14,18 +14,21 @@ finalizer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(finalizer)
 
 
-def fixture(root):
+def fixture(root, pixel_duplicate=False):
     def put(name, value):
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(value)
         return {"sha256": hashlib.sha256(value).hexdigest(), "bytes": len(value)}
     rgb = put("rgb/a.png", b"rgb-data")
-    put("rgb/b.png", b"rgb-data")
-    receipt = put("receipts/a.zip.json", b"receipt")
+    excluded = put("rgb/b.png", b"different-encoding" if pixel_duplicate else b"rgb-data")
+    receipt = put("receipts/a.zip.json", json.dumps({"source_sha256": "abc", "records": [{
+        "image": "rgb/b.png", "sha256_kind": "encoded_file_bytes",
+        "decoded_rgb_sha256": "pixels", **excluded}]}).encode())
     metadata = {}
     metadata["train.jsonl"] = put("train.jsonl", (json.dumps({
-        "image": "rgb/a.png", "sha256_kind": "encoded_file_bytes", **rgb}) + "\n").encode())
+        "image": "rgb/a.png", "sha256_kind": "encoded_file_bytes",
+        "decoded_rgb_sha256": "pixels", **rgb}) + "\n").encode())
     metadata["excluded.json"] = put("excluded.json", json.dumps([
         {"image": "rgb/b.png", "reason": "exact_duplicate", "split": "train"}]).encode())
     metadata["dataset_info.json"] = put("dataset_info.json", json.dumps({
@@ -33,7 +36,7 @@ def fixture(root):
     ).encode())
     pins = {"metadata_files": metadata, "counts": {"train": 1}}
     source = {"stage": "passed", "metadata": metadata,
-              "excluded": {"rgb/b.png": rgb}, "receipts": {"receipts/a.zip.json": receipt}}
+              "excluded": {"rgb/b.png": excluded}, "receipts": {"receipts/a.zip.json": receipt}}
     return pins, source
 
 
@@ -53,6 +56,21 @@ def test_supplement_completes_exact_tree_without_rehashing_retained(tmp_path, mo
     assert result["retained_images"] == result["excluded_images"] == 1
     assert result["inventory"]["files"] == 6
     assert not result["retained_rehashed"]
+
+
+def test_supports_byte_different_pixel_duplicates_from_source_verified_receipts(tmp_path):
+    pins, source = fixture(tmp_path, pixel_duplicate=True)
+    result = run(tmp_path, pins, source)
+    assert result["duplicate_receipt_matches"] == {"decoded": 1}
+
+
+def test_rejects_receipt_without_retained_duplicate(tmp_path):
+    pins, source = fixture(tmp_path, pixel_duplicate=True)
+    path = tmp_path / "receipts/a.zip.json"
+    path.write_bytes(path.read_bytes().replace(b"pixels", b"wrong!"))
+    source["receipts"]["receipts/a.zip.json"]["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="no retained duplicate"):
+        run(tmp_path, pins, source)
 
 
 @pytest.mark.parametrize("kind", ["excluded", "receipt", "metadata", "extra", "missing",

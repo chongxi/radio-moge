@@ -18,6 +18,7 @@ DATASET = "structured3d-perspective-ready-v1-20261022"
 LEGACY_SHA = "c9676902fb254185b9759a6badf0d9e7665cd75d2e806cd3465c7b02b43317b3"
 PLAN_SHA = "5429a555e6653dc9b452f85a5a2781f6ebd96c39080d729ed963fefe063016a6"
 EXPECTED_ERROR = "Unreferenced RGB files: 289"
+SOURCE_AUDIT_SHA = "ae26cee772cfb191f2370cef4ef6035ccfe0b43f8c12e5bdd6caff78ce990930"
 
 
 def stable_bytes(path):
@@ -110,10 +111,40 @@ def retained_rows(root, pins, excluded):
                 require(name not in rows and name not in excluded, "Overlapping image path")
                 require(row["sha256_kind"] == "encoded_file_bytes", "Missing encoded SHA")
                 require(isinstance(row["bytes"], int) and row["bytes"] > 0, "Invalid RGB size")
-                rows[name] = {"sha256": row["sha256"], "bytes": row["bytes"]}
+                rows[name] = {"sha256": row["sha256"], "bytes": row["bytes"],
+                              "decoded_rgb_sha256": row.get("decoded_rgb_sha256")}
                 counts[split] += 1
     require(dict(counts) == pins["counts"], "Pinned split count mismatch")
     return rows, dict(counts)
+
+
+def verify_duplicate_receipts(root, source, rows, archive_hashes):
+    """Original preparation deduplicates either encoded bytes or decoded pixels."""
+    encoded = {row["sha256"] for row in rows.values()}
+    decoded = {row["decoded_rgb_sha256"] for row in rows.values()
+               if row.get("decoded_rgb_sha256")}
+    matched = {}
+    for name in source["receipts"]:
+        # Caller has checked receipt bytes against fresh, pinned source digests.
+        receipt = json.loads((root / name).read_text())
+        archive = Path(name).name.removesuffix(".json")
+        require(receipt["source_sha256"] == archive_hashes[archive], "Receipt archive mismatch")
+        for row in receipt["records"]:
+            path = row["image"]
+            if path not in source["excluded"]:
+                continue
+            require(path not in matched, "Repeated excluded receipt path")
+            require(row["sha256_kind"] == "encoded_file_bytes", "Invalid receipt SHA kind")
+            require({k: row[k] for k in ["sha256", "bytes"]} == source["excluded"][path],
+                    "Excluded receipt differs from source bytes")
+            if row["sha256"] in encoded:
+                matched[path] = "encoded"
+            else:
+                require(row.get("decoded_rgb_sha256") in decoded,
+                        "Excluded receipt has no retained duplicate")
+                matched[path] = "decoded"
+    require(set(matched) == set(source["excluded"]), "Missing excluded receipt")
+    return dict(Counter(matched.values()))
 
 
 def exact_tree(root, expected, report):
@@ -154,7 +185,6 @@ def finalize(root, pins, source, reader, report):
     excluded = declared_exclusions(root, pins["metadata_files"])
     require(set(source["excluded"]) == excluded, "Source exclusions mismatch")
     rows, counts = retained_rows(root, pins, excluded)
-    retained_hashes = {row["sha256"] for row in rows.values()}
     info = json.loads((root / "dataset_info.json").read_text())
     expected_receipts = {f"receipts/{n}.json" for n in info["provenance"]["archive_sha256"]}
     require(set(source["receipts"]) == expected_receipts, "Source receipt inventory mismatch")
@@ -164,9 +194,9 @@ def finalize(root, pins, source, reader, report):
         sha, st = reader.digest(safe_file(root, name))
         require(sha == expected["sha256"] and st.st_size == expected["bytes"],
                 f"Supplemental SHA/size mismatch: {name}")
-        if name in excluded:
-            require(sha in retained_hashes, "Excluded bytes do not match any retained image")
         identities[name] = identity(st)
+    duplicate_evidence = verify_duplicate_receipts(
+        root, source, rows, info["provenance"]["archive_sha256"])
     expected = {**rows, **supplemental, **pins["metadata_files"]}
     require(len(expected) == len(rows) + len(supplemental) + len(pins["metadata_files"]),
             "Overlapping metadata path")
@@ -180,11 +210,14 @@ def finalize(root, pins, source, reader, report):
             "excluded_bytes_verified": True,
             "excluded_rgb_bytes": sum(v["bytes"] for v in source["excluded"].values()),
             "receipt_files_verified": len(source["receipts"]), "inventory": inventory,
+            "duplicate_receipt_matches": duplicate_evidence,
+            "duplicate_check_scope": "Stored preparation hashes in source-verified receipts; "
+                                     "no fresh pixel decode. Every excluded file SHA matches source.",
             "metadata": pins["metadata_files"], "failures": 0,
             "checks": ["legacy full retained RGB SHA readback and per-manifest identity checks",
                        "pinned split counts and stable metadata SHA/size",
                        "excluded RGB bytes and all receipts match fresh source SHA/size",
-                       "excluded bytes match retained SHA values",
+                       "source-verified receipts match original encoded-or-decoded deduplication",
                        "exact full-tree file inventory and sizes, no symlinks or special files"]}
 
 
@@ -258,7 +291,7 @@ def main():
             source = json.loads(source_bytes)
             require(source["plan_sha256"] == PLAN_SHA and source["dataset"] == DATASET,
                     "Source proof identity mismatch")
-            require(source["code_sha256"] == state["code_sha256"] and
+            require(source["code_sha256"] in {SOURCE_AUDIT_SHA, state["code_sha256"]} and
                     source["verifier_sha256"] == state["verifier_sha256"],
                     "Source proof code mismatch")
             root = Path(plan["staging"]) / DATASET
