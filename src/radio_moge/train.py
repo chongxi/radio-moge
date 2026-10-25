@@ -85,13 +85,51 @@ def validate_config(config):
         raise ValueError("max_seconds must be finite and positive")
 
 
-def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
+def continued_limits(settings, state, extension=None):
+    """Explicitly extend a resumed run without resetting its LR schedule or state."""
+    limits = dict(
+        (state or {}).get("runtime_limits")
+        or {"steps": settings["steps"], "max_seconds": settings.get("max_seconds")}
+    )
+    if extension is not None:
+        if state is None:
+            raise ValueError("Budget extension requires a resume checkpoint")
+        seconds, steps = extension
+        if not math.isfinite(seconds) or seconds <= 0 or steps < 1:
+            raise ValueError("Extension seconds and update allowance must be positive")
+        elapsed = state.get("wall_clock_elapsed_seconds", 0.0)
+        limits = {
+            "steps": state["step"] + steps,
+            "max_seconds": elapsed + seconds,
+            "extension": {
+                "base_step": state["step"],
+                "base_cursor": state["cursor"],
+                "base_elapsed_seconds": elapsed,
+                "additional_seconds": seconds,
+                "additional_update_allowance": steps,
+                "lr_policy": "Preserve original scheduler; retain its floor after cosine decay",
+            },
+        }
+    return limits
+
+
+def train(
+    config,
+    resume=None,
+    init=None,
+    stop_after=None,
+    system_adapter=None,
+    extension=None,
+    execution_revision=None,
+):
     """Single-device experiment runner. system_adapter allows small CPU integration tests."""
     invocation_started = time.monotonic()
     elapsed_before = 0.0
     validate_config(config)
     if resume and init:
         raise ValueError("Choose resume (same run) or init (new stage), not both")
+    if extension is not None and not resume:
+        raise ValueError("Budget extension requires --resume")
     settings = config["train"]
     accelerator = Accelerator(
         cpu=settings.get("device") == "cpu", mixed_precision=settings["precision"]
@@ -156,6 +194,24 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
             step, cursor, best = state["step"], state["cursor"], state["best"]
             elapsed_before = state.get("wall_clock_elapsed_seconds", 0.0)
             restore_rng(state["rng"])
+    limits = continued_limits(settings, state if resume else None, extension)
+    if resume:
+        atomic_json(
+            {
+                "checkpoint": str(Path(resume).resolve()),
+                "step": step,
+                "cursor": cursor,
+                "best": best,
+                "optimizer_lr": optimizer.param_groups[0]["lr"],
+                "scheduler_last_epoch": scheduler.last_epoch,
+                "elapsed_before_seconds": elapsed_before,
+                "runtime_limits": limits,
+                "config_and_manifest_match": True,
+                "execution_revision": execution_revision,
+                "restored": ["adapter", "statistics", "optimizer", "scheduler", "rng", "cursor"],
+            },
+            output / "resume-state.json",
+        )
     adapter, optimizer = accelerator.prepare(adapter, optimizer)
     # Manual accumulation uses complete windows and a known data cursor. Accelerate's
     # accumulation factor stays at one; each microbatch loss is divided exactly once.
@@ -186,6 +242,8 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
         "train_images": len(records),
         "validation_images": len(validation),
         "code_revision": config.get("code_revision"),
+        "execution_revision": execution_revision or (state or {}).get("execution_revision"),
+        "runtime_limits": limits,
     }
     atomic_json(provenance, output / "provenance.json")
     tracker = ExperimentTracker(config, output, resume=bool(resume), provenance=provenance)
@@ -211,7 +269,7 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
         return elapsed_before + time.monotonic() - invocation_started
 
     def budget_exhausted():
-        limit = settings.get("max_seconds")
+        limit = limits.get("max_seconds")
         return limit is not None and elapsed_seconds() >= limit
 
     def save(filename):
@@ -232,11 +290,13 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
                 "data_digests": digests,
                 "revisions": revisions,
                 "wall_clock_elapsed_seconds": elapsed_seconds(),
+                "runtime_limits": limits,
+                "execution_revision": provenance["execution_revision"],
             },
             output / filename,
         )
 
-    total = min(settings["steps"], stop_after) if stop_after else settings["steps"]
+    total = min(limits["steps"], stop_after) if stop_after else limits["steps"]
     accumulation = settings["accumulation"]
     loader = make_loader(records, config, cursor, max(0, total - step) * accumulation)
     iterator = iter(loader)
@@ -344,7 +404,7 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
             ):
                 validate()
         save("latest.pt")
-        if settings.get("max_seconds") is not None:
+        if limits.get("max_seconds") is not None:
             reason = (
                 "signal" if stop else "wall_clock_budget" if budget_exhausted() else "step_limit"
             )
@@ -354,7 +414,7 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
                     reason=reason,
                     step=step,
                     elapsed_seconds=stopped_at,
-                    max_seconds=settings["max_seconds"],
+                    max_seconds=limits["max_seconds"],
                     final_evaluation="pending",
                 ),
                 output / "stop-report.json",
@@ -380,7 +440,7 @@ def train(config, resume=None, init=None, stop_after=None, system_adapter=None):
                     step=step,
                     elapsed_seconds=elapsed_seconds(),
                     optimizer_stopped_elapsed_seconds=stopped_at,
-                    max_seconds=settings["max_seconds"],
+                    max_seconds=limits["max_seconds"],
                     final_evaluation="skipped_on_signal" if stop else "complete",
                 ),
                 output / "stop-report.json",
@@ -409,8 +469,33 @@ def main():
     parser.add_argument(
         "--stop-after", type=int, help="Save and exit early without changing LR schedule"
     )
+    parser.add_argument(
+        "--extend-seconds",
+        type=float,
+        help="Explicit additional live wall time from the resume checkpoint",
+    )
+    parser.add_argument(
+        "--extend-updates",
+        type=int,
+        help="Explicit additional update ceiling; keeps original LR schedule",
+    )
+    parser.add_argument("--execution-revision", help="Revision of this trainer invocation")
     args = parser.parse_args()
-    print(train(load_config(args.config), args.resume, args.init, args.stop_after))
+    if (args.extend_seconds is None) != (args.extend_updates is None):
+        parser.error("Both extension limits are required")
+    extension = (
+        (args.extend_seconds, args.extend_updates) if args.extend_seconds is not None else None
+    )
+    print(
+        train(
+            load_config(args.config),
+            args.resume,
+            args.init,
+            args.stop_after,
+            extension=extension,
+            execution_revision=args.execution_revision,
+        )
+    )
 
 
 if __name__ == "__main__":

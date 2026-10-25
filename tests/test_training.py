@@ -202,6 +202,76 @@ def test_deadline_evaluates_final_checkpoint_once(tmp_path, monkeypatch):
     assert len(evaluated) == 1
 
 
+def test_explicit_extension_preserves_optimizer_sampler_schedule_and_remaining_budget(
+    tmp_path, monkeypatch
+):
+    clock = [0.0]
+    monkeypatch.setattr("radio_moge.train.time.monotonic", lambda: clock[0])
+    original_step = torch.optim.AdamW.step
+
+    def timed_step(optimizer, *args, **kwargs):
+        result = original_step(optimizer, *args, **kwargs)
+        clock[0] += 1.0
+        return result
+
+    monkeypatch.setattr(torch.optim.AdamW, "step", timed_step)
+    config = config_for(tmp_path)
+    config["data"]["val_manifest"] = None
+    config["train"].update(steps=4, max_seconds=3)
+    config["output_dir"] = str(tmp_path / "extension")
+    base = train(config, system_adapter=tiny_system())
+    state = torch.load(base, weights_only=True)
+    assert state["step"] == 3
+    frozen = tmp_path / "frozen.pt"
+    frozen.write_bytes(Path(base).read_bytes())
+    extended = train(
+        config,
+        resume=frozen,
+        extension=(3, 10),
+        stop_after=5,
+        system_adapter=tiny_system(),
+        execution_revision="extension-test",
+    )
+    middle = torch.load(extended, weights_only=True)
+    assert middle["step"] == 5 and middle["cursor"] == 10
+    assert middle["scheduler"]["last_epoch"] == 5
+    assert middle["optimizer"]["param_groups"][0]["lr"] == pytest.approx(0.01 * 0.05)
+    assert middle["runtime_limits"]["max_seconds"] == 6
+    clock[0] += 1000  # Downtime must not count, nor grant a fresh extension on resume.
+    resumed = torch.load(
+        train(config, resume=extended, system_adapter=tiny_system()), weights_only=True
+    )
+    assert resumed["step"] == 6 and resumed["cursor"] == 12
+    assert resumed["execution_revision"] == "extension-test"
+    again = torch.load(
+        train(config, resume=extended, system_adapter=tiny_system()), weights_only=True
+    )
+    assert again["step"] == 6
+
+    control_config = deepcopy(config)
+    control_config["output_dir"] = str(tmp_path / "extension-control")
+    control = torch.load(
+        train(control_config, resume=frozen, extension=(3, 10), system_adapter=tiny_system()),
+        weights_only=True,
+    )
+    for key in control["adapter"]:
+        torch.testing.assert_close(control["adapter"][key], resumed["adapter"][key], rtol=0, atol=0)
+    assert torch.load(frozen, weights_only=True)["step"] == 3
+
+
+def test_extension_cannot_bypass_config_or_positive_budget_guards(tmp_path):
+    config = config_for(tmp_path)
+    config["output_dir"] = str(tmp_path / "extension-guards")
+    with pytest.raises(ValueError, match="requires --resume"):
+        train(config, extension=(3, 10), system_adapter=tiny_system())
+    checkpoint = train(config, stop_after=1, system_adapter=tiny_system())
+    with pytest.raises(ValueError, match="must be positive"):
+        train(config, resume=checkpoint, extension=(-1, 10), system_adapter=tiny_system())
+    config["train"]["lr"] *= 2
+    with pytest.raises(ValueError, match="identical config"):
+        train(config, resume=checkpoint, extension=(3, 10), system_adapter=tiny_system())
+
+
 def test_fixed_budget_training_does_not_read_or_evaluate_test_set(tmp_path, monkeypatch):
     config = config_for(tmp_path)
     config["data"]["val_manifest"] = None
