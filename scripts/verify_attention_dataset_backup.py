@@ -74,6 +74,27 @@ def rgb_inventory(root):
     return paths
 
 
+def declared_exclusions(root, metadata):
+    """Preparation preserves duplicate RGB files outside the retained manifests."""
+    excluded = set()
+    if "excluded.json" not in metadata:
+        return excluded
+    for row in json.loads((root / "excluded.json").read_text()):
+        path = relative_path(row["image"])
+        require(path.parts[0] == "rgb", "Excluded image is outside the RGB tree")
+        require(row.get("reason") == "exact_duplicate", "Unknown exclusion reason")
+        require(row.get("split") in {"train", "val", "test"}, "Unknown exclusion split")
+        require(row["image"] not in excluded, "Duplicate exclusion path")
+        excluded.add(row["image"])
+    if "dataset_info.json" in metadata:
+        info = json.loads((root / "dataset_info.json").read_text())
+        require(
+            len(excluded) == info.get("excluded_exact_duplicates", 0),
+            "Excluded image count mismatch",
+        )
+    return excluded
+
+
 def verify(root, pins, report, mib_per_second=20):
     require(root.is_dir() and not root.is_symlink(), "Dataset root missing or symlinked")
     reader = Reader(mib_per_second)
@@ -90,8 +111,11 @@ def verify(root, pins, report, mib_per_second=20):
         )
         metadata[name] = {"sha256": sha, "bytes": info.st_size}
         identities[name] = identity(info)
+    excluded = declared_exclusions(root, metadata)
     report(stage="checking_rgb_inventory", metadata=metadata)
     remaining = rgb_inventory(root / "rgb")
+    initial_inventory = remaining.copy()
+    require(excluded <= remaining, "Declared excluded RGB files are missing")
     inventory_count = len(remaining)
     counts = {}
     verified = rgb_bytes = 0
@@ -105,6 +129,7 @@ def verify(root, pins, report, mib_per_second=20):
                 row = json.loads(line)
                 relative = relative_path(row["image"])
                 require(relative.parts[0] == "rgb", "Image is outside the dataset RGB tree")
+                require(row["image"] not in excluded, "Retained image is also excluded")
                 require(row.get("sha256_kind") == "encoded_file_bytes", "Missing encoded SHA256")
                 require(row["image"] in remaining, f"Missing or duplicate image: {row['image']}")
                 sha, info = reader.digest(root / relative)
@@ -124,12 +149,18 @@ def verify(root, pins, report, mib_per_second=20):
                     )
                     last_report = time.monotonic()
         require(identity((root / name).lstat()) == identities[name], f"Manifest changed: {name}")
-    require(not remaining, f"Unreferenced RGB files: {len(remaining)}")
+    require(remaining == excluded, f"Unreferenced RGB files: {len(remaining - excluded)}")
     for split, count in pins["counts"].items():
         require(counts.get(split) == count, f"Split count mismatch: {split}")
     for name, expected in identities.items():
         require(identity((root / name).lstat()) == expected, f"Metadata changed: {name}")
-    require(len(rgb_inventory(root / "rgb")) == verified, "RGB inventory changed")
+    report(
+        stage="checking_final_inventory",
+        verified_images=verified,
+        verified_rgb_bytes=rgb_bytes,
+        counts=counts,
+    )
+    require(rgb_inventory(root / "rgb") == initial_inventory, "RGB inventory changed")
     return {
         "stage": "passed",
         "published": False,
@@ -138,13 +169,16 @@ def verify(root, pins, report, mib_per_second=20):
         "verified_images": verified,
         "verified_rgb_bytes": rgb_bytes,
         "inventory_count": inventory_count,
+        "excluded_images": len(excluded),
+        "excluded_bytes_verified": False,
+        "verification_scope": "Retained RGB bytes; pinned exclusions account for other RGB paths",
         "failures": 0,
         "checks": [
             "pinned metadata SHA256 and size",
             "every retained encoded RGB SHA256",
             "relative paths within RGB tree",
             "no symlinks or special files",
-            "unique paths and exact RGB inventory",
+            "unique retained paths and exact retained-plus-excluded RGB inventory",
             "pinned split counts",
             "stable file identity while reading",
         ],

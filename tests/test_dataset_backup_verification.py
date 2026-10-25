@@ -88,3 +88,52 @@ def test_rejects_counts_and_files_changed_while_reading(tmp_path):
 
     with pytest.raises((ValueError, json.JSONDecodeError)):
         verifier.verify(tmp_path, pins, mutate, 0)
+
+
+def add_exclusions(root, pins, rows):
+    path = root / "excluded.json"
+    path.write_text(json.dumps(rows))
+    pins["metadata_files"][path.name] = {
+        "bytes": path.stat().st_size,
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    }
+
+
+def test_only_pinned_preparation_exclusions_account_for_extra_rgb(tmp_path):
+    pins = fixture(tmp_path)
+    excluded = tmp_path / "rgb/excluded.png"
+    excluded.write_bytes(b"unused duplicate")
+    row = dict(image="rgb/excluded.png", split="train", reason="exact_duplicate")
+    add_exclusions(tmp_path, pins, [row])
+    result = verifier.verify(tmp_path, pins, lambda **kw: None, 0)
+    assert result["verified_images"] == 2 and result["inventory_count"] == 3
+    assert result["excluded_images"] == 1 and not result["excluded_bytes_verified"]
+    (tmp_path / "rgb/unexpected.png").write_bytes(b"unexpected")
+    with pytest.raises(ValueError, match="Unreferenced"):
+        verifier.verify(tmp_path, pins, lambda **kw: None, 0)
+
+
+@pytest.mark.parametrize("case", ["missing", "overlap", "duplicate", "escape", "reason"])
+def test_exclusion_errors_fail_closed(tmp_path, case):
+    pins = fixture(tmp_path)
+    row = dict(image="rgb/missing.png", split="train", reason="exact_duplicate")
+    if case == "overlap":
+        row["image"] = "rgb/scene/a.png"
+    elif case == "escape":
+        row["image"] = "rgb/../outside.png"
+    elif case == "reason":
+        row["reason"] = "ignore_corruption"
+    add_exclusions(tmp_path, pins, [row, row] if case == "duplicate" else [row])
+    with pytest.raises(ValueError):
+        verifier.verify(tmp_path, pins, lambda **kw: None, 0)
+
+
+def test_final_inventory_detects_same_count_replacement(tmp_path):
+    pins = fixture(tmp_path)
+
+    def replace(**status):
+        if status["stage"] == "checking_final_inventory":
+            (tmp_path / "rgb/scene/a.png").rename(tmp_path / "rgb/scene/replaced.png")
+
+    with pytest.raises(ValueError, match="inventory changed"):
+        verifier.verify(tmp_path, pins, replace, 0)
