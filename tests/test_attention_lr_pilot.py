@@ -33,8 +33,12 @@ def setup_plan(root):
     return path
 
 
-def test_pilot_is_a_new_run_and_refuses_duplicate_launch(tmp_path, monkeypatch):
+@pytest.mark.parametrize("learning_rate,tag", [(1e-4, "lr-1e-4"), (1e-5, "lr-1e-5")])
+def test_pilot_is_a_new_run_and_refuses_duplicate_launch(tmp_path, monkeypatch, learning_rate, tag):
     plan = setup_plan(tmp_path)
+    values = json.loads(plan.read_text())
+    values["learning_rate"] = learning_rate
+    plan.write_text(json.dumps(values))
     monkeypatch.setattr(runner.subprocess, "check_output", lambda *a, **kw: "")
     calls = []
 
@@ -59,14 +63,18 @@ def test_pilot_is_a_new_run_and_refuses_duplicate_launch(tmp_path, monkeypatch):
     assert "--fork-from" in calls[0] and "--resume" not in calls[0]
     assert not (tmp_path / "pilot/train/wandb-run.json").exists()
     config = json.loads((tmp_path / "pilot/config.json").read_text())
-    assert config["train"]["lr"] == 1e-4 and config["train"]["lr_schedule"] == "constant"
+    assert config["train"]["lr"] == learning_rate
+    assert config["train"]["lr_schedule"] == "constant"
+    assert tag in config["tracking"]["tags"]
     assert (tmp_path / "attention-24h/last.pt").read_bytes() == b"frozen parent"
     with pytest.raises(FileExistsError):
         runner.run(plan, tmp_path, "pilot-revision")
     assert len(calls) == 1
 
 
-@pytest.mark.parametrize("problem", ["gpu_active", "checkpoint_changed", "budget", "unauthorized"])
+@pytest.mark.parametrize("problem", [
+    "gpu_active", "checkpoint_changed", "budget", "unauthorized", "unsupported_lr",
+])
 def test_pilot_guards_prevent_launch(tmp_path, monkeypatch, problem):
     path = setup_plan(tmp_path)
     monkeypatch.setattr(runner.subprocess, "check_output",
@@ -76,6 +84,8 @@ def test_pilot_guards_prevent_launch(tmp_path, monkeypatch, problem):
         plan["max_seconds"] = 86400
     elif problem == "unauthorized":
         plan["authorized"] = False
+    elif problem == "unsupported_lr":
+        plan["learning_rate"] = 1e-2
     elif problem == "checkpoint_changed":
         (tmp_path / "attention-24h/last.pt").write_bytes(b"wrong")
     path.write_text(json.dumps(plan))

@@ -13,6 +13,9 @@ import time
 from radio_moge.checkpoint import atomic_json
 
 
+PILOT_LR_TAGS = {1e-4: "lr-1e-4", 1e-5: "lr-1e-5"}
+
+
 def stable_identity(path):
     value = path.stat()
     return value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns
@@ -20,8 +23,8 @@ def stable_identity(path):
 
 def run(plan_path, repo, revision):
     plan = json.loads(plan_path.read_text())
-    if plan.get("authorized") is not True or plan["learning_rate"] != 1e-4:
-        raise ValueError("This pilot requires explicit 1e-4 authorization")
+    if plan.get("authorized") is not True or plan["learning_rate"] not in PILOT_LR_TAGS:
+        raise ValueError("This pilot requires explicit authorization for a supported learning rate")
     if not 0 < plan["max_seconds"] <= 7200:
         raise ValueError("Pilot must have a wall-clock budget of at most two hours")
     if not 0 < plan["final_step"] - plan["parent_step"] <= 5000:
@@ -53,7 +56,8 @@ def run(plan_path, repo, revision):
         )
         config["tracking"].update(
             name=plan["output_root"],
-            tags=["attention", "lr-pilot", "lr-1e-4", "batch-32", "fork-83494"],
+            tags=["attention", "lr-pilot", PILOT_LR_TAGS[plan["learning_rate"]],
+                  "batch-32", "fork-83494"],
         )
         root.mkdir(exist_ok=False)
         atomic_json(config, root / "config.json")
