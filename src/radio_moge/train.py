@@ -1,4 +1,5 @@
 import argparse
+from copy import deepcopy
 from contextlib import nullcontext
 import json
 import math
@@ -70,6 +71,12 @@ def validate_config(config):
     train, data = config["train"], config["data"]
     if train["precision"] not in {"no", "bf16"}:
         raise ValueError("Supported precision modes: no, bf16")
+    if train.get("lr_schedule", "cosine") not in {"cosine", "constant"}:
+        raise ValueError("Unknown learning-rate schedule")
+    if not math.isfinite(train["lr"]) or train["lr"] <= 0:
+        raise ValueError("Learning rate must be finite and positive")
+    if train.get("update_norm_every", 0) < 0:
+        raise ValueError("update_norm_every must be nonnegative")
     for name in ("steps", "batch_size", "accumulation", "log_every", "save_every", "eval_every"):
         if train[name] < 1:
             raise ValueError(f"{name} must be positive")
@@ -113,6 +120,22 @@ def continued_limits(settings, state, extension=None):
     return limits
 
 
+def check_lr_fork(config, state, digests):
+    """Only LR policy, a bounded new budget, tracking and diagnostics may differ."""
+    previous, current = deepcopy(state["config"]), deepcopy(config)
+    for candidate in (previous, current):
+        for key in ("output_dir", "tracking"):
+            candidate.pop(key, None)
+        for key in ("lr", "lr_schedule", "steps", "max_seconds", "update_norm_every"):
+            candidate["train"].pop(key, None)
+    if previous != current or state["data_digests"] != digests:
+        raise ValueError("LR fork requires identical model, data, loss and optimizer settings")
+    if config["train"].get("lr_schedule") != "constant":
+        raise ValueError("LR fork requires an explicit constant learning rate")
+    if config["train"].get("max_seconds") is None or config["train"]["steps"] <= state["step"]:
+        raise ValueError("LR fork requires a bounded positive new budget")
+
+
 def train(
     config,
     resume=None,
@@ -121,13 +144,14 @@ def train(
     system_adapter=None,
     extension=None,
     execution_revision=None,
+    fork_from=None,
 ):
     """Single-device experiment runner. system_adapter allows small CPU integration tests."""
     invocation_started = time.monotonic()
     elapsed_before = 0.0
     validate_config(config)
-    if resume and init:
-        raise ValueError("Choose resume (same run) or init (new stage), not both")
+    if sum(bool(x) for x in (resume, init, fork_from)) > 1:
+        raise ValueError("Choose exactly one of resume, init or fork-from")
     if extension is not None and not resume:
         raise ValueError("Budget extension requires --resume")
     settings = config["train"]
@@ -164,11 +188,13 @@ def train(
         adapter.parameters(), lr=settings["lr"], weight_decay=settings["weight_decay"]
     )
     scheduler = torch.optim.lr_scheduler.LambdaLR(
-        optimizer, lambda step: lr_factor(step, settings["steps"], settings["warmup"])
+        optimizer,
+        lambda step: 1.0 if settings.get("lr_schedule") == "constant"
+        else lr_factor(step, settings["steps"], settings["warmup"]),
     )
     state = (
-        torch.load(resume or init, map_location="cpu", weights_only=True)
-        if resume or init
+        torch.load(resume or init or fork_from, map_location="cpu", weights_only=True)
+        if resume or init or fork_from
         else None
     )
     step, cursor, best = 0, 0, None
@@ -182,7 +208,16 @@ def train(
             raise ValueError("Checkpoint teacher/RADIO configuration differs")
         raw_adapter.load_state_dict(state["adapter"])
         statistics.load_state_dict(state["statistics"])
-        if resume:
+        if fork_from:
+            check_lr_fork(config, state, digests)
+            optimizer.load_state_dict(state["optimizer"])
+            for group in optimizer.param_groups:
+                group["lr"] = group["initial_lr"] = settings["lr"]
+            # Keep Adam moments and its update counter. Only the LR policy is reset.
+            scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.0)
+            step, cursor = state["step"], state["cursor"]
+            restore_rng(state["rng"])
+        elif resume:
             previous = {k: v for k, v in state["config"].items() if k != "output_dir"}
             current = {k: v for k, v in config.items() if k != "output_dir"}
             if previous != current or state["data_digests"] != digests:
@@ -195,6 +230,18 @@ def train(
             elapsed_before = state.get("wall_clock_elapsed_seconds", 0.0)
             restore_rng(state["rng"])
     limits = continued_limits(settings, state if resume else None, extension)
+    fork_provenance = (state or {}).get("fork_provenance") if resume else None
+    if fork_from:
+        fork_provenance = {
+            "checkpoint": str(Path(fork_from).resolve()),
+            "step": step, "cursor": cursor,
+            "parent_lr": state["optimizer"]["param_groups"][0]["lr"],
+            "optimizer_lr": optimizer.param_groups[0]["lr"],
+            "lr_schedule": "constant", "runtime_limits": limits,
+            "restored": ["adapter", "statistics", "optimizer_moments", "rng", "cursor"],
+            "reset": ["lr_schedule", "wall_clock_budget", "best_selection", "tracking_run"],
+        }
+        atomic_json(fork_provenance, output / "fork-state.json")
     if resume:
         atomic_json(
             {
@@ -244,6 +291,7 @@ def train(
         "code_revision": config.get("code_revision"),
         "execution_revision": execution_revision or (state or {}).get("execution_revision"),
         "runtime_limits": limits,
+        "fork_provenance": fork_provenance,
     }
     atomic_json(provenance, output / "provenance.json")
     tracker = ExperimentTracker(config, output, resume=bool(resume), provenance=provenance)
@@ -292,6 +340,7 @@ def train(
                 "wall_clock_elapsed_seconds": elapsed_seconds(),
                 "runtime_limits": limits,
                 "execution_revision": provenance["execution_revision"],
+                "fork_provenance": fork_provenance,
             },
             output / filename,
         )
@@ -340,7 +389,7 @@ def train(
         if not resume:
             # Preserve the actual stage-start weights for decoded before/after comparisons.
             save("initial.pt")
-        if validation and not resume and settings.get("eval_at_start", False):
+        if validation and not resume and not fork_from and settings.get("eval_at_start", False):
             validate()
         while step < total and not stop and not budget_exhausted():
             adapter.train()
@@ -371,6 +420,11 @@ def train(
             norm = accelerator.clip_grad_norm_(adapter.parameters(), settings["clip_grad"])
             if not torch.isfinite(norm):
                 raise FloatingPointError("Nonfinite adapter gradients; optimizer update cancelled")
+            measure_every = settings.get("update_norm_every", 0)
+            measure_update = measure_every and (step + 1) % measure_every == 0
+            parameters = list(adapter.parameters()) if measure_update else []
+            before = [p.detach().clone() for p in parameters]
+            lr_used = optimizer.param_groups[0]["lr"]
             optimizer.step()
             scheduler.step()
             step += 1
@@ -379,11 +433,21 @@ def train(
             row = {
                 "step": step,
                 "lr": optimizer.param_groups[0]["lr"],
+                "lr_used": lr_used,
                 "seconds": elapsed,
                 "images_per_second": settings["batch_size"] * accumulation / elapsed,
                 "gradient_norm": norm.item(),
                 **totals,
             }
+            if measure_update:
+                update_norm = torch.stack([
+                    (p.detach() - old).float().square().sum()
+                    for p, old in zip(parameters, before)
+                ]).sum().sqrt()
+                weight_norm = torch.stack([old.float().square().sum() for old in before]).sum().sqrt()
+                row.update(update_norm=update_norm.item(),
+                           relative_update_norm=(update_norm / weight_norm.clamp_min(1e-12)).item())
+                del before, parameters
             if accelerator.device.type == "cuda":
                 row["peak_memory_gib"] = torch.cuda.max_memory_allocated() / 2**30
             if step % settings["log_every"] == 0 or step == 1:
@@ -463,6 +527,7 @@ def main():
     parser = argparse.ArgumentParser(description="Train a RADIO → MoGe-2 adapter on one GPU")
     parser.add_argument("--config", required=True)
     parser.add_argument("--resume")
+    parser.add_argument("--fork-from", help="New constant-LR experiment preserving optimizer, RNG and data cursor")
     parser.add_argument(
         "--init", help="Initialize adapter/statistics from stage 1; reset optimizer"
     )
@@ -494,6 +559,7 @@ def main():
             args.stop_after,
             extension=extension,
             execution_revision=args.execution_revision,
+            fork_from=args.fork_from,
         )
     )
 

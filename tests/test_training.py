@@ -137,6 +137,66 @@ def test_resume_rejects_changed_data(tmp_path):
         train(config, resume=state, system_adapter=tiny_system())
 
 
+def test_lr_fork_preserves_moments_rng_cursor_and_resumes_exactly(tmp_path):
+    config = config_for(tmp_path)
+    config["data"]["val_manifest"] = None
+    config["output_dir"] = str(tmp_path / "parent")
+    parent_path = train(config, stop_after=5, system_adapter=tiny_system())
+    parent_bytes = parent_path.read_bytes()
+    parent = torch.load(parent_path, weights_only=True)
+    trial = deepcopy(config)
+    trial["train"].update(lr=0.03, lr_schedule="constant", max_seconds=600, update_norm_every=1)
+    trial["output_dir"] = str(tmp_path / "trial")
+    full_path = train(trial, fork_from=parent_path, system_adapter=tiny_system())
+    initial = torch.load(tmp_path / "trial/initial.pt", weights_only=True)
+    assert initial["step"] == 5 and initial["cursor"] == 10
+    assert initial["optimizer"]["param_groups"][0]["lr"] == 0.03
+    assert initial["runtime_limits"] == {"steps": 12, "max_seconds": 600}
+    for section in ("adapter", "statistics"):
+        for key in parent[section]:
+            torch.testing.assert_close(initial[section][key], parent[section][key], rtol=0, atol=0)
+    for key, values in parent["optimizer"]["state"].items():
+        for name, value in values.items():
+            torch.testing.assert_close(initial["optimizer"]["state"][key][name], value, rtol=0, atol=0)
+    torch.testing.assert_close(initial["rng"]["torch"], parent["rng"]["torch"], rtol=0, atol=0)
+    assert initial["rng"]["python"] == parent["rng"]["python"]
+    assert initial["rng"]["numpy"] == parent["rng"]["numpy"]
+    metrics = [json.loads(line) for line in (tmp_path / "trial/train.jsonl").read_text().splitlines()]
+    assert all(row["lr_used"] == row["lr"] == 0.03 for row in metrics)
+    assert all(row["relative_update_norm"] > 0 for row in metrics)
+    trial["output_dir"] = str(tmp_path / "split-trial")
+    part = train(trial, fork_from=parent_path, stop_after=8, system_adapter=tiny_system())
+    resumed = torch.load(train(trial, resume=part, system_adapter=tiny_system()), weights_only=True)
+    full = torch.load(full_path, weights_only=True)
+    assert full["step"] == resumed["step"] == 12
+    assert full["cursor"] == resumed["cursor"] == 24
+    assert full["fork_provenance"] == resumed["fork_provenance"]
+    for key in full["adapter"]:
+        torch.testing.assert_close(full["adapter"][key], resumed["adapter"][key], rtol=0, atol=0)
+    assert parent_path.read_bytes() == parent_bytes
+
+
+@pytest.mark.parametrize("changed", ["data", "loss", "optimizer", "budget", "schedule"])
+def test_lr_fork_rejects_uncontrolled_changes(tmp_path, changed):
+    from radio_moge.train import check_lr_fork
+
+    original = config_for(tmp_path)
+    trial = deepcopy(original)
+    trial["train"].update(lr=0.03, lr_schedule="constant", max_seconds=600)
+    if changed == "data":
+        trial["data"]["augment"] = False
+    elif changed == "loss":
+        trial["loss"]["cosine"] *= 2
+    elif changed == "optimizer":
+        trial["train"]["weight_decay"] *= 2
+    elif changed == "budget":
+        trial["train"]["steps"] = 5
+    else:
+        trial["train"]["lr_schedule"] = "cosine"
+    with pytest.raises(ValueError):
+        check_lr_fork(trial, {"config": original, "data_digests": {}, "step": 5}, {})
+
+
 def test_wall_clock_budget_survives_resume_and_saves_complete_update(tmp_path, monkeypatch):
     clock = [0.0]
     monkeypatch.setattr("radio_moge.train.time.monotonic", lambda: clock[0])
