@@ -20,7 +20,7 @@ def atomic(path, data):
     p.replace(path)
 
 
-def prepare(root, source, revision):
+def prepare(root, source, revision, wide2048=False):
     assert json.loads((source / "completion-verification.json").read_text())["stage"] == "passed"
     plan = copy.deepcopy(json.loads((source / "plan.json").read_text()))
     cache = json.loads((source / "cache-index.json").read_text())
@@ -35,16 +35,26 @@ def prepare(root, source, revision):
     cache["elapsed_seconds"] = 0.0
     payload = json.dumps(cache, indent=2).encode()
     atomic(root / "cache-index.json", payload)
+    shapes = (
+        ((4, 1024), (4, 1536), (4, 2048))
+        if wide2048
+        else ((4, 512), (4, 768), (4, 1024), (8, 512), (8, 768), (8, 1024))
+    )
+    candidates = capacity_candidates(shapes)
+    count = len(candidates)
     plan.update(
         name=root.name,
         execution_revision=revision,
         created_at=time.time(),
-        candidates=capacity_candidates(),
-        candidate_order=[c["name"] for c in capacity_candidates()],
+        candidates=candidates,
+        candidate_order=[c["name"] for c in candidates],
+        screen_profile="wide2048" if wide2048 else "capacity",
+        comparison_baseline_shape=[4, 1024] if wide2048 else [4, 512],
+        experiment_shapes=[list(s) for s in shapes],
         total_screen_seconds=3600,
         max_seconds_per_candidate=600,
-        selection="All six shapes and both seeds prespecified; no adaptive pruning or winner selection.",
-        confirmation_policy="Evaluate all12 endpoints on the same224 feature/56 geometry comparison panel. This panel was viewed previously; it is not a new untouched holdout.",
+        selection=f"All {len(shapes)} shapes and both seeds prespecified; no adaptive pruning or winner selection.",
+        confirmation_policy=f"Evaluate all {count} endpoints on the same224 feature/56 geometry comparison panel. This panel was viewed previously; it is not a new untouched holdout.",
         next_rung="No automatic extension after1000 updates per candidate.",
         initialization_seeds=[42, 43],
         data_seed=47,
@@ -138,5 +148,6 @@ if __name__ == "__main__":
     p.add_argument("--root", type=Path, required=True)
     p.add_argument("--source", type=Path, required=True)
     p.add_argument("--revision", required=True)
+    p.add_argument("--wide2048", action="store_true")
     a = p.parse_args()
-    prepare(a.root, a.source, a.revision)
+    prepare(a.root, a.source, a.revision, a.wide2048)

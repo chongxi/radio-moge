@@ -50,6 +50,27 @@ def test_seed_override_repeats_init_but_changes_replicate():
     assert initialization_seed({}, plan) == 42
 
 
+def test_wide_grid_preserves_blocks_components_and_seed_pairing():
+    rows = capacity_candidates(((4, 1024), (4, 1536), (4, 2048)))
+    assert len(rows) == 6
+    assert {(r["blocks"], r["width"], r["seed"]) for r in rows} == {
+        (4, w, s) for w in (1024, 1536, 2048) for s in (42, 43)
+    }
+    counts = []
+    with torch.device("meta"):
+        for row in rows[:3]:
+            assert row["heads"] * 64 == row["width"]
+            assert (
+                row["position"] == "rope"
+                and row["gate"]
+                and row["registers"] == 4
+                and row["activation"] == "swiglu"
+            )
+            counts.append(sum(p.numel() for p in make_candidate(row).parameters()))
+    assert counts[0] == 60408196 and counts[0] < counts[1] < counts[2]
+    assert 3 < counts[2] / counts[0] < 4
+
+
 def test_reused_cache_checksum_failure_never_starts_gpu_child(tmp_path, monkeypatch):
     scripts = Path(__file__).parents[1] / "scripts"
     sys.path.insert(0, str(scripts))
