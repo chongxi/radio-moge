@@ -170,8 +170,10 @@ const latest=names.map(n=>({n,r:series[n].validation.at(-1)})).filter(x=>x.r).so
     temporary.replace(destination)
 
 
-def monitor(base, remote_base):
-    root = base / NAME
+def monitor(
+    base, remote_base, name=NAME, handoff_key="active_adapter_architecture_screen", render_fn=render
+):
+    root = base / name
     known = {}
     for p in root.rglob("*"):
         if p.is_file() and p.suffix in (".json", ".jsonl") and p.stat().st_size < 8_000_000:
@@ -204,7 +206,7 @@ for n in ['wrapper-console.log','cache-console.log','screen-console.log','confir
   with p.open('rb') as f:f.seek(max(0,p.stat().st_size-5000));logs[n]=f.read().decode(errors='replace')
 print(json.dumps(dict(observed_at=time.time(),queue=q,status=s,cache=c,confirmation=confirmation,processes=pids,console_tails=logs,
  gpu=subprocess.check_output(['nvidia-smi','--query-gpu=utilization.gpu,memory.used','--format=csv,noheader'],text=True),files=files)))
-""".replace("ROOT", repr(str(remote_base / NAME)))
+""".replace("ROOT", repr(str(remote_base / name)))
     p = subprocess.run(
         [
             "ssh",
@@ -233,7 +235,7 @@ print(json.dumps(dict(observed_at=time.time(),queue=q,status=s,cache=c,confirmat
     result["copied_hashes"] = copied
     atomic(root / "monitor.json", result)
     handoff = json.loads((base / "handoff.json").read_text())
-    active = handoff["active_adapter_architecture_screen"]
+    active = handoff[handoff_key]
     active.update(
         stage=(result["queue"] or {}).get("stage"),
         last_observed_at=result["observed_at"],
@@ -243,7 +245,7 @@ print(json.dumps(dict(observed_at=time.time(),queue=q,status=s,cache=c,confirmat
     )
     handoff["updated_at"] = time.time()
     atomic(base / "handoff.json", handoff)
-    render(root, Path("/home/hub/nano-test/.kanna/visualizations/teacher-plane-pilot.html"))
+    render_fn(root, Path("/home/hub/nano-test/.kanna/visualizations/teacher-plane-pilot.html"))
     print(
         json.dumps(
             {k: result[k] for k in ("observed_at", "queue", "status", "cache", "processes", "gpu")},
