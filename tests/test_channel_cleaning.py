@@ -3,7 +3,9 @@ from copy import deepcopy
 import pytest
 import torch
 
-from radio_moge.adapters import GeometryAdapter, RadioFeatures, zero_dominant_channels
+from radio_moge.adapters import (
+    GeometryAdapter, RadioFeatures, zero_dominant_channels, zero_dominant_summary_channels,
+)
 
 
 def test_cleaning_is_per_image_preserves_inputs_and_uses_mean_absolute_value():
@@ -56,3 +58,18 @@ def test_adapter_cleaning_matches_manual_inputs_and_keeps_summary(kind):
 def test_reject_invalid_threshold(threshold):
     with pytest.raises(ValueError, match="threshold"):
         GeometryAdapter(channel_cleaning="zero-channel", channel_threshold=threshold)
+
+
+def test_summary_cleaning_respects_token_scales_signs_and_input_immutability():
+    x = torch.ones(2, 24)
+    x[:, 12:] *= 100
+    x[0, 2], x[1, 16], x[:, 4] = -20, -3000, 8
+    original = x.clone()
+    expected = x.clone()
+    expected[0, 2], expected[1, 16] = 0, 0
+    actual = zero_dominant_summary_channels(x, 12)
+    assert torch.equal(actual, expected)
+    assert torch.equal(x, original)
+    assert torch.equal(actual, zero_dominant_summary_channels(x * 2, 12) / 2)
+    with pytest.raises(ValueError, match='complete'):
+        zero_dominant_summary_channels(x, 7)

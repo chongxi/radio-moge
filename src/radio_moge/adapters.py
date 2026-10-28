@@ -21,6 +21,33 @@ class EncoderFeatures:
     summary: torch.Tensor
 
 
+def build_adapter(**config):
+    """Construct legacy adapters or the unchanged screened joint transformer."""
+    if config.get("kind") != "joint_attention":
+        return GeometryAdapter(**config)
+    from .architecture_screen import JointScreenAdapter
+
+    config = dict(config)
+    config.pop("kind")
+    spec = dict(config.pop("spec"))
+    indices = tuple(config.pop("indices", (7, 15, 23, 31)))
+    seed = config.pop("initialization_seed", None)
+    if spec["family"] != "joint" or len(indices) != 4:
+        raise ValueError("Full joint training requires four RADIO taps and a direct joint adapter")
+    if seed is None:
+        model = JointScreenAdapter(spec, **config)
+    else:
+        # Layers are created on CPU. Preserve caller RNG and do not alter CUDA RNG.
+        with torch.random.fork_rng(devices=[]):
+            torch.random.default_generator.manual_seed(seed)
+            model = JointScreenAdapter(spec, **config)
+    model.kind = "joint_attention"
+    model.indices = indices
+    model.config = dict(kind=model.kind, spec=spec, indices=list(indices),
+                        initialization_seed=seed, **config)
+    return model
+
+
 def zero_dominant_channels(features: torch.Tensor, threshold: float = 8.0) -> torch.Tensor:
     """toromi_slam's rule, independently per image, without mutating shared features.
 
@@ -34,6 +61,23 @@ def zero_dominant_channels(features: torch.Tensor, threshold: float = 8.0) -> to
     magnitude = features.float().abs().mean(dim=(-2, -1))
     hot = magnitude > threshold * magnitude.median(dim=1, keepdim=True).values
     return features.masked_fill(hot[:, :, None, None], 0)
+
+
+def zero_dominant_summary_channels(summary, token_dim, threshold=8.0):
+    """Per-image, per-original-summary-token absolute-channel outlier rule.
+
+    Summary has no spatial axis. Test absolute coordinates against the median
+    within each original token, never pooling differently scaled tokens. This
+    is an explicit experimental extension, not evidence every large value is noise.
+    """
+    if summary.ndim != 2 or token_dim < 1 or summary.shape[1] % token_dim:
+        raise ValueError("Summary must be B,C with complete original tokens")
+    if not math.isfinite(threshold) or threshold <= 0:
+        raise ValueError("Channel threshold must be finite and positive")
+    tokens = summary.reshape(summary.shape[0], -1, token_dim)
+    magnitude = tokens.float().abs()
+    hot = magnitude > threshold * magnitude.median(dim=-1, keepdim=True).values
+    return tokens.masked_fill(hot, 0).reshape_as(summary)
 
 
 class GeometryAdapter(nn.Module):

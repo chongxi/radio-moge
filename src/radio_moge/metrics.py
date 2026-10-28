@@ -79,4 +79,15 @@ def dataset_metrics(rows):
             scores.append(metrics["teacher_depth/abs_rel"])
     if sources and len(scores) == len(sources) and all("dataset" in r for r in rows):
         result["macro/teacher_depth/abs_rel"] = sum(scores) / len(scores)
+    for key in ("spatial/cosine", "summary/cosine", "spatial/norm_ratio", "summary/norm_ratio"):
+        source_means = []
+        for source in sources:
+            subset = [row for row in rows if row.get("dataset") == source]
+            values = [row[key] for row in subset if key in row and math.isfinite(row[key])]
+            if len(values) == len(subset):
+                value = sum(values) / len(values)
+                result[f"dataset/{source}/{key}"] = value
+                source_means.append(value)
+        if sources and len(source_means) == len(sources) and all("dataset" in r for r in rows):
+            result[f"macro/{key}"] = sum(source_means) / len(sources)
     return result

@@ -6,7 +6,9 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-from .adapters import EncoderFeatures, GeometryAdapter, zero_dominant_channels
+from .adapters import (
+    EncoderFeatures, GeometryAdapter, zero_dominant_channels, zero_dominant_summary_channels,
+)
 from .spatial_heads import AttentionBlock, position_encoding
 
 
@@ -151,6 +153,12 @@ class JointScreenAdapter(nn.Module):
     ):
         super().__init__()
         self.spec, self.target_dim, self.target_summary_dim = spec, target_dim, target_summary_dim
+        self.summary_token_dim = spatial_dim
+        self.summary_cleaning = spec.get("summary_cleaning", "none")
+        if self.summary_cleaning not in {"none", "per-token-zero-channel"}:
+            raise ValueError("Unknown summary cleaning mode")
+        if self.summary_cleaning != "none" and summary_dim % spatial_dim:
+            raise ValueError("Summary input must contain complete RADIO tokens")
         width = spec["width"]
         self.input = nn.ModuleList(nn.Conv2d(spatial_dim, width, 1) for _ in range(taps))
         self.tap_logits = nn.Parameter(torch.zeros(taps))
@@ -192,7 +200,10 @@ class JointScreenAdapter(nn.Module):
             p(zero_dominant_channels(f.float())) * weight
             for p, f, weight in zip(self.input, features.intermediates, self.tap_logits.softmax(0))
         )
-        summary = self.summary_input(features.summary.float())
+        summary = features.summary.float()
+        if self.summary_cleaning == "per-token-zero-channel":
+            summary = zero_dominant_summary_channels(summary, self.summary_token_dim)
+        summary = self.summary_input(summary)
         b, c, h, w = x.shape
         if self.local is not None:
             x = x + 0.01 * self.local(x)

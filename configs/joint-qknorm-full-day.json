@@ -1,0 +1,109 @@
+{
+  "output_dir": "/home/buildhub/shared/radio-moge/chongxi/data-expansion-attention-20261022/adapter-qknorm2048-full-s43-20261028/train",
+  "models": {
+    "moge_repo": "Ruicheng/moge-2-vitl-normal",
+    "moge_revision": "cb0e8bbd6b1e243589717c78e750b1ba4c093acf",
+    "window_size": null
+  },
+  "adapter": {
+    "kind": "joint_attention",
+    "initialization_seed": 43,
+    "indices": [
+      7,
+      15,
+      23,
+      31
+    ],
+    "spec": {
+      "name": "full_joint_qknorm_s43_all_inputs_clean",
+      "family": "joint",
+      "width": 2048,
+      "blocks": 4,
+      "heads": 32,
+      "position": "rope",
+      "gate": true,
+      "registers": 4,
+      "activation": "swiglu",
+      "local": false,
+      "layer_scale": 0.01,
+      "qk_norm": true,
+      "summary_cleaning": "per-token-zero-channel"
+    }
+  },
+  "data": {
+    "train_manifest": "/home/buildhub/shared/radio-moge/datasets/attention-full-mix-v1-20261022/train.jsonl",
+    "val_manifest": "/home/buildhub/shared/radio-moge/datasets/attention-full-mix-v1-20261022/val-selection.jsonl",
+    "buckets": [
+      [
+        480,
+        640
+      ],
+      [
+        640,
+        480
+      ]
+    ],
+    "workers": 0,
+    "augment": true,
+    "mixture_weights": {
+      "arkitscenes": 0.175,
+      "hypersim": 0.15,
+      "nyuv2": 0.075,
+      "coco2017": 0.1,
+      "tartanair": 0.2,
+      "structured3d": 0.15,
+      "irs": 0.15
+    }
+  },
+  "train": {
+    "seed": 43,
+    "precision": "bf16",
+    "steps": 120000,
+    "batch_size": 4,
+    "accumulation": 4,
+    "lr": 0.0003,
+    "weight_decay": 0.01,
+    "warmup": 1000,
+    "clip_grad": 1.0,
+    "calibration_batches": 128,
+    "log_every": 20,
+    "save_every": 1000,
+    "eval_every": 2000,
+    "tensorboard": true,
+    "eval_at_start": true,
+    "max_seconds": 86400,
+    "record_cosine_speed": true,
+    "update_norm_every": 20
+  },
+  "loss": {
+    "spatial": 1.0,
+    "summary": 1.0,
+    "cosine": 1.0,
+    "summary_cosine": 1.0
+  },
+  "evaluation": {
+    "num_tokens": 1200,
+    "max_side": 640,
+    "limit": null,
+    "visualizations": 8,
+    "selection_metric": "macro/teacher_depth/abs_rel"
+  },
+  "tracking": {
+    "enabled": true,
+    "mode": "online",
+    "project": "radio-moge",
+    "name": "adapter-qknorm2048-full-s43-20261028",
+    "tags": [
+      "joint-attention",
+      "qknorm",
+      "summary-cleaning",
+      "seven-sources",
+      "scratch",
+      "seed43",
+      "24h"
+    ],
+    "images": 8,
+    "entity": "brainsim",
+    "group": "adapter-qknorm2048-full-s43-20261028"
+  }
+}

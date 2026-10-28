@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 import torch
 
-from .adapters import EncoderFeatures, GeometryAdapter
+from .adapters import EncoderFeatures, build_adapter
 from .decoder import MoGeDecoder
 from .upstream import extract_radio, load_moge, load_radio, radio_input
 
@@ -34,7 +34,7 @@ def build_system(config, device):
         raise ValueError(
             "This trainer requires a MoGe-2 teacher with points, mask and metric scale"
         )
-    adapter = GeometryAdapter(
+    adapter = build_adapter(
         spatial_dim=system.radio.embed_dim,
         summary_dim=system.radio.summary_dim,
         target_dim=model.encoder.output_projections[0].out_channels,
