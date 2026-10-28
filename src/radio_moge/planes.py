@@ -242,3 +242,35 @@ def plane_losses(student, teacher, batches):
 
 def plane_config_dict():
     return asdict(PlaneConfig())
+
+
+def preservation_metrics(student_depth, teacher_depth, valid, patches):
+    """Fixed teacher support: outside-plane accuracy and scale-invariant edge fidelity."""
+    p, t = np.asarray(student_depth), np.asarray(teacher_depth)
+    valid = np.asarray(valid, bool) & np.isfinite(t) & (t > 0)
+    if not np.isfinite(p[valid]).all() or (p[valid] <= 0).any():
+        raise ValueError("Invalid student depth on fixed teacher support")
+    planes = np.zeros_like(valid)
+    for patch in patches:
+        planes |= patch.mask
+    outside = valid & ~planes
+    result = {}
+    if outside.any():
+        result['outside_plane/teacher_abs_rel'] = float(np.mean(
+            np.abs(p[outside] - t[outside]) / t[outside]))
+    errors, magnitudes, reference = [], [], []
+    for axis in (0, 1):
+        a, b = [slice(None)] * 2, [slice(None)] * 2
+        a[axis], b[axis] = slice(1, None), slice(None, -1)
+        a, b = tuple(a), tuple(b)
+        support = valid[a] & valid[b]
+        td = np.log(np.maximum(t[a], 1e-8)) - np.log(np.maximum(t[b], 1e-8))
+        pd = np.log(np.maximum(p[a], 1e-8)) - np.log(np.maximum(p[b], 1e-8))
+        edge = support & (np.abs(td) > .025)
+        errors.extend(np.abs(pd[edge] - td[edge]))
+        magnitudes.extend(np.abs(pd[edge]))
+        reference.extend(np.abs(td[edge]))
+    if errors:
+        result['depth_edges/log_gradient_mae'] = float(np.mean(errors))
+        result['depth_edges/retention_ratio'] = float(np.sum(magnitudes) / np.sum(reference))
+    return result

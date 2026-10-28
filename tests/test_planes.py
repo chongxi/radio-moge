@@ -5,11 +5,26 @@ import torch
 from radio_moge.decoder import camera_points
 from radio_moge.planes import PlaneConfig, PlanePatch, detect_planes, plane_losses, planarity_metrics
 from radio_moge.pointcloud import unproject
+from radio_moge.planes import preservation_metrics
 
 
 def surface(size=64):
     y, x = np.mgrid[-1:1:complex(size), -1:1:complex(size)]
     return np.stack((x, y, 3 + .1 * x + .15 * y), -1)
+
+
+def test_edge_checks_catch_flattening_but_ignore_uniform_scale_for_edges():
+    t = np.full((32, 32), 2.0)
+    t[:, 16:] = 4
+    valid = np.ones_like(t, bool)
+    exact = preservation_metrics(t, t, valid, [])
+    scaled = preservation_metrics(t * 2, t, valid, [])
+    collapsed = preservation_metrics(np.full_like(t, 3), t, valid, [])
+    assert exact['depth_edges/log_gradient_mae'] == 0
+    assert scaled['depth_edges/log_gradient_mae'] < 1e-12
+    assert scaled['outside_plane/teacher_abs_rel'] == 1
+    assert collapsed['depth_edges/log_gradient_mae'] > .5
+    assert collapsed['depth_edges/retention_ratio'] == 0
 
 
 def patch(points):

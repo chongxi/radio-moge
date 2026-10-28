@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 from contextlib import nullcontext
 from pathlib import Path
 import time
@@ -13,7 +14,7 @@ from .decoder import postprocess
 from .feature_diagnostics import feature_metrics
 from .losses import FeatureStatistics, geometry_losses
 from .metrics import aggregate, dataset_metrics, depth_metrics, fov_error, mask_iou
-from .planes import PlaneConfig, detect_planes, planarity_metrics
+from .planes import PlaneConfig, detect_planes, planarity_metrics, preservation_metrics
 from .system import build_system
 
 
@@ -120,14 +121,35 @@ def evaluate(system, adapter, statistics, records, config, output=None, limit=No
                     patches = detect_planes(tpoints, valid[0].cpu().numpy(), plane_config)
                     row['planes/regions'] = len(patches)
                     row['planes/coverage'] = sum(p.mask.sum() for p in patches) / valid[0].numel()
+                    labels = np.zeros(tpoints.shape[:2], dtype=np.uint8)
+                    for number, patch in enumerate(patches, 1):
+                        labels[patch.mask] = number
+                    row['planes/mask_sha256'] = hashlib.sha256(labels.tobytes()).hexdigest()
                     try:
                         for name, pts in (('teacher', tpoints),
                                           ('student', student['points'][0].cpu().numpy())):
                             row.update({f'planes/{name}/{k}': v
                                         for k, v in planarity_metrics(pts, patches).items()})
                         row['planes/failed'] = 0
+                        row.update(preservation_metrics(
+                            student['depth'][0].cpu().numpy(), teacher['depth'][0].cpu().numpy(),
+                            valid[0].cpu().numpy(), patches))
                     except (ValueError, np.linalg.LinAlgError):
                         row['planes/failed'] = 1
+                    if output is not None and record.get('id') in settings.get('geometry_ids', []):
+                        destination = output / f"geometry-{record['id']}.npz"
+                        temporary = destination.with_suffix('.incoming')
+                        with temporary.open('wb') as file:
+                            np.savez_compressed(
+                                file, rgb=(image[0].permute(1, 2, 0).cpu().numpy() * 255)
+                                .clip(0, 255).astype('uint8'), labels=labels,
+                                teacher_points=tpoints,
+                                student_points=student['points'][0].cpu().numpy(),
+                                teacher_depth=teacher['depth'][0].cpu().numpy(),
+                                student_depth=student['depth'][0].cpu().numpy(),
+                                teacher_intrinsics=teacher['intrinsics'][0].cpu().numpy(),
+                                student_intrinsics=student['intrinsics'][0].cpu().numpy())
+                        temporary.replace(destination)
                 if gt is not None:
                     gt = gt.to(device).unsqueeze(0)
                     for name, prediction in (("student", student), ("teacher", teacher)):
