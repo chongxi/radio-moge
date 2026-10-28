@@ -25,6 +25,18 @@ GEOMETRY = (
 
 def paired(rows, specs, seeds, baseline=(4, 512)):
     result = {}
+    if all("variant" in s for s in specs):
+        for variant in dict.fromkeys(s["variant"] for s in specs):
+            group = [rows[next(s["name"] for s in specs if s["variant"] == variant and s["seed"] == seed)] for seed in seeds]
+            bases = [rows[next(s["name"] for s in specs if s["variant"] == "baseline" and s["seed"] == seed)] for seed in seeds]
+            keys = sorted(k for k in set(group[0]) & set(bases[0]) if all(type(r[k]) in (int, float) for r in group + bases))
+            result[variant] = {
+                "mean": {k: math.fsum(r[k] for r in group) / len(group) for k in keys},
+                "range": {k: [min(r[k] for r in group), max(r[k] for r in group)] for k in keys},
+                "paired_difference_vs_baseline": {str(seed): {k: r[k] - b[k] for k in keys} for seed, r, b in zip(seeds, group, bases, strict=True)},
+                "both_cosines_higher_in_each_seed": all(r[k] > b[k] for r, b in zip(group, bases, strict=True) for k in ("spatial/cosine", "summary/cosine")),
+            }
+        return result
     shapes = sorted({(s["blocks"], s["width"]) for s in specs})
     for blocks, width in shapes:
         group = [rows[f"combined_{blocks}x{width}_s{seed}"] for seed in seeds]
@@ -52,6 +64,9 @@ def run(root):
     specs, seeds = plan["candidates"], plan["initialization_seeds"]
     baseline = plan.get("comparison_baseline_shape", [4, 512])
     baseline_label = f"{baseline[0]}×{baseline[1]}"
+    attention = plan.get("screen_profile") == "attention_tricks"
+    if attention:
+        baseline_label = "32-head 基线"
     status, queue = read(root / "status.json"), read(root / "queue-status.json")
     audit = read(root / "curve-verification.json")
     assert status["stage"] == "complete" and len(status["completed"]) == len(specs)
@@ -158,6 +173,9 @@ def run(root):
         )
         + "深度误差、平面残差和耗时需分别比较，参数最多不等于综合最优。"
     )
+    if attention:
+        conclusion = conclusion.replace("更大规模", "单项改动").replace(
+            "参数最多不等于综合最优", "两个 seed 的小差异不能视为统计显著；summary 读出并非等参数对照")
     report = dict(
         stage="evaluated_pending_backup",
         checked_at=time.time(),

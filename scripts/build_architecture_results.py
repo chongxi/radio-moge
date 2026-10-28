@@ -33,7 +33,7 @@ def build(root, capacity=False):
         plan = json.loads((root / "plan.json").read_text())
         specs = plan["candidates"]
         labels_by_name.update(
-            {s["name"]: f"{s['blocks']}×{s['width']} · seed {s['seed']}" for s in specs}
+            {s["name"]: f"{s.get('variant', str(s['blocks']) + '×' + str(s['width']))} · seed {s['seed']}" for s in specs}
         )
     receipts = json.loads((root / "final-review/prepared-dataset-backup-status.json").read_text())
     verified = {item["destination"]: item["sha256"] for item in receipts["verified_checkpoints"]}
@@ -129,6 +129,7 @@ def build(root, capacity=False):
     )
     panel_labels = {n: labels_by_name[n] for n in names}
     if capacity:
+        attention = plan.get("screen_profile") == "attention_tricks"
         baseline = plan.get("comparison_baseline_shape", [4, 512])
         baseline_shape = f"{baseline[0]}x{baseline[1]}"
         baseline_label = baseline_shape.replace("x", "×")
@@ -140,6 +141,8 @@ def build(root, capacity=False):
             if plan.get("screen_profile") == "wide2048"
             else "4x1024"
         )
+        if attention:
+            baseline_label, default_shape = "32-head 基线", "summary_readout"
         panel_labels = {
             "baseline": baseline_label + " · 同 seed 基线",
             "candidate": "选中规模",
@@ -161,6 +164,9 @@ def build(root, capacity=False):
             "".join(f'<option value="{d}x{w}">{d} × {w}</option>' for d, w in shapes)
             + "</select></label>"
         )
+        if attention:
+            controls = '<label>初始化 seed <select id="geom-seed"><option>42</option><option>43</option></select></label><label>对比变体 <select id="geom-shape">'
+            controls += ''.join(f'<option value="{v}">{v}</option>' for v in plan['experiment_variants']) + '</select></label>'
         fragment = fragment.replace(
             '<div class="controls"><label>样本', '<div class="controls">' + controls + "<label>样本"
         )
@@ -171,6 +177,11 @@ def build(root, capacity=False):
         new_load = new_load.replace(
             "combined_4x512_s", "combined_" + baseline_shape + "_s"
         ).replace("4×512", baseline_label)
+        if attention:
+            new_load = new_load.replace("'combined_" + baseline_shape + "_s'", "'attention_baseline_s'")
+            new_load = new_load.replace("'combined_'+shape", "'attention_'+shape")
+            fragment = fragment.replace("容量对照同步点云", "Attention 对照同步点云")
+            panel_labels["candidate"] = "选中变体"
         assert old_load in fragment
         fragment = fragment.replace(old_load, new_load)
         fragment = fragment.replace(

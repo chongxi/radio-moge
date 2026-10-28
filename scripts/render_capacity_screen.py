@@ -11,6 +11,7 @@ def read(path, fallback=None):
 
 def render(root, destination):
     plan = read(root / "plan.json")
+    attention = plan.get("screen_profile") == "attention_tricks"
     wide4096 = plan.get("screen_profile") == "wide4096"
     wide = plan.get("screen_profile") in ("wide2048", "wide4096")
     count = len(plan["candidates"])
@@ -31,6 +32,9 @@ def render(root, destination):
             )
         runs[c["name"]] = read(arm / "wandb-run.json", {}).get("id")
     old = root.parent / (
+        "adapter-combined-wide4096-screen-20261028"
+        if attention
+        else
         "adapter-combined-wide2048-screen-20261028"
         if wide4096
         else "adapter-combined-capacity-screen-20261028"
@@ -50,6 +54,8 @@ def render(root, destination):
         oldhtml = oldhtml.replace(
             "上一轮：六种容量、两个初始化 seed", "上一轮：宽度 1024 / 1536 / 2048，两个初始化 seed"
         )
+    if attention:
+        oldhtml = oldhtml.replace("上一轮：16 架构从零初筛", "上一轮：2048 / 4096 宽度对照")
     progress = f"已完成 {len(s.get('completed', []))} / {count}；当前 {s.get('current') or '缓存加载／GPU预检'}，{s.get('step', 0)} 步"
     stage = s.get("stage", "prepared")
     if stage == "complete":
@@ -109,6 +115,30 @@ for(const id of ['seed','shape','partition','source','axis','target'])$(id).onch
         )
         document = document.replace("$('shape').value='4x2048'", "$('shape').value='4x4096'")
         document = document.replace("'combined_4x1024_s'", "'combined_4x2048_s'")
+    if attention:
+        substitutions = {
+            "组合 Adapter · 参数量扩展": "4×2048 · Attention 对照",
+            "组合设计不变 · 深度 × 宽度 · 两个初始化 seed": "固定 4×2048 · 五种 attention 设计 · 两个初始化 seed",
+            "加大参数量，能否学得更好？": "Head 数、QK norm、summary 读出，哪个有帮助？",
+            "六个规模": "五组对照",
+            "4 / 8 个 block × 宽度 512 / 768 / 1024。约 17.6M～110.8M 参数。": "32-head 基线；16-head；64-head；32-head＋QK norm；32-head＋summary 专用 attention。约 221.6M～238.6M 参数。",
+            "每个规模独立随机初始化": "每个变体独立随机初始化",
+            "这一轮检查容量收益，未增加训练数据或步数。": "每组只改变一个设计，未增加训练数据或步数。Summary 读出增加约 7.6% 参数，并非等参数对照；head 数会改变少量 gate 参数及 RoPE 的维度分配。",
+            "每个规模都最优": "每个变体都最优",
+            "全部 12 次训练": "全部 10 次训练",
+            "相同 seed 下的容量对照": "相同 seed 下的单项改动对照",
+            "shapes=['4x512','4x768','4x1024','8x512','8x768','8x1024']": "shapes=['baseline','heads16','heads64','qknorm','summary_readout']",
+            "$('shape').value='4x1024'": "$('shape').value='summary_readout'",
+            "${c.blocks}×${c.width}": "${c.variant}",
+            "<th>深度×宽度</th>": "<th>变体 · 固定4×2048</th>",
+            "'combined_4x512_s'": "'attention_baseline_s'",
+            "'combined_'+$('shape').value": "'attention_'+$('shape').value",
+            "4×512": "32-head 基线",
+            "橙色＝选中规模": "橙色＝选中变体",
+        }
+        for before, after in substitutions.items():
+            assert before in document, before
+            document = document.replace(before, after)
     confirm = {}
     for c in plan["candidates"]:
         p = root / "confirmation" / c["name"]
@@ -148,6 +178,9 @@ for(const id of ['seed','shape','partition','source','axis','target'])$(id).onch
         paired_html = paired_html.replace("4×512", "4×1024")
     if wide4096:
         paired_html = paired_html.replace("4×1024", "4×2048")
+    if attention:
+        paired_html = paired_html.replace("两次初始化的容量结果", "两次初始化的 attention 结果")
+        paired_html = paired_html.replace("4×512", "32-head 基线").replace("<th>规模</th>", "<th>变体</th>")
     values = dict(
         STAGE=html.escape(stage),
         TIME=time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),

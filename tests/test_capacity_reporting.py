@@ -44,6 +44,19 @@ def test_wide_pairing_uses_1024_control_for_each_seed():
     )
 
 
+def test_attention_pairing_does_not_merge_same_width_variants():
+    specs = [dict(name=f"attention_{v}_s{s}", variant=v, seed=s, blocks=4, width=2048)
+             for v in ('baseline', 'qknorm') for s in (42, 43)]
+    rows = {r['name']: {'spatial/cosine': 0.9, 'summary/cosine': 0.8} for r in specs}
+    rows['attention_qknorm_s42']['summary/cosine'] = 0.9
+    rows['attention_qknorm_s43']['summary/cosine'] = 0.79
+    result = paired(rows, specs, [42, 43], baseline=(4, 2048))
+    assert set(result) == {'baseline', 'qknorm'}
+    assert result['qknorm']['mean']['summary/cosine'] > 0.8
+    assert not result['qknorm']['both_cosines_higher_in_each_seed']
+    assert result['qknorm']['paired_difference_vs_baseline']['43']['summary/cosine'] < 0
+
+
 def make_archive(path, name="data/metrics.json", content=b'{"value":1}'):
     with tarfile.open(path, "w") as tar:
         entry = tarfile.TarInfo(name)
