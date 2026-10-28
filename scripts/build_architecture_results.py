@@ -24,10 +24,16 @@ def encode(value):
     return base64.b64encode(np.ascontiguousarray(value).tobytes()).decode()
 
 
-def build(root):
+def build(root, capacity=False):
     assert json.loads((root / "confirmation-verification.json").read_text())["stage"] == "passed"
     selected = json.loads((root / "shortlist.json").read_text())["selected"]
     names = [item["name"] for item in selected] + ["teacher"]
+    labels_by_name = dict(LABELS)
+    if capacity:
+        specs = json.loads((root / "plan.json").read_text())["candidates"]
+        labels_by_name.update(
+            {s["name"]: f"{s['blocks']}×{s['width']} · seed {s['seed']}" for s in specs}
+        )
     receipts = json.loads((root / "final-review/prepared-dataset-backup-status.json").read_text())
     verified = {item["destination"]: item["sha256"] for item in receipts["verified_checkpoints"]}
     records = [json.loads(s) for s in (root / "confirmation.jsonl").read_text().splitlines()]
@@ -76,7 +82,7 @@ def build(root):
         samples.append(
             dict(
                 id=records[index]["screen_id"],
-                title="确认集 · " + records[index]["dataset"],
+                title=("复测面板 · " if capacity else "确认集 · ") + records[index]["dataset"],
                 scene=records[index]["group"],
                 width=160,
                 height=120,
@@ -108,7 +114,7 @@ def build(root):
     )
     fragment = fragment.replace(
         "['训练前','特征损失对照','加入平面约束','MoGe 教师']",
-        json.dumps([LABELS[n] for n in names], ensure_ascii=False),
+        json.dumps([labels_by_name[n] for n in names], ensure_ascii=False),
     )
     fragment = fragment.replace(
         "$('patch').value='1';",
@@ -120,9 +126,49 @@ def build(root):
     fragment = fragment.replace(
         "function heat(v){", "function heat(v){if(!Number.isFinite(v))return '#ff00ff';"
     )
+    panel_labels = {n: labels_by_name[n] for n in names}
+    if capacity:
+        panel_labels = {
+            "baseline": "4×512 · 同 seed 基线",
+            "candidate": "选中规模",
+            "teacher": "MoGe 教师",
+        }
+        fragment = fragment.replace(
+            "本轮实际输出 · 入围结构同步点云", "本轮实际输出 · 容量对照同步点云"
+        )
+        fragment = fragment.replace("全部来自本轮预留确认集", "全部来自之前看过的固定复测面板")
+        fragment = fragment.replace(
+            "names=" + json.dumps(names), "names=['baseline','candidate','teacher']"
+        )
+        fragment = fragment.replace(
+            json.dumps([labels_by_name[n] for n in names], ensure_ascii=False),
+            json.dumps(list(panel_labels.values()), ensure_ascii=False),
+        )
+        controls = '<label>初始化 seed <select id="geom-seed"><option>42</option><option>43</option></select></label><label>对比规模 <select id="geom-shape">'
+        controls += (
+            "".join(
+                f'<option value="{d}x{w}">{d} × {w}</option>'
+                for d in (4, 8)
+                for w in (512, 768, 1024)
+            )
+            + "</select></label>"
+        )
+        fragment = fragment.replace(
+            '<div class="controls"><label>样本', '<div class="controls">' + controls + "<label>样本"
+        )
+        old_load = "function load(){current=samples[+$('sample').value];clouds={};for(const n of names)clouds[n]=new Float32Array(bytes(current.clouds[n]).buffer);colors=bytes(current.colors);labels=bytes(current.labels);"
+        new_load = """function load(){const raw=samples[+$('sample').value],seed=$('geom-seed').value,shape=$('geom-shape').value,wanted=['combined_4x512_s'+seed,'combined_'+shape+'_s'+seed,'teacher'];
+ current={...raw,planes:Object.fromEntries(names.map((n,i)=>[n,raw.planes[wanted[i]]]))};clouds={};for(let i=0;i<names.length;i++)clouds[names[i]]=new Float32Array(bytes(raw.clouds[wanted[i]]).buffer);colors=bytes(raw.colors);labels=bytes(raw.labels);
+ titles[0]='4×512 · seed '+seed;titles[1]=shape.replace('x','×')+' · seed '+seed;names.forEach((n,i)=>$('cloud-'+n).previousElementSibling.textContent=titles[i]);"""
+        assert old_load in fragment
+        fragment = fragment.replace(old_load, new_load)
+        fragment = fragment.replace(
+            "$('sample').onchange=load;",
+            "$('geom-shape').value='4x1024';$('geom-seed').onchange=load;$('geom-shape').onchange=load;$('sample').onchange=load;",
+        )
     panels = "".join(
-        f'<div class="cloud-panel"><h3>{html.escape(LABELS[n])}</h3><canvas id="cloud-{n}" width="720" height="440" aria-label="{html.escape(LABELS[n])}交互点云"></canvas></div>'
-        for n in names
+        f'<div class="cloud-panel"><h3>{html.escape(label)}</h3><canvas id="cloud-{n}" width="720" height="440" aria-label="{html.escape(label)}交互点云"></canvas></div>'
+        for n, label in panel_labels.items()
     )
     fragment = fragment.replace("PANELS", panels).replace(
         "DATA", json.dumps(samples, separators=(",", ":"), allow_nan=False).replace("</", "<\\/")
@@ -135,6 +181,7 @@ def build(root):
         stage="passed",
         samples=[s["id"] for s in samples],
         arms=names,
+        visible_panels=list(panel_labels),
         raw_geometry_no_alignment=True,
         fixed_teacher_arrays=True,
         input_sha256_receipts=hashes,
@@ -151,7 +198,7 @@ def build(root):
             dict(
                 stage="passed",
                 samples=len(samples),
-                panels=len(names),
+                panels=len(panel_labels),
                 bytes=len(fragment.encode()),
             )
         )
@@ -161,4 +208,6 @@ def build(root):
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("root", type=Path)
-    build(p.parse_args().root)
+    p.add_argument("--capacity", action="store_true")
+    args = p.parse_args()
+    build(args.root, args.capacity)

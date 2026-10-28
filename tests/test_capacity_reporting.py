@@ -1,0 +1,55 @@
+import hashlib
+import io
+import tarfile
+
+import pytest
+
+from finalize_architecture_backup import extract_bundle
+from report_capacity_screen import paired
+
+
+def test_paired_gains_require_both_seeds_not_only_higher_mean():
+    specs = [{"blocks": 4, "width": w} for w in (512, 1024)]
+    rows = {
+        "combined_4x512_s42": {"spatial/cosine": 0.8, "summary/cosine": 0.7},
+        "combined_4x512_s43": {"spatial/cosine": 0.8, "summary/cosine": 0.7},
+        "combined_4x1024_s42": {"spatial/cosine": 0.9, "summary/cosine": 0.8},
+        "combined_4x1024_s43": {"spatial/cosine": 0.81, "summary/cosine": 0.69},
+    }
+    result = paired(rows, specs, [42, 43])["4x1024"]
+    assert result["mean"]["summary/cosine"] > 0.7
+    assert not result["both_cosines_higher_in_each_seed"]
+    assert result["paired_difference_vs_4x512"]["43"]["summary/cosine"] < 0
+
+
+def make_archive(path, name="data/metrics.json", content=b'{"value":1}'):
+    with tarfile.open(path, "w") as tar:
+        entry = tarfile.TarInfo(name)
+        entry.size = len(content)
+        tar.addfile(entry, io.BytesIO(content))
+    return {name: {"bytes": len(content), "sha256": hashlib.sha256(content).hexdigest()}}
+
+
+def test_extract_bundle_verifies_contents_and_readback(tmp_path):
+    archive = tmp_path / "archive.tar"
+    expected = make_archive(archive)
+    result = extract_bundle(archive, tmp_path / "out", expected)
+    assert result["every_extracted_file_sha256_verified"]
+    assert (tmp_path / "out/data/metrics.json").read_bytes() == b'{"value":1}'
+
+
+@pytest.mark.parametrize("bad_name", ["../outside.json", "/tmp/outside.json"])
+def test_extract_bundle_rejects_escape_even_if_hash_matches(tmp_path, bad_name):
+    archive = tmp_path / "archive.tar"
+    expected = make_archive(archive, bad_name)
+    with pytest.raises(AssertionError):
+        extract_bundle(archive, tmp_path / "out", expected)
+
+
+def test_extract_bundle_rejects_changed_bytes(tmp_path):
+    archive = tmp_path / "archive.tar"
+    expected = make_archive(archive)
+    expected["data/metrics.json"]["sha256"] = "0" * 64
+    with pytest.raises(AssertionError):
+        extract_bundle(archive, tmp_path / "out", expected)
+    assert not (tmp_path / "out/data/metrics.json").exists()

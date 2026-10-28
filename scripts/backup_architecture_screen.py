@@ -15,7 +15,7 @@ def atomic(path, value):
     temporary.replace(path)
 
 
-def start(base, remote_base, name):
+def start(base, remote_base, name, bundle_metadata=False):
     root, remote = base / name, remote_base / name
     review = root / "final-review"
     if (review / "launch.json").exists():
@@ -24,7 +24,7 @@ def start(base, remote_base, name):
     source = review / "source-verification.json"
     if not source.exists():
         code = """from pathlib import Path
-import hashlib,json,time,torch
+import hashlib,json,time,torch,tarfile
 r=Path(ROOT)
 read=lambda p:json.loads(p.read_text())
 assert read(r/'status.json')['stage']=='complete'
@@ -37,6 +37,7 @@ def identity(p):
  s=p.stat();return [s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
 names=['plan.json','launch.json','status.json','queue-status.json','train.jsonl','validation.jsonl','confirmation.jsonl','data-verification.json','configuration-verification.json','code-deployment.json','startup-verification.json','startup-wandb-verification.json','preflight-verification.json','curve-verification.json','wandb-final-verification.json','screen-report.json','shortlist.json','confirmation-policy.json','confirmation-code-deployment.json','confirmation-launch.json','confirmation-status.json','confirmation-verification.json','cache-index.json','cache-load-verification.json']
 paths=[r/n for n in names]+list(r.glob('*-console.log'))+list((r/'confirmation').rglob('*.json'))+list((r/'confirmation').rglob('*.npz'))+list((r/'curve-audits').glob('*.json'))
+paths += [r/n for n in ['capacity-report.json','result-report.json'] if (r/n).exists()]
 for spec in plan['candidates']:
  a=r/spec['name'];paths+=list(a.glob('*.json'))+list(a.glob('*.jsonl'))+list(a.glob('validation-*/*.json'))+list(a.glob('train_probe-*/*.json'))
 paths=sorted(set(paths),key=lambda p:(p.suffix!='.npz',str(p)))
@@ -64,8 +65,24 @@ for p in paths:
    del state
  assert identity(p)==before
  files.append(item)
-print(json.dumps(dict(stage='passed',checked_at=time.time(),files=files,cache_excluded='45GB frozen feature cache remains persistent remote NFS; original raw data already backed up.')))
-""".replace("ROOT", repr(str(remote)))
+bundled=[]
+if BUNDLE_METADATA:
+ bundled=[f['relative'] for f in files if Path(f['relative']).suffix not in ('.pt','.npz')]
+ archive=r/'backup-metadata.tar';temporary=archive.with_suffix('.incoming')
+ assert not archive.exists() and not temporary.exists(), 'Inspect existing metadata bundle before retry'
+ with tarfile.open(temporary,'w') as tar:
+  for item in files:
+   if item['relative'] in bundled:
+    p=Path(item['source']);assert identity(p)==item['identity']
+    tar.add(p,arcname=item['relative'],recursive=False)
+    assert identity(p)==item['identity']
+ temporary.replace(archive)
+ before=identity(archive)
+ with archive.open('rb') as f:digest=hashlib.file_digest(f,'sha256').hexdigest()
+ assert identity(archive)==before
+ files.append(dict(relative=archive.name,source=str(archive),bytes=before[2],sha256=digest,identity=before,metadata_bundle=True))
+print(json.dumps(dict(stage='passed',checked_at=time.time(),files=files,bundled_metadata=bundled,cache_excluded='45GB frozen feature cache remains persistent remote NFS; original raw data already backed up.')))
+""".replace("ROOT", repr(str(remote))).replace("BUNDLE_METADATA", repr(bundle_metadata))
         result = subprocess.run(
             [
                 "ssh",
@@ -85,6 +102,8 @@ print(json.dumps(dict(stage='passed',checked_at=time.time(),files=files,cache_ex
     staging.mkdir(exist_ok=True)
     items = []
     for item in verified["files"]:
+        if item["relative"] in verified.get("bundled_metadata", []):
+            continue
         relative = Path(item["relative"])
         if relative.suffix == ".npz":
             destination = root / relative
@@ -92,6 +111,8 @@ print(json.dumps(dict(stage='passed',checked_at=time.time(),files=files,cache_ex
             destination = review / (
                 relative.parent / "last.pt" if relative.name == "latest.pt" else relative
             )
+        elif item.get("metadata_bundle"):
+            destination = review / relative
         else:
             destination = review / "artifacts" / relative
         items.append(
@@ -152,5 +173,10 @@ if __name__ == "__main__":
     p.add_argument("--base", type=Path, required=True)
     p.add_argument("--remote-base", type=Path, required=True)
     p.add_argument("--name", default="adapter-scratch-diverse-screen-20261028")
+    p.add_argument(
+        "--bundle-metadata",
+        action="store_true",
+        help="Transfer small artifacts in one verified archive, retaining per-file hashes",
+    )
     a = p.parse_args()
-    start(a.base, a.remote_base, a.name)
+    start(a.base, a.remote_base, a.name, a.bundle_metadata)

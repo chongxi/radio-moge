@@ -37,6 +37,12 @@ def render(root, destination):
     )
     progress = f"已完成 {len(s.get('completed', []))} / 12；当前 {s.get('current') or '缓存加载／GPU预检'}，{s.get('step', 0)} 步"
     stage = s.get("stage", "prepared")
+    if stage == "complete":
+        confirmation = m.get("confirmation") or {}
+        progress = (
+            f"12 次训练已完成；只读深度复测已完成 {len(confirmation.get('completed', []))} / 12"
+        )
+        stage = "训练结束，核对复测与备份"
     if read(root / "completion-verification.json", {}).get("stage") == "passed":
         stage = "全部完成：训练、评估与备份"
     document = """<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>组合 Adapter · 参数量扩展</title><style>
@@ -48,6 +54,7 @@ body{margin:0;background:#f5f4ef;color:#19342f;font:16px system-ui}main{max-widt
 <section class="panel"><h2>每次训练的最新完整评估</h2><p>不把尚未完成的 seed 当作平均值，也不以训练集指标宣布泛化改善。</p><div class="scroll" id="ranking"></div></section>
 <section class="panel"><h2>相同 seed 下的容量对照</h2><div class="controls"><label>Seed <select id="seed"><option>42</option><option>43</option></select></label><label>候选 <select id="shape"></select></label><label>数据 <select id="partition"><option value="validation">筛选验证</option><option value="train_probe">训练诊断 112 图</option></select></label><label>来源 <select id="source"><option value="macro">七来源宏平均</option>__SOURCES__</select></label><label>横轴 <select id="axis"><option value="step">步数</option><option value="optimizer_seconds">训练循环秒数</option><option value="elapsed_seconds">含评估总秒数</option></select></label><label><input id="target" type="checkbox">0.98 目标</label></div><div class="grid" id="charts"></div><p>蓝绿＝同 seed 的 4×512；橙色＝选中规模。时间来自缓存特征训练，不代表端到端全数据收敛时间。</p></section>
 <section class="panel"><h2>重复运行的深度与特征检查</h2><div id="confirmation"></div></section>
+__PAIRED__
 __RESULT__
 <details class="history"><summary>上一轮结果与真实点云（已完成）</summary><iframe title="上一轮架构筛选结果" loading="lazy" style="width:100%;height:1100px;border:0" srcdoc="__HISTORY__"></iframe></details>
 <script>const series=__SERIES__,specs=__SPECS__,preflight=__PREFLIGHT__,runs=__RUNS__,confirm=__CONFIRM__;
@@ -69,6 +76,28 @@ for(const id of ['seed','shape','partition','source','axis','target'])$(id).onch
                 gt_count=g.get("gt_student/abs_rel/count"),
                 plane=g.get("planes/student/normalized_rms"),
             )
+    report = read(root / "capacity-report.json", {})
+    paired_html = ""
+    if report:
+        paired_html = (
+            '<section class="panel"><h2>两次初始化的容量结果</h2><p>'
+            + html.escape(report["conclusion_zh"])
+            + '</p><p>下表为两个 seed 的均值；括号保留两次实际值的范围。差值先在相同 seed 内与 4×512 比较，不把两个 seed 当成充分的统计显著性证据。</p><div class="scroll"><table><tr><th>规模</th><th>参数 M</th><th>Spatial</th><th>Summary</th><th>NYU AbsRel↓</th><th>平面 RMS↓</th><th>训练秒</th></tr>'
+        )
+        for shape, item in report["paired"].items():
+            means, ranges = item["mean"], item["range"]
+            paired_html += (
+                "<tr><td>" + html.escape(shape) + f"</td><td>{means['parameters'] / 1e6:.2f}</td>"
+            )
+            for metric in (
+                "spatial/cosine",
+                "summary/cosine",
+                "gt_student/abs_rel",
+                "planes/student/normalized_rms",
+            ):
+                paired_html += f"<td>{means[metric]:.5f}<br><small>({ranges[metric][0]:.5f}～{ranges[metric][1]:.5f})</small></td>"
+            paired_html += f"<td>{means['train_seconds']:.1f}</td></tr>"
+        paired_html += "</table></div><p>固定复测面板 224 图的特征为七来源宏平均；深度 GT 仅 32 张 NYU，平面与边缘检查为 56 图。该面板之前看过，不能称为新的独立测试。训练时间是缓存特征循环，不是全数据收敛时间。</p></section>"
     values = dict(
         STAGE=html.escape(stage),
         TIME=time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
@@ -82,6 +111,7 @@ for(const id of ['seed','shape','partition','source','axis','target'])$(id).onch
         PREFLIGHT=json.dumps(pre),
         RUNS=json.dumps(runs),
         CONFIRM=json.dumps(confirm, allow_nan=False),
+        PAIRED=paired_html,
         RESULT=(root / "result-section.html").read_text()
         if (root / "result-section.html").exists()
         else "",
