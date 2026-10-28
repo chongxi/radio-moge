@@ -152,7 +152,8 @@ def test_training_probe_rejects_nontraining_images(tmp_path):
         train(config, system_adapter=tiny_system())
 
 
-def test_plane_loss_reaches_training_logs_and_adapter(tmp_path, monkeypatch):
+@pytest.mark.parametrize('flatness_mode', ['teacher_axis', 'own_plane'])
+def test_plane_loss_reaches_training_logs_and_adapter(tmp_path, monkeypatch, flatness_mode):
     import importlib
     from radio_moge.decoder import camera_points
 
@@ -161,6 +162,7 @@ def test_plane_loss_reaches_training_logs_and_adapter(tmp_path, monkeypatch):
     config['output_dir'] = str(tmp_path / 'plane-smoke')
     config['train'].update(steps=1, accumulation=1)
     config['loss'].update(plane_flatness=.1, plane_normal=.1, plane_anchor=.1)
+    config['plane_flatness_mode'] = flatness_mode
 
     def projected(raw, teacher=False):
         depth = torch.full_like(raw['mask'], 3) if teacher else 2 + raw['points'][..., 2].sigmoid()

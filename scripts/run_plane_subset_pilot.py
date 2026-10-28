@@ -63,7 +63,8 @@ def identity(path):
     return [s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns]
 
 
-def prepare(base, root, revision, expanded=False):
+def prepare(base, root, revision, expanded=False, flatness_ablation=False):
+    expanded = expanded or flatness_ablation
     root.mkdir(exist_ok=False)
     data = base.parents[1] / 'datasets'
     source = data / 'attention-full-mix-v1-20261022'
@@ -119,6 +120,18 @@ def prepare(base, root, revision, expanded=False):
                     limitations=plan['limitations'] + [
                         'Same 300-update budget gives fewer passes per image than the 64-image run.',
                         'Fixed original 16-image validation is small; this remains a pilot.'])
+    if flatness_ablation:
+        reference = base / 'teacher-plane-coverage512-pilot-20261028'
+        assert json.loads((reference / 'completion-verification.json').read_text())['stage'] == 'passed'
+        for name in ('train', 'validation', 'train-probe', 'screenshot'):
+            assert (root / f'{name}.jsonl').read_bytes() == (reference / f'{name}.jsonl').read_bytes()
+        plan.update(profile='flatness-ablation-512',
+                    purpose='Own-best-plane versus historical teacher-axis flatness, all weights fixed',
+                    reference_pilot=str(reference),
+                    arm_labels={'plane': 'own_plane', 'control': 'teacher_axis'},
+                    changed_factors=['Only flatness definition; normal/anchor and all weights unchanged'],
+                    comparison='Own-plane first; fresh old-flatness control matches actual steps, <=300.',
+                    gradient_diagnostics='Read-only initial/final gradients on the same five prespecified images; no optimizer updates.')
     atomic_json(plan, root / 'plan.json')
     original = json.loads((base / 'attention-24h/config.json').read_text())
     for arm in ('plane', 'control'):
@@ -136,8 +149,10 @@ def prepare(base, root, revision, expanded=False):
         config['planes'] = plane_config_dict()
         if expanded:
             config['data']['train_probe_manifest'] = str(root / 'train-probe.jsonl')
-        config['loss'].update({k: v if arm == 'plane' else 0.
+        config['loss'].update({k: v if arm == 'plane' or flatness_ablation else 0.
                                for k, v in plan['plane_weights'].items()})
+        if flatness_ablation:
+            config['plane_flatness_mode'] = plan['arm_labels'][arm]
         config['evaluation'].update(planes=True, visualizations=2, limit=None,
                                     geometry_ids=[validation[0]['id'], validation[1]['id'],
                                                   train_probe[0]['id'], 'nyuv2_0271'])
@@ -264,11 +279,13 @@ if __name__ == '__main__':
     parser.add_argument('--revision')
     parser.add_argument('--prepare', action='store_true')
     parser.add_argument('--expanded', action='store_true', help='512 images from 256 NYU scenes')
+    parser.add_argument('--flatness-ablation', action='store_true', help='Own-plane versus old flatness on the same 512 images')
     parser.add_argument('--assess', action='store_true')
     args = parser.parse_args()
     if args.assess:
         assess(args.root)
     elif args.prepare:
-        print(json.dumps(prepare(args.base, args.root, args.revision, args.expanded)))
+        print(json.dumps(prepare(args.base, args.root, args.revision, args.expanded,
+                                 args.flatness_ablation)))
     else:
         run(args.base, args.root, args.repo, args.revision)

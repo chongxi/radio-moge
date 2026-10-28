@@ -5,7 +5,7 @@ import torch
 from radio_moge.decoder import camera_points
 from radio_moge.planes import PlaneConfig, PlanePatch, detect_planes, plane_losses, planarity_metrics
 from radio_moge.pointcloud import unproject
-from radio_moge.planes import preservation_metrics
+from radio_moge.planes import own_plane_flatness, preservation_metrics
 
 
 def surface(size=64):
@@ -153,3 +153,78 @@ def test_evaluation_flatness_is_scale_invariant_and_does_not_reward_missing_plan
     assert a['normalized_rms'] > .01
     assert a['normalized_rms'] == pytest.approx(b['normalized_rms'])
     assert planarity_metrics(p, []) == {}
+
+
+def test_own_plane_does_not_penalize_pose_and_keeps_normal_anchor_unchanged():
+    p = surface(32)
+    teacher = torch.tensor(p[None], dtype=torch.float32)
+    tilted = teacher.clone()
+    tilted[..., 2] += .6 * tilted[..., 0]
+    old = plane_losses(tilted, teacher, [[patch(p)]])
+    new = plane_losses(tilted, teacher, [[patch(p)]], 'own_plane')
+    assert old['plane_flatness'] > .1 and new['plane_flatness'] < 1e-12
+    for key in ('plane_normal', 'plane_anchor'):
+        assert new[key] > 0
+        torch.testing.assert_close(new[key], old[key], rtol=0, atol=0)
+
+
+def test_own_plane_matches_evaluation_squared_and_bending_gradient():
+    p = surface(32)
+    teacher = torch.tensor(p[None], dtype=torch.float32)
+    amplitude = torch.tensor(.2, requires_grad=True)
+    bend = torch.zeros_like(teacher)
+    bend[..., 2] = teacher[..., 0].square()
+    student = teacher + amplitude * bend
+    value = plane_losses(student, teacher, [[patch(p)]], 'own_plane')['plane_flatness']
+    metric = planarity_metrics(student.detach()[0].numpy(), [patch(p)])['normalized_rms']
+    assert value.item() == pytest.approx(metric ** 2, rel=2e-6)
+    value.backward()
+    assert torch.isfinite(amplitude.grad) and amplitude.grad > 0
+
+
+def test_own_plane_rotation_translation_scale_invariance_includes_denominator_gradient():
+    p = torch.tensor(surface(24).reshape(-1, 3), dtype=torch.float64)
+    p[:, 2] += .2 * p[:, 0].square()
+    angle = torch.tensor(.7, dtype=p.dtype)
+    rotation = torch.tensor([[angle.cos(), 0, angle.sin()], [0, 1, 0],
+                             [-angle.sin(), 0, angle.cos()]], dtype=p.dtype)
+    scale = torch.tensor(3., dtype=p.dtype, requires_grad=True)
+    value = own_plane_flatness(p)
+    transformed = own_plane_flatness((p @ rotation.T) * scale + 7)
+    torch.testing.assert_close(value, transformed, rtol=1e-10, atol=1e-14)
+    transformed.backward()
+    assert abs(scale.grad) < 1e-12  # Fails if the extent is detached.
+    # Use a non-collinear subsample for an unambiguous minimum eigenvalue.
+    small = p[::23][:24].clone().requires_grad_()
+    assert torch.autograd.gradcheck(own_plane_flatness, (small,), eps=1e-6, atol=1e-5)
+
+
+@pytest.mark.parametrize('kind', ['constant', 'line', 'isotropic'])
+def test_own_plane_degenerate_support_has_finite_value_and_gradient(kind):
+    p = torch.zeros(6, 3, dtype=torch.float64)
+    if kind == 'line':
+        p[:, 0] = torch.arange(6)
+    elif kind == 'isotropic':
+        p[:3], p[3:] = torch.eye(3), -torch.eye(3)
+    p.requires_grad_()
+    loss = own_plane_flatness(p)
+    loss.backward()
+    assert torch.isfinite(loss) and torch.isfinite(p.grad).all()
+
+
+def test_own_plane_masks_stay_fixed_and_anchor_penalizes_collapsed_support():
+    p = surface(24)
+    region = patch(p)
+    region.mask[:, 12:] = False
+    teacher = torch.tensor(p[None], dtype=torch.float32)
+    student = teacher.clone()
+    student[..., 2] += .2 * student[..., 0].square()
+    student.requires_grad_()
+    loss = plane_losses(student, teacher, [[region]], 'own_plane')
+    loss['plane_flatness'].backward()
+    assert student.grad[:, :, 12:].abs().max() == 0
+    assert student.grad[:, :, :12].abs().max() > 0
+    collapsed = plane_losses(torch.zeros_like(student), teacher, [[region]], 'own_plane')
+    assert collapsed['plane_anchor'] > 0
+    with pytest.raises(ValueError, match='flatness mode'):
+        plane_losses(student, teacher, [[region]], 'typo')

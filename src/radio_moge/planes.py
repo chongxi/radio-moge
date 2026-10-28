@@ -199,13 +199,35 @@ def planarity_metrics(points, patches):
     return {k: float(np.mean([r[k] for r in rows])) for k in rows[0]} if rows else {}
 
 
-def plane_losses(student, teacher, batches):
+FLATNESS_MODES = ('teacher_axis', 'own_plane')
+
+
+def own_plane_flatness(points):
+    """Squared own-best-plane RMS / in-plane extent, including extent gradients.
+
+    Solve only for eigenvalues, avoiding eigenvector derivatives at repeated
+    in-plane eigenvalues. FP64 covariance keeps a truly planar surface near zero;
+    the point-map gradient returns in its original dtype. The epsilon only guards
+    degenerate support; the separate anchor remains necessary against collapse.
+    """
+    with torch.autocast(device_type=points.device.type, enabled=False):
+        p = points.double()
+        centered = p - p.mean(0)
+        covariance = centered.T @ centered / len(p)
+        values = torch.linalg.eigvalsh(covariance).clamp_min(0)
+        loss = values[0] / values[1:].sum().clamp_min(1e-12)
+    return loss.to(points.dtype)
+
+
+def plane_losses(student, teacher, batches, flatness_mode='teacher_axis'):
     """Losses on matching camera-space maps; mean per patch, then per supported image.
 
     Flatness uses student extent WITH its gradient, so global scaling does not
     lower it. The anchor must be retained to rule out collapsed/wrong-position
     solutions. Normals come from student points, never an independent normal head.
     """
+    if flatness_mode not in FLATNESS_MODES:
+        raise ValueError(f'Unknown plane flatness mode: {flatness_mode}')
     if student.shape != teacher.shape or student.ndim != 4 or student.shape[-1] != 3:
         raise ValueError("Student and teacher must be matching B,H,W,3 maps")
     if len(batches) != len(student):
@@ -222,9 +244,14 @@ def plane_losses(student, teacher, batches):
             if not torch.isfinite(p).all() or not torch.isfinite(t).all():
                 raise FloatingPointError("Nonfinite point inside teacher plane mask")
             n = torch.as_tensor(patch.normal, device=p.device, dtype=p.dtype)
-            centered = p - p.mean(0)
-            extent_sq = centered.square().sum(-1).mean().clamp_min(1e-12)
-            image_losses["plane_flatness"].append((centered @ n).square().mean() / extent_sq)
+            if flatness_mode == 'own_plane':
+                flatness = own_plane_flatness(p)
+            else:
+                # Exact historical objective for controlled comparisons.
+                centered = p - p.mean(0)
+                extent_sq = centered.square().sum(-1).mean().clamp_min(1e-12)
+                flatness = (centered @ n).square().mean() / extent_sq
+            image_losses["plane_flatness"].append(flatness)
             # Use only stencils completely inside this teacher-selected patch.
             inner = (mask[1:-1, 1:-1] & mask[1:-1, 2:] & mask[1:-1, :-2]
                      & mask[2:, 1:-1] & mask[:-2, 1:-1])

@@ -76,7 +76,8 @@ def inspect(system, adapter, stats, image, gt, cfg, patches, target_features, ta
     mismatch = float((points.detach() - official['points']).abs().max())
     assert torch.allclose(points.detach(), official['points'], atol=2e-5, rtol=2e-5)
     feature = stats.loss(predicted, target_features)
-    plane = plane_losses(points, target_geometry['points'], [patches])
+    plane = plane_losses(points, target_geometry['points'], [patches],
+                         cfg.get('plane_flatness_mode', 'teacher_axis'))
     active = {'feature': sum(feature[k] * cfg['loss'][k] for k in feature)}
     active.update({k: v * cfg['loss'][k] for k, v in plane.items()})
     names, parameters = zip(*[(n, p) for n, p in adapter.named_parameters() if p.requires_grad])
@@ -135,14 +136,15 @@ def inspect(system, adapter, stats, image, gt, cfg, patches, target_features, ta
             metric = variance_decomposition(points.detach()[0].cpu().numpy()[region.mask] * ratio,
                                             region.normal)
             scales[str(factor)] = dict(metric_scale_ratio=ratio, **metric)
-    return dict(losses={k: float(v.detach()) for k, v in {**feature, **plane}.items()},
+    return dict(flatness_mode=cfg.get('plane_flatness_mode', 'teacher_axis'),
+                losses={k: float(v.detach()) for k, v in {**feature, **plane}.items()},
                 terms=details, adapter_gradients=gradient, regions=rows,
                 target_region=1, own_shape_gradient_l2=shape_norm,
                 target_shape_gradient_cosine=shape_alignment, summary_amplitude_counterfactual=scales,
                 differentiable_points_vs_official_max_abs=mismatch)
 
 
-def run(root, output):
+def run(root, output, flatness_ablation=False):
     if (output / 'status.json').exists():
         raise FileExistsError('Diagnostic already launched; inspect status instead')
     output.mkdir(parents=True, exist_ok=True)
@@ -153,6 +155,13 @@ def run(root, output):
         selection += [dict(partition=part, record=r) for r in records]
     checkpoints = {'initial': root / 'plane/initial.pt', 'control': root / 'control/latest.pt',
                    'plane': root / 'plane/latest.pt'}
+    if flatness_ablation:
+        assert cfg['plane_flatness_mode'] == 'own_plane'
+        control = json.loads((root / 'control-config.json').read_text())
+        assert control['plane_flatness_mode'] == 'teacher_axis' and control['loss'] == cfg['loss']
+        checkpoints = {'initial_old': root / 'plane/initial.pt',
+                       'initial_new': root / 'plane/initial.pt',
+                       'control': root / 'control/latest.pt', 'plane': root / 'plane/latest.pt'}
     tracked = [*checkpoints.values(), *[Path(s['record'][k]) for s in selection
                                       for k in ('image', 'depth') if k in s['record']]]
     identities = {str(p): identity(p) for p in tracked}
@@ -199,13 +208,19 @@ def run(root, output):
             sample['teacher_mask_sha256'] = hashlib.sha256(labels.tobytes()).hexdigest()
             sample['teacher_planes'] = reliability
         results = []
+        loaded = None
         for arm, path in checkpoints.items():
-            checkpoint = torch.load(path, map_location='cpu', weights_only=True)
-            adapter.load_state_dict(checkpoint['adapter'])
-            stats.load_state_dict(checkpoint['statistics'])
+            if loaded != path:
+                checkpoint = torch.load(path, map_location='cpu', weights_only=True)
+                adapter.load_state_dict(checkpoint['adapter'])
+                stats.load_state_dict(checkpoint['statistics'])
+                del checkpoint
+                loaded = path
+            if flatness_ablation:
+                cfg['plane_flatness_mode'] = ('teacher_axis' if arm in ('initial_old', 'control')
+                                               else 'own_plane')
             adapter.eval()
             versions = [p._version for p in adapter.parameters()]
-            del checkpoint
             for sample, reference in zip(selection, references, strict=True):
                 if time.time()-started > 900:
                     raise TimeoutError('Diagnostic exceeded fixed 15-minute bound')
@@ -236,9 +251,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--flatness-ablation', action='store_true')
     args = parser.parse_args()
     try:
-        run(args.root, args.output)
+        run(args.root, args.output, args.flatness_ablation)
     except Exception as error:
         path = args.output / 'status.json'
         if path.exists():

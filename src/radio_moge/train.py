@@ -32,7 +32,7 @@ from .data import (
 from .evaluate import evaluate, synchronize
 from .decoder import geometry_points_with_grad, postprocess
 from .losses import FeatureStatistics, geometry_losses, weighted_loss
-from .planes import PlaneConfig, detect_planes, plane_losses
+from .planes import FLATNESS_MODES, PlaneConfig, detect_planes, plane_losses
 from .system import build_system
 from .tracking import ExperimentTracker, preserve_rng
 
@@ -88,6 +88,8 @@ def validate_config(config):
         raise ValueError("Invalid training resolution bucket")
     if any(v < 0 for v in config["loss"].values()):
         raise ValueError("Loss weights must be nonnegative")
+    if config.get('plane_flatness_mode', 'teacher_axis') not in FLATNESS_MODES:
+        raise ValueError('Unknown plane flatness mode')
     if any(config["loss"].get(k, 0) for k in ("plane_flatness", "plane_normal", "plane_anchor")):
         PlaneConfig(**config.get("planes", {}))
         if config["loss"].get("plane_anchor", 0) <= 0:
@@ -450,7 +452,8 @@ def train(
                         student_points = geometry_points_with_grad(
                             predicted_raw, config["models"].get("moge_source"))
                         losses.update(plane_losses(student_points, target_geometry["points"],
-                                                   patches))
+                                                   patches, config.get('plane_flatness_mode',
+                                                                       'teacher_axis')))
                         losses["plane_regions"] = student_points.new_tensor(
                             sum(map(len, patches)) / len(patches))
                 loss = weighted_loss(losses, config["loss"])
