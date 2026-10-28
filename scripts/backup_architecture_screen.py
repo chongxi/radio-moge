@@ -37,7 +37,7 @@ def identity(p):
  s=p.stat();return [s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
 names=['plan.json','launch.json','status.json','queue-status.json','train.jsonl','validation.jsonl','confirmation.jsonl','data-verification.json','configuration-verification.json','code-deployment.json','startup-verification.json','startup-wandb-verification.json','preflight-verification.json','curve-verification.json','wandb-final-verification.json','screen-report.json','shortlist.json','confirmation-policy.json','confirmation-code-deployment.json','confirmation-launch.json','confirmation-status.json','confirmation-verification.json','cache-index.json','cache-load-verification.json']
 paths=[r/n for n in names]+list(r.glob('*-console.log'))+list((r/'confirmation').rglob('*.json'))+list((r/'confirmation').rglob('*.npz'))+list((r/'curve-audits').glob('*.json'))
- paths += [r/n for n in ['capacity-report.json','result-report.json','previous-1024-reference.json','previous-2048-reference.json','planned-parameters.json','reused-code-verification.json','seed43-verification.json','variant-training-verification.json'] if (r/n).exists()]
+paths += [r/n for n in ['capacity-report.json','result-report.json','previous-1024-reference.json','previous-2048-reference.json','planned-parameters.json','reused-code-verification.json','seed43-verification.json','variant-training-verification.json'] if (r/n).exists()]
 for spec in plan['candidates']:
  a=r/spec['name'];paths+=list(a.glob('*.json'))+list(a.glob('*.jsonl'))+list(a.glob('validation-*/*.json'))+list(a.glob('train_probe-*/*.json'))
 paths=sorted(set(paths),key=lambda p:(p.suffix!='.npz',str(p)))
