@@ -45,6 +45,12 @@ def render(base, output):
                       ('outside_plane/teacher_abs_rel', '平面外教师一致性误差 ↓')])
     stamp = time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())
     result = (root / 'result-section.html').read_text() if (root / 'result-section.html').exists() else ''
+    diagnostics = root / 'gradient-diagnostics/result-section.html'
+    if diagnostics.exists():
+        result += diagnostics.read_text()
+    curve_note = ('全部预定评估点已独立核验；结论固定采用最终匹配步数。'
+                  if (root / 'evaluation-verification.json').exists()
+                  else '等待两组完成匹配步数与逐图核验后给出结论。')
     new = f'''<main id="flatness-ablation"><small>单因素实验 · 同一 512 张图 / 256 场景</small>
 <h1>把表面弯曲与教师朝向分开</h1><span class="tag">{stages.get(state['stage'], html.escape(state['stage']))}</span>
 <button onclick="location.reload()">刷新</button><p class="muted">更新于 {stamp}</p>
@@ -54,7 +60,7 @@ def render(base, output):
 <p>两组从同一父权重重新初始化 Adam 与随机状态；学习率 1×10⁻⁵、有效 batch 4、最多各 300 步或 30 分钟。每 50 步评估固定的 16 张验证图和 16 张训练诊断图，截图单独评估。最终按匹配步数比较，不按验证结果挑选最好的一步。</p>
 <p class="notice">训练诊断不是独立验证。预期目标是未见场景平面更平，同时保住真实深度、边缘和平面外结构；训练损失下降本身不代表成功。</p>
 <div class="grid">{''.join(cards)}</div>{result}<section><h2>中间评估</h2>
-<p>橙色＝新 flatness；蓝绿色＝旧 flatness。实线＝验证集；虚线＝训练诊断。等待两组完成匹配步数与逐图核验后给出结论。</p>
+<p>橙色＝新 flatness；蓝绿色＝旧 flatness。实线＝验证集；虚线＝训练诊断。{curve_note}</p>
 <div class="grid">{charts}</div><details><summary>几何、cosine 与 summary 幅值记录</summary><div style="overflow:auto"><table><tr><th>组</th><th>数据</th><th>步</th><th>平面 RMS</th><th>GT AbsRel</th><th>边缘误差</th><th>Spatial cos</th><th>Summary cos</th><th>Summary 幅值比</th></tr>{''.join(table)}</table></div></details></section></main>'''
     position = source.index('<main')
     prefix, body = source[:position], source[position:]
@@ -65,6 +71,7 @@ def render(base, output):
         start = body.index('<section id="geometry">')
         end = body.index('<section><details>', start)
         body = body[:start] + body[end:]
+        body = body.replace('id="results"', 'id="history-results"')
     page = (prefix + '<body>' + new + '<details style="max-width:1140px;margin:24px auto">'
             '<summary style="padding:20px">展开已完成的 512 图实验、损失诊断和旧结果（历史）</summary>'
             + body + '</details></body></html>')

@@ -20,7 +20,8 @@ def fit(points):
     cov = shifted.T @ shifted / len(points)
     values, vectors = np.linalg.eigh(cov)
     normal = vectors[:, 0]
-    extent = np.sqrt(np.trace(cov))
+    # Match planarity_metrics: in-plane extent, excluding normal-direction variance.
+    extent = np.sqrt(np.maximum(values[1:], 0).sum())
     residual = np.abs(shifted @ normal) / max(extent, 1e-12)
     return center, normal, extent, float(np.sqrt(np.mean(residual ** 2)))
 
@@ -34,6 +35,11 @@ def build(root):
     assert audit['stage'] == 'passed'
     steps = audit['steps']
     plan = json.loads((root / 'plan.json').read_text())
+    names = dict(NAMES)
+    ablation = plan.get('profile') == 'flatness-ablation-512'
+    if ablation:
+        names.update(control='旧 flatness · 保留 normal＋anchor',
+                     plane='新 flatness · 保留 normal＋anchor')
     report_path = root / 'result-report.json'
     report = json.loads(report_path.read_text()) if report_path.exists() else {}
     validation = audit['results']['validation']
@@ -206,10 +212,15 @@ function draw(){const selected=+$('patch').value,mode=$('mode').value,color=$('c
  $('sample').onchange=load;$('patch').onchange=focus;$('color').onchange=schedule;$('mode').onchange=schedule;
  $('front').onclick=()=>{yaw=0;pitch=0;schedule();};$('oblique').onclick=()=>{yaw=.65;pitch=.12;schedule();};$('reset').onclick=()=>{yaw=.45;pitch=.05;focus();};load();
 })();</script>'''
+    if ablation:
+        fragment = fragment.replace('<th>特征损失对照</th><th>加入平面约束</th>',
+                                    '<th>旧 flatness</th><th>新 flatness</th>')
+        fragment = fragment.replace("['训练前','特征损失对照','加入平面约束','MoGe 教师']",
+                                    "['训练前','旧 flatness','新 flatness','MoGe 教师']")
     panels = ''.join(f'<div class="cloud-panel"><h3>{html.escape(title)}</h3>'
                      f'<canvas id="cloud-{name}" width="720" height="440" '
                      f'aria-label="{html.escape(title)}交互点云"></canvas></div>'
-                     for name, title in NAMES.items())
+                     for name, title in names.items())
     fragment = fragment.replace('CARDS', ''.join(cards)).replace('ROWS', ''.join(rows))
     fragment = fragment.replace('PANELS', panels).replace('DATA', data_json)
     target = root / 'result-section.html'
@@ -218,6 +229,7 @@ function draw(){const selected=+$('patch').value,mode=$('mode').value,color=$('c
     temporary.replace(target)
     proof = dict(stage='passed', samples=[s['id'] for s in samples], fixed_teacher_arrays=True,
                  raw_geometry_no_alignment=True, point_stride=4, input_hashes=hashes,
+                 arm_labels=names, normalization='RMS / sqrt(lambda1 + lambda2)',
                  output_sha256=hashlib.sha256(fragment.encode()).hexdigest())
     target = root / 'visualization-verification.json'
     temporary = target.with_suffix('.incoming')
