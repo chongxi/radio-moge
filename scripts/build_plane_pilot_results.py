@@ -38,10 +38,14 @@ def build(root):
     names = dict(NAMES)
     ablation = plan.get('profile') == 'flatness-ablation-512'
     joint = plan.get('profile') == 'joint-cosine-512'
-    treatment = 'joint' if joint else 'plane'
+    dual = plan.get('profile') == 'dual-cosine-512'
+    treatment = 'angular' if dual else 'joint' if joint else 'plane'
     if joint:
         names = {'initial': names['initial'], 'control': '原 adapter · 特征损失',
                  'joint': '新增联合 attention · 特征损失', 'teacher': names['teacher']}
+    if dual:
+        names = {'initial': names['initial'], 'control': '原损失 · 同一 adapter',
+                 'angular': '加强双 cosine · 保留 MSE', 'teacher': names['teacher']}
     if ablation:
         names.update(control='旧 flatness · 保留 normal＋anchor',
                      plane='新 flatness · 保留 normal＋anchor')
@@ -92,6 +96,11 @@ def build(root):
         intro += ('<p>两组均只用特征损失；几何指标仅用于评估。联合分支约多 263 万参数，'
                   '因此这是结构与额外容量共同变化的初筛。验证面板和截图已多次查看，'
                   '不能视为新的盲测。特征 cosine 与真实深度精度分开解读。</p>')
+    if dual:
+        intro += ('<p>两组结构与参数量相同，仅改变方向损失：Spatial cosine 权重 0.1→1，'
+                  'Summary cosine 权重 0→1，两项归一化 MSE 保持各 1。几何仅用于评估，'
+                  '未施加平面损失。0.98 门槛看最终验证图像均值；训练诊断达标不等于泛化。'
+                  '该验证面板和截图已多次查看，仍需更广泛的独立验证。</p>')
     if old_comparison:
         comparison_rows = []
         for key, label in [('planes/student/normalized_rms', '验证平面残差 ↓'),
@@ -116,7 +125,7 @@ def build(root):
                 ('train-probe', manifest('train-probe')[0], '训练样本 · 参与了训练')]
     samples, hashes = [], {}
     for partition, row, title in examples:
-        paths = ({'initial': root / ('control' if joint else 'plane') / 'eval-0000000',
+        paths = ({'initial': root / ('control' if joint or dual else 'plane') / 'eval-0000000',
                   'control': root / 'control' / f'eval-{steps:07d}',
                   treatment: root / treatment / f'eval-{steps:07d}'} if partition == 'validation'
                  else {arm: root / 'assessment' / arm / partition
@@ -170,9 +179,9 @@ def build(root):
         data = audit['results'][partition]
         flatness = data['metrics']['planes/student/normalized_rms']
         gt = data['metrics']['gt_student/abs_rel']
-        primary = (f'Spatial cosine 差：{data["metrics"]["spatial/cosine"]["joint_minus_control"]:+.6f}<br>'
-                   f'Summary cosine 差：{data["metrics"]["summary/cosine"]["joint_minus_control"]:+.6f}<br>'
-                   if joint else '')
+        primary = (f'Spatial cosine 差：{data["metrics"]["spatial/cosine"][treatment+"_minus_control"]:+.6f}<br>'
+                   f'Summary cosine 差：{data["metrics"]["summary/cosine"][treatment+"_minus_control"]:+.6f}<br>'
+                   if joint or dual else '')
         cards.append(f'<div class="card"><b>{title}</b><p>{primary}平面残差相对对照：'
                      f'<strong>{flatness[treatment+"_vs_control_percent"]:+.2f}%</strong><br>'
                      f'真实深度 AbsRel 相对对照：{gt[treatment+"_vs_control_percent"]:+.2f}%</p>'
@@ -187,6 +196,7 @@ def build(root):
                        ('outside_plane/teacher_abs_rel', '平面外相对教师深度误差 ↓'),
                        ('spatial/cosine', 'Spatial cosine ↑'),
                        ('summary/cosine', 'Summary cosine ↑'),
+                       ('spatial/norm_ratio', 'Spatial 幅值比（教师＝1）'),
                        ('summary/norm_ratio', 'Summary 幅值比（教师＝1）')]:
         m = audit['results']['validation']['metrics'][key]
         rows.append(f'<tr><td>{title}</td><td>{m["initial"]:.6f}</td>'
@@ -261,6 +271,13 @@ function draw(){const selected=+$('patch').value,mode=$('mode').value,color=$('c
                                     "names=['initial','control','joint','teacher']")
         fragment = fragment.replace("['训练前','特征损失对照','加入平面约束','MoGe 教师']",
                                     "['训练前','原 adapter','联合 attention','MoGe 教师']")
+    if dual:
+        fragment = fragment.replace('<th>特征损失对照</th><th>加入平面约束</th>',
+                                    '<th>原损失</th><th>加强双 cosine</th>')
+        fragment = fragment.replace("names=['initial','control','plane','teacher']",
+                                    "names=['initial','control','angular','teacher']")
+        fragment = fragment.replace("['训练前','特征损失对照','加入平面约束','MoGe 教师']",
+                                    "['训练前','原损失','加强双 cosine','MoGe 教师']")
     panels = ''.join(f'<div class="cloud-panel"><h3>{html.escape(title)}</h3>'
                      f'<canvas id="cloud-{name}" width="720" height="440" '
                      f'aria-label="{html.escape(title)}交互点云"></canvas></div>'
