@@ -9,6 +9,40 @@ def read(path, fallback=None):
     return json.loads(path.read_text()) if path.exists() else fallback
 
 
+def trained_comparison_html(root):
+    comparison = read(
+        root.parent / "trained-legacy-vs-attention-screen-20261028/comparison-report.json", {}
+    )
+    if comparison.get("stage") != "passed":
+        return ""
+    old = comparison["models"]["trained_legacy_156000"]["mean"]
+    new = comparison["qknorm_two_seed_mean"]
+    delta = comparison["delta_vs_trained"]
+    early = comparison["matched_1000_seed42_delta"]
+    result = (
+        '<section class="panel" id="trained-legacy-comparison"><h2>与训练两天的旧版直接比较</h2>'
+        '<p>旧版选定的 156,000 步检查点已在本轮完全相同的 224 张缓存输入、教师目标上只读复测。'
+        '七个来源各 32 张，逐图身份与顺序一致；没有训练或重新运行编码器。</p>'
+        '<div class="scroll"><table><tr><th>模型</th><th>训练预算</th><th>Spatial cosine</th>'
+        '<th>Summary cosine</th></tr>'
+        f'<tr><td>训练好的旧版 naive</td><td>约两天；选定 156k 步</td><td>{old["spatial/cosine"]:.6f}</td>'
+        f'<td>{old["summary/cosine"]:.6f}</td></tr>'
+        f'<tr><td>4×2048 + QK norm（两个 seed 均值）</td><td>每次仅 1,000 步</td>'
+        f'<td>{new["spatial/cosine"]:.6f}</td><td>{new["summary/cosine"]:.6f}</td></tr>'
+        f'<tr><td>当前新模型 − 训练好的旧版</td><td>训练预算不同</td>'
+        f'<td>{delta["spatial/cosine"]:+.6f}</td><td>{delta["summary/cosine"]:+.6f}</td></tr>'
+        '</table></div><p><strong>当前新模型尚未超过训练好的旧版。</strong>'
+        '每个新候选只用了 1,792 张独立图像、1,000 步、有效 batch 16，共 16,000 次样本呈现，'
+        '相当于约 8.93 遍固定缓存视图；旧训练池为 796,478 张。</p>'
+        f'<p>另一项对照：旧架构和新架构都从零训练 1,000 步、同为 seed 42 时，'
+        f'新结构 Spatial 增加 {early["spatial/cosine"]:+.6f}、Summary 增加 '
+        f'{early["summary/cosine"]:+.6f}。这是完整结构在相同步数下的收益，不能全归因于 QK norm，'
+        '也不代表按实际秒数更快。扩大数据和训练预算后能否超过旧版，尚未验证。</p>'
+        '<p>此面板已反复查看，不是新的独立测试集。</p></section>'
+    )
+    return result
+
+
 def render(root, destination):
     plan = read(root / "plan.json")
     attention = plan.get("screen_profile") == "attention_tricks"
@@ -179,6 +213,7 @@ for(const id of ['seed','shape','partition','source','axis','target'])$(id).onch
     if wide4096:
         paired_html = paired_html.replace("4×1024", "4×2048")
     if attention:
+        paired_html = trained_comparison_html(root) + paired_html
         paired_html = paired_html.replace("两次初始化的容量结果", "两次初始化的 attention 结果")
         paired_html = paired_html.replace("4×512", "32-head 基线").replace("<th>规模</th>", "<th>变体</th>")
         if report and "qknorm" in report["paired"]:
