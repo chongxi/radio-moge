@@ -83,7 +83,8 @@ print(json.dumps(dict(observed_at=time.time(),files=files,processes=processes,gp
     expanded = name == 'teacher-plane-coverage512-pilot-20261028'
     flatness = name == 'teacher-plane-ownflat512-pilot-20261028'
     joint = name == 'adapter-joint-cosine512-pilot-20261028'
-    key = ('active_adapter_joint_pilot' if joint else 'active_plane_flatness_pilot' if flatness else
+    dual = name == 'adapter-dual-cosine512-pilot-20261028'
+    key = ('active_adapter_dual_cosine_pilot' if dual else 'active_adapter_joint_pilot' if joint else 'active_plane_flatness_pilot' if flatness else
            'active_plane_coverage_pilot' if expanded else 'active_plane_pilot')
     handoff.setdefault(key, {}).update(
         stage=report['status']['stage'], training_launched=True,
@@ -91,7 +92,7 @@ print(json.dumps(dict(observed_at=time.time(),files=files,processes=processes,gp
         monitor=str(root / 'monitor.json'), viewer_url='https://buildhub-nano-test--p7869.pub.astera.work/')
     handoff['updated_at'] = time.time()
     atomic(handoff_path, json.dumps(handoff, indent=2).encode())
-    renderer = ('render_joint_cosine_page.py' if joint else 'render_plane_flatness_page.py' if flatness else
+    renderer = ('render_dual_cosine_page.py' if dual else 'render_joint_cosine_page.py' if joint else 'render_plane_flatness_page.py' if flatness else
                 'render_plane_coverage_page.py' if expanded else 'render_plane_pilot_page.py')
     subprocess.run([sys.executable, str(Path(__file__).with_name(renderer)),
                     '--base', str(base), '--output',
