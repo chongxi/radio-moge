@@ -10,6 +10,7 @@ from PIL import Image
 from .checkpoint import atomic_json
 from .data import evaluation_image, read_manifest
 from .decoder import postprocess
+from .feature_diagnostics import feature_metrics
 from .losses import FeatureStatistics, geometry_losses
 from .metrics import aggregate, dataset_metrics, depth_metrics, fov_error, mask_iou
 from .system import build_system
@@ -81,12 +82,8 @@ def evaluate(system, adapter, statistics, records, config, output=None, limit=No
             row = {"image": record["image"], "branch_ms": branch_ms}
             if "dataset" in record:
                 row["dataset"] = record["dataset"]
-            row.update(
-                {
-                    f"feature/{k}": v.item()
-                    for k, v in statistics.loss(predicted_features, target_features).items()
-                }
-            )
+            # Keep existing feature losses, and expose direction and magnitude separately.
+            row.update(feature_metrics(predicted_features, target_features, statistics))
             row.update(
                 {f"raw/{k}": v.item() for k, v in geometry_losses(predicted, target).items()}
             )
