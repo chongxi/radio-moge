@@ -37,6 +37,11 @@ def build(root):
     plan = json.loads((root / 'plan.json').read_text())
     names = dict(NAMES)
     ablation = plan.get('profile') == 'flatness-ablation-512'
+    joint = plan.get('profile') == 'joint-cosine-512'
+    treatment = 'joint' if joint else 'plane'
+    if joint:
+        names = {'initial': names['initial'], 'control': '原 adapter · 特征损失',
+                 'joint': '新增联合 attention · 特征损失', 'teacher': names['teacher']}
     if ablation:
         names.update(control='旧 flatness · 保留 normal＋anchor',
                      plane='新 flatness · 保留 normal＋anchor')
@@ -46,11 +51,12 @@ def build(root):
     passes = steps * plan['effective_batch'] / plan['train_images']
     conclusion = html.escape(report.get('conclusion_zh', '请结合平整度、真实深度与边缘指标判断效果。'))
     title = html.escape(report.get('title_zh', '最终匹配步数的评估结果'))
-    cadence = ('每 50 步均已记录训练诊断与独立验证，曲线显示全部预定评估点。'
+    interval = plan['evaluation_steps'][1] if plan.get('evaluation_steps') else None
+    cadence = (f'每 {interval} 步均已记录训练诊断与独立验证，曲线显示全部预定评估点。'
                if plan.get('evaluation_steps') else '本轮仅记录训练前与最终评估。')
     intro = (f'<section id="results"><h2>{title}</h2><p class="notice">{conclusion}</p>'
              '<div class="grid">CARDS</div>'
-             f'<p>两组均完成 {steps} 次更新；同一初始权重、数据顺序、学习率与优化器设置。'
+             f'<p>两组均完成 {steps} 次更新；同一初始输出、数据顺序、学习率与优化器设置。'
              '所有对比使用最终权重，教师平面区域完全一致。平面残差按区域尺度归一化，缩小点云不能获得优势。</p>'
              f'<p>{steps} 次更新 × 有效 batch {plan["effective_batch"]} ÷ '
              f'{plan["train_images"]} 张训练图，约相当于 {passes:.2f} 遍数据。{cadence}'
@@ -82,6 +88,10 @@ def build(root):
                   '并非逐位复现。下表是这两次旧公式运行之间的变化，不能据一次重复估计完整方差；'
                   '很小的差异不应当作稳健结论。</p><table><tr><th>指标</th><th>重跑相对上次</th></tr>'
                   + repeat_rows + '</table></details>')
+    if joint:
+        intro += ('<p>两组均只用特征损失；几何指标仅用于评估。联合分支约多 263 万参数，'
+                  '因此这是结构与额外容量共同变化的初筛。验证面板和截图已多次查看，'
+                  '不能视为新的盲测。特征 cosine 与真实深度精度分开解读。</p>')
     if old_comparison:
         comparison_rows = []
         for key, label in [('planes/student/normalized_rms', '验证平面残差 ↓'),
@@ -106,11 +116,11 @@ def build(root):
                 ('train-probe', manifest('train-probe')[0], '训练样本 · 参与了训练')]
     samples, hashes = [], {}
     for partition, row, title in examples:
-        paths = ({'initial': root / 'plane/eval-0000000',
+        paths = ({'initial': root / ('control' if joint else 'plane') / 'eval-0000000',
                   'control': root / 'control' / f'eval-{steps:07d}',
-                  'plane': root / 'plane' / f'eval-{steps:07d}'} if partition == 'validation'
+                  treatment: root / treatment / f'eval-{steps:07d}'} if partition == 'validation'
                  else {arm: root / 'assessment' / arm / partition
-                       for arm in ('initial', 'control', 'plane')})
+                       for arm in ('initial', 'control', treatment)})
         arrays, sample_metrics = {}, {}
         reference = None
         for arm, path in paths.items():
@@ -160,9 +170,12 @@ def build(root):
         data = audit['results'][partition]
         flatness = data['metrics']['planes/student/normalized_rms']
         gt = data['metrics']['gt_student/abs_rel']
-        cards.append(f'<div class="card"><b>{title}</b><p>平面残差相对对照：'
-                     f'<strong>{flatness["plane_vs_control_percent"]:+.2f}%</strong><br>'
-                     f'真实深度 AbsRel 相对对照：{gt["plane_vs_control_percent"]:+.2f}%</p>'
+        primary = (f'Spatial cosine 差：{data["metrics"]["spatial/cosine"]["joint_minus_control"]:+.6f}<br>'
+                   f'Summary cosine 差：{data["metrics"]["summary/cosine"]["joint_minus_control"]:+.6f}<br>'
+                   if joint else '')
+        cards.append(f'<div class="card"><b>{title}</b><p>{primary}平面残差相对对照：'
+                     f'<strong>{flatness[treatment+"_vs_control_percent"]:+.2f}%</strong><br>'
+                     f'真实深度 AbsRel 相对对照：{gt[treatment+"_vs_control_percent"]:+.2f}%</p>'
                      f'<small>{data["flatness_better_than_control"]}/{data["images_with_planes"]}'
                      ' 张图的平均平面残差低于对照。两个误差指标均越低越好。</small></div>')
     rows = []
@@ -177,7 +190,7 @@ def build(root):
                        ('summary/norm_ratio', 'Summary 幅值比（教师＝1）')]:
         m = audit['results']['validation']['metrics'][key]
         rows.append(f'<tr><td>{title}</td><td>{m["initial"]:.6f}</td>'
-                    f'<td>{m["control"]:.6f}</td><td>{m["plane"]:.6f}</td></tr>')
+                    f'<td>{m["control"]:.6f}</td><td>{m[treatment]:.6f}</td></tr>')
     data_json = json.dumps(samples, separators=(',', ':'), allow_nan=False).replace('</', '<\\/')
     fragment = intro + '''
 <details><summary>独立验证集详细指标（16 张，逐图等权平均）</summary><div style="overflow:auto">
@@ -241,6 +254,13 @@ function draw(){const selected=+$('patch').value,mode=$('mode').value,color=$('c
                                     '<th>旧 flatness</th><th>新 flatness</th>')
         fragment = fragment.replace("['训练前','特征损失对照','加入平面约束','MoGe 教师']",
                                     "['训练前','旧 flatness','新 flatness','MoGe 教师']")
+    if joint:
+        fragment = fragment.replace('<th>特征损失对照</th><th>加入平面约束</th>',
+                                    '<th>原 adapter</th><th>新增联合 attention</th>')
+        fragment = fragment.replace("names=['initial','control','plane','teacher']",
+                                    "names=['initial','control','joint','teacher']")
+        fragment = fragment.replace("['训练前','特征损失对照','加入平面约束','MoGe 教师']",
+                                    "['训练前','原 adapter','联合 attention','MoGe 教师']")
     panels = ''.join(f'<div class="cloud-panel"><h3>{html.escape(title)}</h3>'
                      f'<canvas id="cloud-{name}" width="720" height="440" '
                      f'aria-label="{html.escape(title)}交互点云"></canvas></div>'

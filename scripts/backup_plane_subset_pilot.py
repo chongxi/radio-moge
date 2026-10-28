@@ -28,17 +28,20 @@ import hashlib,json,time,torch
 r=Path(REMOTE_ROOT)
 status=json.loads((r/'status.json').read_text())
 assert status['stage']=='complete' and status['child_pid'] is None
+plan=json.loads((r/'plan.json').read_text())
+arms=plan.get('arms',['plane','control'])
 def identity(p):
  s=p.stat();return [s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
 paths=list(r.glob('**/geometry-*.npz'))
 paths+=list(r.glob('*.json'))+list(r.glob('*.jsonl'))+list(r.glob('*-console.log'))
-for arm in ('plane','control'):
+for arm in arms:
  paths+=list((r/arm).glob('*.json'))+list((r/arm).glob('*.jsonl'))
  paths+=list((r/arm).glob('eval-*/*.json'))
  paths+=list((r/arm).glob('train-probe-*/*.json'))
 paths+=list((r/'assessment').glob('*/*/*.json'))
 paths=sorted(set(paths),key=lambda p:(p.suffix!='.npz',str(p)))
-paths+=[r/arm/file for arm in ('plane','control') for file in ('latest.pt','best.pt')]
+paths+=list(r.glob('*-init.pt'))
+paths+=[r/arm/file for arm in arms for file in ('latest.pt','best.pt')]
 files=[]
 for p in paths:
  before=identity(p)
@@ -46,7 +49,13 @@ for p in paths:
  assert identity(p)==before
  item=dict(relative=str(p.relative_to(r)),source=str(p),bytes=p.stat().st_size,sha256=digest,identity=before)
  if p.suffix=='.pt':
-  state=torch.load(p,map_location='cpu',weights_only=True)
+  state=torch.load(p,map_location='cpu',weights_only=True,mmap=True)
+  if p.name.endswith('-init.pt'):
+   item['initialization']=dict(parent_step=state['step'],adapter_config=state['adapter_config'],parent_sha256=state['parent_sha256'])
+   assert identity(p)==before
+   files.append(item)
+   del state
+   continue
   counters=sorted({int(s['step'].item()) for s in state['optimizer']['state'].values() if 'step' in s})
   item['checkpoint']=dict(step=state['step'],cursor=state['cursor'],optimizer_lr=state['optimizer']['param_groups'][0]['lr'],adam_steps=counters,best=state['best'],execution_revision=state['execution_revision'],data_digests=state['data_digests'])
   assert state['cursor']==state['step']*2
@@ -73,6 +82,8 @@ print(json.dumps(dict(stage='passed',checked_at=time.time(),status=status,files=
         relative = Path(item['relative'])
         if relative.suffix == '.npz':
             destination = root / relative
+        elif relative.name.endswith('-init.pt'):
+            destination = review / 'initializations' / relative.name
         elif relative.suffix == '.pt':
             destination = review / relative.parent / (
                 'last.pt' if relative.name == 'latest.pt' else 'selected.pt')
@@ -80,7 +91,7 @@ print(json.dumps(dict(stage='passed',checked_at=time.time(),status=status,files=
             destination = review / 'artifacts' / relative
         items.append(dict(source=item['source'], destination=str(destination),
                           bytes=item['bytes'], sha256=item['sha256']))
-    plan = dict(purpose='Completed plane/control pilot backup; no inference or training.',
+    plan = dict(purpose='Completed matched adapter pilot backup; no inference or training.',
                 staging=str(staging), datasets=[], bwlimit_kib=20480,
                 ssh_command='ssh -F /home/hub/.ssh/radio-moge-config', ssh_host='radio-moge-gpu',
                 source_root=str(remote), checkpoints_first=items)

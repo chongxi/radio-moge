@@ -65,6 +65,8 @@ def render(base, output):
            + html.escape(old, quote=True) + '"></iframe>') if old else ''
     payload = json.dumps(data, allow_nan=False).replace('</', '<\\/')
     stamp = time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())
+    result = (root / 'result-section.html').read_text() if (root / 'result-section.html').exists() else ''
+    speed = (root / 'speed-section.html').read_text() if (root / 'speed-section.html').exists() else ''
     page = '''<!DOCTYPE html><html lang="zh"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Adapter · 学习速度与深度精度</title>
 <style>body{margin:0;background:#f6f5f1;color:#18312f;font:16px system-ui,sans-serif}main,.history{max-width:1160px;margin:30px auto;padding:20px}h1{font-size:clamp(28px,4vw,44px)}p{line-height:1.75}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}article,.panel{background:white;border:1px solid #d9dfd8;border-radius:14px;padding:20px;margin:14px 0}a{color:#006d70}button,select{font:inherit;padding:8px;margin:4px;border-radius:6px;border:1px solid #bbc8c4}progress{width:70%;accent-color:#007d7c}table{border-collapse:collapse;width:100%;font-size:14px}td,th{padding:13px;text-align:left;border-bottom:1px solid #dde1dc;vertical-align:top}svg{width:100%;height:auto}.muted{color:#5d6a67}.notice{border-left:4px solid #bd7428;padding:12px 18px;background:#fff5e6}.scroll{overflow:auto}details>summary{cursor:pointer;padding:16px}text{font-family:system-ui}#joint-charts article{min-width:0}</style></head><body><main>
 <small>研究与实验 · 冻结视觉特征 → MoGe 特征接口 → 深度</small><h1>哪些 adapter 能学得更快、更准？</h1>
@@ -72,7 +74,7 @@ def render(base, output):
 <p>第一轮比较原 adapter 与新增的 spatial／summary 双向联合 attention。原来的 2 个 spatial block 保留；新分支是 2 个宽度 256 的 block。因此这里的“2 层”是新增分支深度，并非整个网络只有 2 层。</p>
 <p>两组从同一父模型出发，新分支以零残差初始化，初始输出相同。使用同一 512 张图／256 场景、有效 batch 4、LR 1×10⁻⁵；仅用原特征损失。每组最多 600 次更新或 20 分钟，每 100 步评估。两组串行执行，随后评估独立截图。</p>
 <p class="notice">这轮检验已有 adapter 的增量改造，不是从零训练架构排名。joint 组增加了参数，因此若有收益，后续还需相近容量的非交互分支对照。16 张验证图只用于小规模筛选；不能据此宣布最终最优或已经收敛。</p>
-<div class="grid">__CARDS__</div><section class="panel"><h2>Cosine 学习曲线</h2>
+<div class="grid">__CARDS__</div>__RESULT____SPEED__<section class="panel"><h2>Cosine 学习曲线</h2>
 <p>Spatial 与 summary 分开看，同时保留幅值、真实深度和几何指标。蓝绿＝原 adapter；橙色＝joint。</p>
 <label>横轴 <select id="joint-axis"><option value="step">优化步数</option><option value="optimizer_seconds">训练循环秒数（不含评估／加载）</option><option value="elapsed_seconds">总运行秒数（含评估／加载）</option></select></label>
 <label>数据 <select id="joint-part"><option value="validation">验证集 · 16 场景</option><option value="train-probe">训练诊断 · 16 张，非独立验证</option></select></label>
@@ -84,7 +86,8 @@ def render(base, output):
 </main><details class="history"><summary>展开已完成的平面监督实验与交互点云（历史）</summary>__HISTORY__</details>
 <script>const jointData=__DATA__;function jointDraw(){const axis=document.getElementById('joint-axis').value,part=document.getElementById('joint-part').value;const keys=[['spatial/cosine','Spatial cosine ↑'],['summary/cosine','Summary cosine ↑'],['gt_student/abs_rel','真实深度 AbsRel ↓'],['summary/norm_ratio','Summary 幅值比（理想 1）']];document.getElementById('joint-charts').innerHTML=keys.map(([key,title])=>{const series=['control','joint'].map(a=>jointData[a][part].filter(r=>Number.isFinite(r[key])&&Number.isFinite(r[axis])));const all=series.flat();if(!all.length)return `<article><b>${title}</b><p>等待完成的评估点</p></article>`;let xmin=0,xmax=Math.max(1,...all.map(r=>r[axis])),lo=Math.min(...all.map(r=>r[key])),hi=Math.max(...all.map(r=>r[key]));let pad=Math.max((hi-lo)*.15,key.includes('cosine')?.0003:.001);lo-=pad;hi+=pad;const x=v=>60+v/xmax*430,y=v=>205-(v-lo)/(hi-lo)*165;let svg='<svg viewBox="0 0 520 245" role="img" aria-label="'+title+'"><path d="M60 35V205H490" fill="none" stroke="#9aaca6"/>';for(let i=0;i<4;i++){let v=lo+(hi-lo)*i/3;svg+=`<text x="54" y="${y(v)+4}" text-anchor="end" font-size="11">${v.toFixed(4)}</text>`;}series.forEach((s,i)=>{const color=['#007d7c','#cf7834'][i];svg+=`<polyline points="${s.map(r=>x(r[axis])+','+y(r[key])).join(' ')}" stroke="${color}" stroke-width="2" fill="none"/>`;s.forEach(r=>svg+=`<circle cx="${x(r[axis])}" cy="${y(r[key])}" r="4" fill="${color}"><title>${i?'joint':'control'} / step ${r.step}: ${r[key].toFixed(6)}; ${axis} ${r[axis].toFixed(1)}</title></circle>`);});svg+=`<text x="60" y="228" font-size="12">0</text><text x="490" y="228" text-anchor="end" font-size="12">${xmax.toFixed(0)} ${axis==='step'?'steps':'s'}</text></svg>`;return `<article><b>${title}</b>${svg}</article>`;}).join('');}document.getElementById('joint-axis').onchange=jointDraw;document.getElementById('joint-part').onchange=jointDraw;jointDraw();</script></body></html>'''
     for key, value in {'STAGE': html.escape(state['stage']), 'STAMP': stamp,
-                        'CARDS': ''.join(cards), 'SOURCES': source_rows, 'HISTORY': old, 'DATA': payload}.items():
+                        'CARDS': ''.join(cards), 'SOURCES': source_rows, 'HISTORY': old, 'DATA': payload,
+                        'RESULT': result, 'SPEED': speed}.items():
         page = page.replace('__' + key + '__', value)
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix('.incoming')
