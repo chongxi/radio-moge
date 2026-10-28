@@ -58,6 +58,8 @@ def render(root, page):
     history = root/'previous-results.html'
     doc = (root/'experiment.md').read_text() if (root/'experiment.md').exists() else ''
     stage = status.get('stage', '准备中，尚未启动')
+    if stage == 'training' and not train:
+        stage = '正式训练初始化 · 尚未记录优化器更新'
     started = status.get('started_at')
     stamp = time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(monitor.get('checked_at', time.time())))
     link = (f'<a href="{escape(identity["url"])}" target="_blank" rel="noopener">打开本次 W&B</a>'

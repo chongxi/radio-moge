@@ -15,6 +15,7 @@ def sync(root, remote_base):
         proof=root/'final-review/backup-verification.json'
         assert proof.exists() and json.loads(proof.read_text())['stage']=='passed'
     names=['continuation.json','code-deployment.json','configuration-verification.json',
+           'preflight-verification.json',
            'startup-verification.json','startup-wandb-verification.json','monitor.json',
            'browser-startup-verification.json','experiment.md','completion-verification.json']
     paths=[root.parent/'handoff.json']+[root/n for n in names]
