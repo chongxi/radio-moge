@@ -7,6 +7,7 @@ import fcntl
 import gc
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import time
@@ -61,6 +62,13 @@ def factorized_features(predicted, target, component):
     mixed = p / pnorm * tnorm if part == "norm" else t / tnorm * pnorm
     return EncoderFeatures(mixed if branch == "spatial" else predicted.spatial,
                            mixed if branch == "summary" else predicted.summary)
+
+
+def rescale_summary(predicted, multiplier):
+    """Change only summary magnitude, preserving spatial features and vector direction."""
+    if not math.isfinite(multiplier) or multiplier <= 0:
+        raise ValueError("Summary multiplier must be positive and finite")
+    return EncoderFeatures(predicted.spatial, predicted.summary.float() * multiplier)
 
 
 def scene_difference(rows, candidate, baseline, repeats=2000):
@@ -180,6 +188,20 @@ def run(plan, output, report):
             for component in plan.get("factorized_interventions", []):
                 mixed = factorized_features(predicted_features, target_features, component)
                 variants["oracle_" + component] = system.decoder(mixed, image.shape[-2:])
+            for multiplier in plan.get("summary_multipliers", []):
+                tag = "summary_x" + format(multiplier, ".4g").replace(".", "p")
+                mixed = rescale_summary(predicted_features, multiplier)
+                variants[tag] = system.decoder(mixed, image.shape[-2:])
+                mixed_metrics = feature_metrics(mixed, target_features, statistics)
+                for key in ("summary/cosine", "summary/norm_ratio", "summary/abs_log_norm_ratio"):
+                    row[f"{tag}/{key}"] = mixed_metrics[key]
+                row[f"{tag}/metric_scale_ratio"] = (
+                    variants[tag]["metric_scale"] / raw["metric_scale"]).mean().item()
+                if abs(mixed_metrics["summary/cosine"] - row["summary/cosine"]) > 1e-6:
+                    raise ValueError("Summary scaling changed cosine beyond floating point error")
+                if multiplier == 1:
+                    for key in raw:
+                        torch.testing.assert_close(raw[key], variants[tag][key], rtol=0, atol=0)
             # Check the shortcut against real mixed-feature decoder calls once per checkpoint.
             if index == 0:
                 for tag, mixed in (
@@ -226,10 +248,11 @@ def run(plan, output, report):
                "elapsed_seconds": time.monotonic() - started, "checkpoints": summarize(rows),
                "reproduction_max_differences": dict(reproduction_differences),
                "replacement_checks": replacement_checks, "source_identities_unchanged": True,
-               "limits": "NYU116 validation, paired teacher-feature interventions with frozen models. "
+               "limits": "NYU116 validation, frozen feature interventions and optional scalar sweep. "
                "Teacher features are diagnostic oracles, not deployable inputs. Correlations are "
                "descriptive, not causal. Scene-bootstrap intervals do not include training-seed "
-               "uncertainty or repeated validation selection. No optimizer or training updates."}
+               "uncertainty or repeated validation selection. A scalar selected on this panel needs "
+               "independent validation. No optimizer or training updates."}
     atomic_json(summary, output / "summary.json")
     report(stage="complete", completed_images=len(records), rows=len(rows),
            elapsed_seconds=time.monotonic() - started)

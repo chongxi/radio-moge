@@ -3,7 +3,7 @@ import torch
 
 from radio_moge.adapters import EncoderFeatures
 from radio_moge.feature_diagnostics import (
-    factorized_features, feature_metrics, replace_scale, scene_difference,
+    factorized_features, feature_metrics, replace_scale, rescale_summary, scene_difference,
 )
 from radio_moge.losses import FeatureStatistics
 
@@ -66,3 +66,20 @@ def test_factorized_replacements_reject_zero_direction():
     teacher = EncoderFeatures(torch.ones(1, 2, 1, 1), torch.ones(1, 2))
     with pytest.raises(ValueError, match='zero vectors'):
         factorized_features(student, teacher, 'spatial_direction')
+
+
+def test_summary_scaling_preserves_direction_spatial_and_input():
+    student = EncoderFeatures(torch.ones(1, 2, 1, 1), torch.tensor([[3.0, -4.0]]))
+    result = rescale_summary(student, 1.04)
+    assert result.spatial is student.spatial
+    torch.testing.assert_close(student.summary, torch.tensor([[3.0, -4.0]]))
+    assert result.summary.norm().item() == pytest.approx(5.2)
+    assert torch.nn.functional.cosine_similarity(result.summary, student.summary).item() == (
+        pytest.approx(1))
+
+
+@pytest.mark.parametrize('multiplier', [0, -1, float('nan'), float('inf')])
+def test_summary_scaling_rejects_nonpositive_or_nonfinite(multiplier):
+    student = EncoderFeatures(torch.ones(1, 2, 1, 1), torch.ones(1, 2))
+    with pytest.raises(ValueError, match='positive and finite'):
+        rescale_summary(student, multiplier)
