@@ -2,6 +2,7 @@
 
 import argparse
 import base64
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -21,10 +22,11 @@ def atomic(path, value):
 def monitor(base, remote_base, name='teacher-plane-subset-pilot-20261028'):
     root = base / name
     source = '''from pathlib import Path
-import json,base64,subprocess,time
+import json,base64,subprocess,time,hashlib
 r=Path(REMOTE_ROOT)
 files={}
-for pattern in ('status.json','wrapper-console.log','*-console.log',
+for pattern in ('status.json','plan.json','*-config.json','preflight-verification.json',
+                'wrapper-console.log','*-console.log',
                 '*/config.json','*/provenance.json','*/wandb-run.json','*/stop-report.json',
                 '*/train.jsonl','*/validation.jsonl','*/eval-*/metrics.json',
                 '*/eval-*/per_image.json','initial-adapter-verification.json',
@@ -32,7 +34,8 @@ for pattern in ('status.json','wrapper-console.log','*-console.log',
                 'assessment/*/*/metrics.json','assessment/*/*/per_image.json'):
  for p in r.glob(pattern):
   assert p.stat().st_size < 4_000_000
-  files[str(p.relative_to(r))]=base64.b64encode(p.read_bytes()).decode()
+  payload=p.read_bytes()
+  files[str(p.relative_to(r))]=dict(data=base64.b64encode(payload).decode(),sha256=hashlib.sha256(payload).hexdigest())
 state=json.loads((r/'status.json').read_text())
 pids=[p for p in (state.get('pid'),state.get('child_pid')) if p]
 processes=subprocess.run(['ps','-p',','.join(map(str,pids)),'-o','pid,stat,etime,cputime,rss,comm'],capture_output=True,text=True).stdout
@@ -45,15 +48,23 @@ print(json.dumps(dict(observed_at=time.time(),files=files,processes=processes,gp
     if result.returncode:
         raise RuntimeError(result.stderr.decode())
     report = json.loads(result.stdout)
+    receipts = {}
     for relative, content in report.pop('files').items():
-        atomic(root / relative, base64.b64decode(content))
+        payload = base64.b64decode(content['data'])
+        assert hashlib.sha256(payload).hexdigest() == content['sha256']
+        atomic(root / relative, payload)
+        assert hashlib.sha256((root / relative).read_bytes()).hexdigest() == content['sha256']
+        receipts[relative] = content['sha256']
+    report['transfer_sha256'] = receipts
     report['status'] = json.loads((root / 'status.json').read_text())
     report['arms'] = {}
     def complete_rows(path):
         return [json.loads(line) for line in path.read_text().splitlines(keepends=True)
                 if line.endswith('\n')] if path.exists() else []
 
-    for arm in ('plane', 'control'):
+    plan_path = root / 'plan.json'
+    arms = json.loads(plan_path.read_text()).get('arms', ['plane', 'control']) if plan_path.exists() else ['plane', 'control']
+    for arm in arms:
         path = root / arm / 'train.jsonl'
         rows = complete_rows(path)
         val = root / arm / 'validation.jsonl'
@@ -71,7 +82,8 @@ print(json.dumps(dict(observed_at=time.time(),files=files,processes=processes,gp
     handoff = json.loads(handoff_path.read_text())
     expanded = name == 'teacher-plane-coverage512-pilot-20261028'
     flatness = name == 'teacher-plane-ownflat512-pilot-20261028'
-    key = ('active_plane_flatness_pilot' if flatness else
+    joint = name == 'adapter-joint-cosine512-pilot-20261028'
+    key = ('active_adapter_joint_pilot' if joint else 'active_plane_flatness_pilot' if flatness else
            'active_plane_coverage_pilot' if expanded else 'active_plane_pilot')
     handoff.setdefault(key, {}).update(
         stage=report['status']['stage'], training_launched=True,
@@ -79,7 +91,7 @@ print(json.dumps(dict(observed_at=time.time(),files=files,processes=processes,gp
         monitor=str(root / 'monitor.json'), viewer_url='https://buildhub-nano-test--p7869.pub.astera.work/')
     handoff['updated_at'] = time.time()
     atomic(handoff_path, json.dumps(handoff, indent=2).encode())
-    renderer = ('render_plane_flatness_page.py' if flatness else
+    renderer = ('render_joint_cosine_page.py' if joint else 'render_plane_flatness_page.py' if flatness else
                 'render_plane_coverage_page.py' if expanded else 'render_plane_pilot_page.py')
     subprocess.run([sys.executable, str(Path(__file__).with_name(renderer)),
                     '--base', str(base), '--output',

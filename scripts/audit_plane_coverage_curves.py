@@ -28,8 +28,10 @@ def audit(root):
     assert load(reference / 'completion-verification.json')['stage'] == 'passed'
     plan = load(root / 'plan.json')
     expected_steps = plan['evaluation_steps']
+    arms = plan.get('arms', ['plane', 'control'])
+    treatment = 'joint' if plan.get('profile') == 'joint-cosine-512' else 'plane'
     completed, fresh = {}, []
-    for arm in ('plane', 'control'):
+    for arm in arms:
         config = load(root / f'{arm}-config.json')
         validation = {r['step']: r for r in rows(root / arm / 'validation.jsonl')}
         probes = {r['step']: r for r in rows(root / arm / 'train-probe.jsonl')}
@@ -78,17 +80,17 @@ def audit(root):
             completed[arm][str(step)] = metrics
             fresh.append(str(target))
     paired = {}
-    for step in sorted(set(completed['plane']) & set(completed['control']),key=int):
-        paired[step] = {partition: {key: dict(
-            plane=completed['plane'][step][partition][key],
-            control=completed['control'][step][partition][key],
-            difference=completed['plane'][step][partition][key]-completed['control'][step][partition][key])
+    for step in sorted(set(completed[treatment]) & set(completed['control']),key=int):
+        paired[step] = {partition: {key: {
+            treatment: completed[treatment][step][partition][key],
+            'control': completed['control'][step][partition][key],
+            'difference': completed[treatment][step][partition][key]-completed['control'][step][partition][key]}
             for key in KEYS} for partition in ('validation','train-probe')}
     report = dict(stage='passed' if sorted(map(int,paired)) == expected_steps else 'in_progress',
                   checked_at=time.time(),expected_steps=expected_steps,
                   verified_steps={arm: sorted(map(int,points)) for arm,points in completed.items()},
                   matched_steps=sorted(map(int,paired)),comparisons=paired,
-                  note='Only matched plane/control steps support the effect comparison; no best-step selection.')
+                  note='Only matched treatment/control steps support the effect comparison; no best-step selection.')
     atomic(root/'curve-verification.json',report)
     print(json.dumps(dict(stage=report['stage'],verified_steps=report['verified_steps'],new_proofs=fresh)))
 

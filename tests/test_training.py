@@ -132,6 +132,7 @@ def test_training_probe_is_observational_and_not_used_for_selection(tmp_path, mo
     manifest = tmp_path / 'probe.jsonl'
     manifest.write_text(Path(config['data']['train_manifest']).read_text().splitlines()[0] + '\n')
     config['data']['train_probe_manifest'] = str(manifest)
+    config['train']['record_cosine_speed'] = True
     config['output_dir'] = str(tmp_path / 'with-probe')
     checked = torch.load(train(config, system_adapter=tiny_system()), weights_only=True)
     assert checked['best'] == baseline['best'] == .2
@@ -140,6 +141,9 @@ def test_training_probe_is_observational_and_not_used_for_selection(tmp_path, mo
     torch.testing.assert_close(baseline['rng']['torch'], checked['rng']['torch'], rtol=0, atol=0)
     rows = [json.loads(s) for s in (tmp_path / 'with-probe/train-probe.jsonl').read_text().splitlines()]
     assert [r['step'] for r in rows] == [0, 2, 4]
+    assert rows[0]['optimizer_seconds'] == 0
+    assert 0 < rows[1]['optimizer_seconds'] < rows[2]['optimizer_seconds']
+    assert all(r['elapsed_seconds'] >= r['optimizer_seconds'] for r in rows)
     assert [x for x in calls if x.startswith('train-probe')] == [
         'train-probe-0000000', 'train-probe-0000002', 'train-probe-0000004']
 

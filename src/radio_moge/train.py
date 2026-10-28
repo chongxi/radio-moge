@@ -246,6 +246,7 @@ def train(
             elapsed_before = state.get("wall_clock_elapsed_seconds", 0.0)
             restore_rng(state["rng"])
     limits = continued_limits(settings, state if resume else None, extension)
+    optimizer_seconds = (state or {}).get('optimizer_elapsed_seconds', 0.0) if resume else 0.0
     fork_provenance = (state or {}).get("fork_provenance") if resume else None
     if fork_from:
         fork_provenance = {
@@ -354,6 +355,7 @@ def train(
                 "data_digests": digests,
                 "revisions": revisions,
                 "wall_clock_elapsed_seconds": elapsed_seconds(),
+                "optimizer_elapsed_seconds": optimizer_seconds,
                 "runtime_limits": limits,
                 "execution_revision": provenance["execution_revision"],
                 "fork_provenance": fork_provenance,
@@ -390,6 +392,8 @@ def train(
             metrics.get(f"feature/{key}", 0) * config["loss"].get(key, 0)
             for key in ("spatial", "summary", "cosine")
         )
+        if settings.get('record_cosine_speed', False):
+            metrics.update(optimizer_seconds=optimizer_seconds, elapsed_seconds=elapsed_seconds())
         with (output / "validation.jsonl").open("a") as file:
             file.write(json.dumps({"step": step, **metrics}, allow_nan=False) + "\n")
         print(json.dumps({"validation_step": step, **metrics}), flush=True)
@@ -412,6 +416,9 @@ def train(
                 probe_metrics['feature/total'] = sum(
                     probe_metrics.get(f'feature/{key}', 0) * config['loss'].get(key, 0)
                     for key in ('spatial', 'summary', 'cosine'))
+                if settings.get('record_cosine_speed', False):
+                    probe_metrics.update(optimizer_seconds=optimizer_seconds,
+                                         elapsed_seconds=elapsed_seconds())
                 with (output / 'train-probe.jsonl').open('a') as file:
                     file.write(json.dumps({'step': step, **probe_metrics}, allow_nan=False) + '\n')
                 tracker.log('train_probe', probe_metrics, step)
@@ -476,6 +483,7 @@ def train(
             step += 1
             synchronize(accelerator.device)
             elapsed = time.perf_counter() - started
+            optimizer_seconds += elapsed
             row = {
                 "step": step,
                 "lr": optimizer.param_groups[0]["lr"],
@@ -485,6 +493,9 @@ def train(
                 "gradient_norm": norm.item(),
                 **totals,
             }
+            if settings.get('record_cosine_speed', False):
+                row.update(optimizer_seconds=optimizer_seconds, elapsed_seconds=elapsed_seconds(),
+                           spatial_cosine=1 - totals['cosine'])
             if measure_update:
                 update_norm = torch.stack([
                     (p.detach() - old).float().square().sum()

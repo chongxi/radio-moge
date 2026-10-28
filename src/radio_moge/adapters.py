@@ -5,6 +5,7 @@ import torch
 from torch import nn
 
 from .spatial_heads import AttentionSpatialHead, DPTSpatialHead, SpatialSummary
+from .feature_refinement import FeatureRefinement, REFINEMENTS
 
 
 @dataclass
@@ -55,6 +56,11 @@ class GeometryAdapter(nn.Module):
         attention_heads=16,
         summary_width=512,
         summary_heads=8,
+        refinement="none",
+        refinement_width=256,
+        refinement_blocks=2,
+        refinement_heads=8,
+        refinement_activation='gelu',
     ):
         super().__init__()
         if channel_cleaning not in {"none", "zero-channel"}:
@@ -123,6 +129,21 @@ class GeometryAdapter(nn.Module):
             )
         else:
             raise ValueError(f"Unknown adapter: {kind}")
+        if refinement not in REFINEMENTS:
+            raise ValueError(f"Unknown refinement: {refinement}")
+        self.refinement = None
+        if refinement != 'none':
+            self.config.update(refinement=refinement, refinement_width=refinement_width,
+                               refinement_blocks=refinement_blocks, refinement_heads=refinement_heads,
+                               refinement_activation=refinement_activation)
+            self.refinement = FeatureRefinement(refinement, target_dim, target_summary_dim,
+                                                refinement_width, refinement_blocks, refinement_heads,
+                                                refinement_activation)
+
+    def _refine(self, spatial, summary):
+        if self.refinement is not None:
+            spatial, summary = self.refinement(spatial, summary)
+        return EncoderFeatures(spatial, summary)
 
     def _clean(self, features):
         return (
@@ -150,7 +171,7 @@ class GeometryAdapter(nn.Module):
                 spatial, memory = self.spatial(
                     tuple(self._clean(v.float()) for v in features.intermediates)
                 )
-                return EncoderFeatures(spatial, self.summary(memory, features.summary.float()))
+                return self._refine(spatial, self.summary(memory, features.summary.float()))
             x = sum(
                 p(self._clean(v.float())) for p, v in zip(self.projections, features.intermediates)
             )
@@ -158,4 +179,4 @@ class GeometryAdapter(nn.Module):
         else:
             x = self._clean(x)
         # No output normalization: the frozen decoder needs teacher magnitudes.
-        return EncoderFeatures(self.spatial(x), self.summary(features.summary.float()))
+        return self._refine(self.spatial(x), self.summary(features.summary.float()))
