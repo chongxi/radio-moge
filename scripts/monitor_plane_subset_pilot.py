@@ -70,14 +70,17 @@ print(json.dumps(dict(observed_at=time.time(),files=files,processes=processes,gp
     handoff_path = base / 'handoff.json'
     handoff = json.loads(handoff_path.read_text())
     expanded = name == 'teacher-plane-coverage512-pilot-20261028'
-    key = 'active_plane_coverage_pilot' if expanded else 'active_plane_pilot'
+    flatness = name == 'teacher-plane-ownflat512-pilot-20261028'
+    key = ('active_plane_flatness_pilot' if flatness else
+           'active_plane_coverage_pilot' if expanded else 'active_plane_pilot')
     handoff.setdefault(key, {}).update(
         stage=report['status']['stage'], training_launched=True,
         last_observed_at=report['observed_at'], status=report['status'], arms=report['arms'],
         monitor=str(root / 'monitor.json'), viewer_url='https://buildhub-nano-test--p7869.pub.astera.work/')
     handoff['updated_at'] = time.time()
     atomic(handoff_path, json.dumps(handoff, indent=2).encode())
-    renderer = 'render_plane_coverage_page.py' if expanded else 'render_plane_pilot_page.py'
+    renderer = ('render_plane_flatness_page.py' if flatness else
+                'render_plane_coverage_page.py' if expanded else 'render_plane_pilot_page.py')
     subprocess.run([sys.executable, str(Path(__file__).with_name(renderer)),
                     '--base', str(base), '--output',
                     str(Path(__file__).resolve().parents[1] / '.kanna/visualizations/teacher-plane-pilot.html')],
