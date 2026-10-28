@@ -123,7 +123,8 @@ def test_training_probe_is_observational_and_not_used_for_selection(tmp_path, mo
         if probe:
             # Even a diagnostic that consumes RNG cannot change the optimization trajectory.
             torch.rand(7)
-        return {'feature/spatial': 1., 'teacher_depth/abs_rel': 0. if probe else .2,
+        return {'feature/spatial': 1., 'feature/summary': 1., 'feature/cosine': .1,
+                'teacher_depth/abs_rel': 0. if probe else .2,
                 'postprocess_failed': 0}
 
     monkeypatch.setattr('radio_moge.train.evaluate', evaluate)
@@ -333,7 +334,8 @@ def test_deadline_evaluates_final_checkpoint_once(tmp_path, monkeypatch):
 
     def evaluate(*args, **kwargs):
         evaluated.append(str(args[6]))
-        return {"teacher_depth/abs_rel": 0.1, "postprocess_failed": 0.0}
+        return {"teacher_depth/abs_rel": 0.1, "postprocess_failed": 0.0,
+                "feature/spatial": 1., "feature/summary": 1., "feature/cosine": .1}
 
     monkeypatch.setattr(torch.optim.AdamW, "step", timed_step)
     monkeypatch.setattr("radio_moge.train.evaluate", evaluate)
@@ -486,6 +488,7 @@ def test_checkpoint_selection_uses_configured_source_macro(tmp_path, monkeypatch
             "teacher_depth/abs_rel": pooled,
             "macro/teacher_depth/abs_rel": macro,
             "postprocess_failed": 0.0,
+            "feature/spatial": 1., "feature/summary": 1., "feature/cosine": .1,
         }
 
     monkeypatch.setattr("radio_moge.train.evaluate", evaluate)

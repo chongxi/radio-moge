@@ -29,7 +29,7 @@ def audit(root):
     plan = load(root / 'plan.json')
     expected_steps = plan['evaluation_steps']
     arms = plan.get('arms', ['plane', 'control'])
-    treatment = 'joint' if plan.get('profile') == 'joint-cosine-512' else 'plane'
+    treatment = plan.get('treatment_arm', 'joint' if plan.get('profile') == 'joint-cosine-512' else 'plane')
     completed, fresh = {}, []
     for arm in arms:
         config = load(root / f'{arm}-config.json')
@@ -65,7 +65,8 @@ def audit(root):
                     assert abs(summary[key] - log[key]) < 1e-12, key
                 raw = load(path / 'metrics.json')
                 total = sum(raw[f'feature/{k}'] * config['loss'][k]
-                            for k in ('spatial', 'summary', 'cosine'))
+                            for k in ('spatial', 'summary', 'cosine', 'summary_cosine')
+                            if config['loss'].get(k, 0))
                 assert abs(log['feature/total'] - total) < 1e-12
                 if step == 0:
                     for a, b in zip(before, measured, strict=True):

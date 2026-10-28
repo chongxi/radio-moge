@@ -31,7 +31,7 @@ from .data import (
 )
 from .evaluate import evaluate, synchronize
 from .decoder import geometry_points_with_grad, postprocess
-from .losses import FeatureStatistics, geometry_losses, weighted_loss
+from .losses import FeatureStatistics, feature_loss_total, geometry_losses, weighted_loss
 from .planes import FLATNESS_MODES, PlaneConfig, detect_planes, plane_losses
 from .system import build_system
 from .tracking import ExperimentTracker, preserve_rng
@@ -388,10 +388,7 @@ def train(
             destination,
             config["evaluation"]["limit"],
         )
-        metrics["feature/total"] = sum(
-            metrics.get(f"feature/{key}", 0) * config["loss"].get(key, 0)
-            for key in ("spatial", "summary", "cosine")
-        )
+        metrics["feature/total"] = feature_loss_total(metrics, config['loss'])
         if settings.get('record_cosine_speed', False):
             metrics.update(optimizer_seconds=optimizer_seconds, elapsed_seconds=elapsed_seconds())
         with (output / "validation.jsonl").open("a") as file:
@@ -413,9 +410,7 @@ def train(
             with preserve_rng():
                 probe_metrics = evaluate(system, raw_adapter, statistics, train_probe, config,
                                          destination, None)
-                probe_metrics['feature/total'] = sum(
-                    probe_metrics.get(f'feature/{key}', 0) * config['loss'].get(key, 0)
-                    for key in ('spatial', 'summary', 'cosine'))
+                probe_metrics['feature/total'] = feature_loss_total(probe_metrics, config['loss'])
                 if settings.get('record_cosine_speed', False):
                     probe_metrics.update(optimizer_seconds=optimizer_seconds,
                                          elapsed_seconds=elapsed_seconds())
@@ -495,7 +490,8 @@ def train(
             }
             if settings.get('record_cosine_speed', False):
                 row.update(optimizer_seconds=optimizer_seconds, elapsed_seconds=elapsed_seconds(),
-                           spatial_cosine=1 - totals['cosine'])
+                           spatial_cosine=1 - totals['cosine'],
+                           summary_cosine_similarity=1 - totals['summary_cosine'])
             if measure_update:
                 update_norm = torch.stack([
                     (p.detach() - old).float().square().sum()

@@ -3,6 +3,15 @@ import torch.nn.functional as F
 from torch import nn
 
 
+FEATURE_LOSS_KEYS = ('spatial', 'summary', 'cosine', 'summary_cosine')
+
+
+def feature_loss_total(metrics, weights):
+    """Use the training feature weights for evaluation, including summary direction."""
+    return sum(metrics[f'feature/{key}'] * weights[key]
+               for key in FEATURE_LOSS_KEYS if weights.get(key, 0))
+
+
 class FeatureStatistics(nn.Module):
     """Fixed per-channel teacher RMS scales, fitted on training data only.
 
@@ -48,6 +57,8 @@ class FeatureStatistics(nn.Module):
             .square()
             .mean(),
             "cosine": 1 - F.cosine_similarity(spatial, target.spatial.float(), dim=1).mean(),
+            "summary_cosine": 1 - F.cosine_similarity(
+                summary, target.summary.float(), dim=1).mean(),
         }
 
 
