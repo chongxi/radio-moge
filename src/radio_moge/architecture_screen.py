@@ -66,7 +66,7 @@ def rope2d(x, h, w, global_tokens):
 
 
 class ScreenBlock(nn.Module):
-    def __init__(self, width, heads, position, gate, activation, layer_scale):
+    def __init__(self, width, heads, position, gate, activation, layer_scale, qk_norm=False):
         super().__init__()
         if width % heads or width // heads % 4:
             raise ValueError("Head dimension must be divisible by four")
@@ -79,6 +79,9 @@ class ScreenBlock(nn.Module):
         self.fc2 = nn.Linear(hidden, width)
         self.scale1 = nn.Parameter(torch.full((width,), layer_scale))
         self.scale2 = nn.Parameter(torch.full((width,), layer_scale))
+        # Normalize each projected head before RoPE; output feature amplitudes remain free.
+        self.q_norm = nn.LayerNorm(width // heads) if qk_norm else nn.Identity()
+        self.k_norm = nn.LayerNorm(width // heads) if qk_norm else nn.Identity()
 
     def forward(self, x, h, w, globals_count):
         b, n, c = x.shape
@@ -89,6 +92,7 @@ class ScreenBlock(nn.Module):
             .permute(2, 0, 3, 1, 4)
             .unbind(0)
         )
+        q, k = self.q_norm(q), self.k_norm(k)
         if self.position == "rope":
             q, k = rope2d(q, h, w, globals_count), rope2d(k, h, w, globals_count)
         attn = F.scaled_dot_product_attention(q, k, v)
@@ -102,6 +106,37 @@ class ScreenBlock(nn.Module):
         else:
             value = F.gelu(value)
         return x + self.scale2 * self.fc2(value)
+
+
+class SummaryAttentionReadout(nn.Module):
+    """One extra attention-only residual update to summary, with all tokens as memory.
+
+    The spatial and register tokens are not updated. This is a CaiT-inspired
+    readout, not a reproduction of the full CaiT architecture. No extra FFN.
+    """
+
+    def __init__(self, width, heads, layer_scale):
+        super().__init__()
+        self.heads = heads
+        self.norm = nn.LayerNorm(width)
+        self.qkv = nn.Linear(width, 3 * width)
+        self.projection = nn.Linear(width, width)
+        self.gate = nn.Linear(width, heads)
+        self.scale = nn.Parameter(torch.full((width,), layer_scale))
+
+    def forward(self, tokens, h, w, globals_count):
+        b, n, c = tokens.shape
+        norm = self.norm(tokens)
+        q, k, v = self.qkv(norm).reshape(b, n, 3, self.heads, c // self.heads).permute(
+            2, 0, 3, 1, 4
+        ).unbind(0)
+        summary_index = h * w
+        q = q[:, :, summary_index : summary_index + 1]
+        k = rope2d(k, h, w, globals_count)
+        update = F.scaled_dot_product_attention(q, k, v)
+        gate = self.gate(norm[:, summary_index]).sigmoid()[:, :, None, None]
+        update = (update * gate).transpose(1, 2).reshape(b, c)
+        return tokens[:, summary_index] + self.scale * self.projection(update)
 
 
 class JointScreenAdapter(nn.Module):
@@ -130,6 +165,7 @@ class JointScreenAdapter(nn.Module):
                 spec["gate"],
                 spec["activation"],
                 spec["layer_scale"],
+                spec.get("qk_norm", False),
             )
             for _ in range(spec["blocks"])
         )
@@ -142,6 +178,12 @@ class JointScreenAdapter(nn.Module):
             self.state_spatial = nn.Conv2d(target_dim, width, 1)
             self.state_summary = nn.Linear(target_summary_dim, width)
             self.time = nn.Sequential(nn.Linear(64, width), nn.SiLU(), nn.Linear(width, width))
+        # Construct last, preserving the seed-identical shared backbone/output initialization.
+        self.summary_readout = (
+            SummaryAttentionReadout(width, spec["heads"], spec["layer_scale"])
+            if spec.get("summary_readout", False)
+            else None
+        )
 
     def forward(self, features, state=None, t=None):
         if len(features.intermediates) != len(self.input):
@@ -168,9 +210,14 @@ class JointScreenAdapter(nn.Module):
         tokens = torch.cat((tokens, summary[:, None], self.registers[None].expand(b, -1, -1)), 1)
         for block in self.blocks:
             tokens = block(tokens, h, w, 1 + len(self.registers))
+        summary = (
+            self.summary_readout(tokens, h, w, 1 + len(self.registers))
+            if self.summary_readout is not None
+            else tokens[:, h * w]
+        )
         return EncoderFeatures(
             self.spatial_output(tokens[:, : h * w]).transpose(1, 2).reshape(b, -1, h, w),
-            self.summary_output(tokens[:, h * w]),
+            self.summary_output(summary),
         )
 
 

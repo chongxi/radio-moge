@@ -8,6 +8,7 @@ from pathlib import Path
 import time
 
 from radio_moge.capacity_screen import capacity_candidates
+from radio_moge.attention_tricks import attention_candidates
 
 
 def digest(data):
@@ -20,8 +21,8 @@ def atomic(path, data):
     p.replace(path)
 
 
-def prepare(root, source, revision, wide2048=False, wide4096=False):
-    assert not (wide2048 and wide4096)
+def prepare(root, source, revision, wide2048=False, wide4096=False, attention=False):
+    assert sum((wide2048, wide4096, attention)) <= 1
     assert json.loads((source / "completion-verification.json").read_text())["stage"] == "passed"
     plan = copy.deepcopy(json.loads((source / "plan.json").read_text()))
     cache = json.loads((source / "cache-index.json").read_text())
@@ -45,7 +46,7 @@ def prepare(root, source, revision, wide2048=False, wide4096=False):
             else ((4, 512), (4, 768), (4, 1024), (8, 512), (8, 768), (8, 1024))
         )
     )
-    candidates = capacity_candidates(shapes)
+    candidates = attention_candidates() if attention else capacity_candidates(shapes)
     count = len(candidates)
     plan.update(
         name=root.name,
@@ -81,6 +82,22 @@ def prepare(root, source, revision, wide2048=False, wide4096=False):
             "Geometry56 images includes only32NYUGT; COCO scenes unknown and Tartan/IRS few environments.",
         ],
     )
+    if attention:
+        plan.update(
+            screen_profile="attention_tricks",
+            comparison_baseline_variant="baseline",
+            comparison_baseline_shape=[4, 2048],
+            experiment_shapes=[[4, 2048]],
+            experiment_variants=list(dict.fromkeys(c["variant"] for c in candidates)),
+            selection="All five variants and both seeds fixed before training; no adaptive pruning.",
+            variant_details={
+                "baseline": "Unmodified 4x2048,32heads,headwidth64.",
+                "heads16": "16heads/headwidth128; same total width. Per-head gates change parameter count slightly; axial RoPE frequency allocation follows head dimension.",
+                "heads64": "64heads/headwidth32; same caveats as heads16.",
+                "qknorm": "Per-head LayerNorm on projected Q,K before RoPE; standard sqrt(head_dim) softmax scaling retained. Output magnitudes are not normalized.",
+                "summary_readout": "One extra gated attention-only residual summary update, all spatial/summary/register tokens as memory; no extra FFN or spatial update. Shared initialization unchanged. Extra parameters reported; not parameter-matched.",
+            },
+        )
     atomic(root / "plan.json", json.dumps(plan, indent=2).encode())
     atomic(
         root / "cache-status.json",
@@ -156,5 +173,6 @@ if __name__ == "__main__":
     widths = p.add_mutually_exclusive_group()
     widths.add_argument("--wide2048", action="store_true")
     widths.add_argument("--wide4096", action="store_true")
+    widths.add_argument("--attention", action="store_true")
     a = p.parse_args()
-    prepare(a.root, a.source, a.revision, a.wide2048, a.wide4096)
+    prepare(a.root, a.source, a.revision, a.wide2048, a.wide4096, a.attention)
