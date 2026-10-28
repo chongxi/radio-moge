@@ -106,7 +106,7 @@ def render(root, destination):
             + '</table></div><p class="muted">确认集未参与本轮名单选择。GT 计数不足时必须同时查看失败记录，不能把缺失图像当成改善；尚未完成的结果不会填预测值。</p></section>'
         )
     template = """<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>从零训练 · Adapter 架构筛选</title><style>
-body{margin:0;background:#f5f4ef;color:#19342f;font:16px system-ui,sans-serif}main,details.history{max-width:1200px;margin:24px auto;padding:20px}h1{font-size:clamp(28px,4vw,44px)}h2{font-size:22px}p{line-height:1.75}article,.panel{border:1px solid #d4ddd6;border-radius:14px;background:white;padding:20px;margin:16px 0;min-width:0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:16px}.scroll{overflow:auto}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;padding:11px;border-bottom:1px solid #ddd;vertical-align:top}select,button{font:inherit;padding:8px;max-width:100%;margin:4px;border-radius:6px;border:1px solid #afbeb8}svg{width:100%;height:auto}.notice{background:#fff2dd;border-left:4px solid #bf7927;padding:14px 18px}.muted{color:#596d65}a{color:#00756e}summary{cursor:pointer;padding:12px}.controls{display:flex;gap:12px;flex-wrap:wrap}</style></head><body><main>
+body{margin:0;background:#f5f4ef;color:#19342f;font:16px system-ui,sans-serif}main,details.history{max-width:1200px;margin:24px auto;padding:20px}h1{font-size:clamp(28px,4vw,44px)}h2{font-size:22px}p{line-height:1.75}article,.panel{border:1px solid #d4ddd6;border-radius:14px;background:white;padding:20px;margin:16px 0;min-width:0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:16px}.scroll{overflow:auto}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;padding:11px;border-bottom:1px solid #ddd;vertical-align:top}select,button{font:inherit;padding:8px;max-width:100%;margin:4px;border-radius:6px;border:1px solid #afbeb8}svg{width:100%;height:auto}.notice{background:#fff2dd;border-left:4px solid #bf7927;padding:14px 18px}.muted{color:#596d65}a{color:#00756e}summary{cursor:pointer;padding:12px}.controls{display:flex;gap:12px;flex-wrap:wrap}.controls>label{min-width:0;max-width:100%}.controls select{box-sizing:border-box;max-width:calc(100% - 8px)}</style></head><body><main>
 <small>七来源数据 · 随机初始化 · 16 个候选</small><h1>谁的 Spatial 与 Summary 学得更快？</h1>
 <p><b>__STAGE__</b> · __STAMP__ <button onclick="location.reload()">刷新</button></p><p>__PROGRESS__</p>
 <p>这轮从零训练 adapter，不继承旧 adapter 或 Adam 状态。RADIO 与 MoGe 保持冻结，同一批缓存特征供全部候选使用。先筛选，再用未参与本轮排名的确认场景与实际深度输出检查入围者。</p>
@@ -122,6 +122,25 @@ function draw(){const part=$('partition').value,source=$('source').value,axis=$(
 const latest=names.map(n=>({n,r:series[n].validation.at(-1)})).filter(x=>x.r).sort((a,b)=>Math.min(b.r['macro/spatial/cosine'],b.r['macro/summary/cosine'])-Math.min(a.r['macro/spatial/cosine'],a.r['macro/summary/cosine']));$('ranking').innerHTML=latest.length?'<table><tr><th>候选／调用次数</th><th>实际步数</th><th>参数 M</th><th>Spatial</th><th>Summary</th><th>训练秒</th><th>推理 ms/图</th></tr>'+latest.map(({n,r})=>`<tr><td>${n}</td><td>${r.step}</td><td>${preflight[n.split('/')[0]]?(preflight[n.split('/')[0]].parameters/1e6).toFixed(2):'—'}</td><td>${r['macro/spatial/cosine'].toFixed(6)}</td><td>${r['macro/summary/cosine'].toFixed(6)}</td><td>${r.optimizer_seconds.toFixed(1)}</td><td>${r.inference_ms_per_image.toFixed(2)}</td></tr>`).join('')+'</table>':'<p>缓存／预检进行中。此处只展示已完成的真实评估，不填预测值。</p>';for(const id of ['candidate','baseline','partition','source','axis','target'])$(id).onchange=draw;draw();</script></body></html>"""
     anchor = '<section class="panel"><h2>配对学习曲线</h2>'
     template = template.replace(anchor, confirmation_html + anchor)
+    report_path = root / "result-report.json"
+    if report_path.exists():
+        report = json.loads(report_path.read_text())
+        comparison = report["relative_to_original"]["joint_combined"]
+        summary = (
+            '<section class="panel"><h2>这一轮说明什么</h2><p>'
+            + html.escape(report["conclusion_zh"])
+            + "</p>"
+        )
+        summary += f"<p>组合结构参数量为原基线的 {comparison['parameter_ratio'] * 100:.1f}%，训练循环耗时为 {comparison['training_time_ratio']:.2f} 倍；它在本轮两项特征与几何的取舍更好，但不是耗时最少的结构。确认集 NYU AbsRel 下降 {abs(comparison['geometry_percent_change']['gt_student/abs_rel']):.1f}%，固定教师区域的平面残差下降 {abs(comparison['geometry_percent_change']['planes/student/normalized_rms']):.1f}%。</p>"
+        summary += '<p>按筛选集首次观测到 Spatial≥0.90 且 Summary≥0.80 的训练耗时，4×768 最快，约 37.4 秒；它尚未进入本轮四模型确认。这些时间基于缓存特征，另有共同的约 5 分钟缓存准备成本，不代表端到端训练收敛时间。</p><p class="notice">单个 seed、共同学习率、固定视图的短程筛选；500→1,000 步 Summary 排名仍有变化。微小差异不作显著性结论，下一轮应复测入围者，不据此直接宣布最优架构。</p></section>'
+        marker = '<section class="panel"><h2>最新完成的验证点'
+        template = template.replace(marker, summary + marker)
+    geometry = root / "result-section.html"
+    if geometry.exists():
+        template = template.replace(
+            '</main><details class="history">',
+            geometry.read_text() + '</main><details class="history">',
+        )
     preflight_path = root / "preflight-verification.json"
     preflight = (
         json.loads(preflight_path.read_text()).get("candidates", {})
