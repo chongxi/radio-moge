@@ -65,6 +65,9 @@ def render(root, destination):
     progress = f"缓存 {cache.get('images', 0)} / 2,240 图；已结束 {len(status.get('completed', []))} / 16 候选"
     if status.get("current"):
         progress += f"；当前 {status['current']}：{status.get('step', 0)} 步"
+    completion_path = root / "completion-verification.json"
+    if completion_path.exists() and json.loads(completion_path.read_text())["stage"] == "passed":
+        stage = "全部完成：训练、确认、独立核验与备份"
     confirmation_html = ""
     shortlist_path = root / "shortlist.json"
     if shortlist_path.exists():
