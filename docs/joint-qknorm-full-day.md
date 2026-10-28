@@ -1,6 +1,8 @@
 # 4×2048 joint adapter + QK norm：seed43 全量训练
 
-状态：准备与验证中，尚未启动。用户授权新架构训练，并要求记录与训练好的旧版 naive 的差异。
+状态：已于2026-10-28 23:36 UTC启动单次预检→全量训练流程（wrapper16168）。
+执行版本9c9fd29278740a85b7908fb4b574acdd24a691bc；先做3次可丢弃预检更新，通过后重新初始化正式训练。
+用户授权新架构训练，并要求记录与训练好的旧版 naive 的差异。
 实际版本、启动、W&B与停止时间以共享实验目录的 plan/launch/status/provenance 为准。
 
 ## 新旧架构
@@ -92,3 +94,10 @@ seed43为0.918232/0.812730。NYU AbsRel：0.088440→0.082710；平面RMS：0.02
 
 网页：https://buildhub-nano-test--p7869.pub.astera.work/
 共享实验目录：`/shared/radio-moge/chongxi/data-expansion-attention-20261022/adapter-qknorm2048-full-s43-20261028/`。
+
+## 启动验证
+
+本地与H200远端44项CPU测试通过，ruff通过。真实GPU预检检查全部RADIO投影输入已清理、
+原始特征与MoGe目标未修改、冻结主干无梯度、adapter梯度有限、参数更新非零。
+预检结果与正式训练状态以共享目录preflight.json、status.json、monitor.json为准；
+CPU测试或预检通过本身不代表正式训练已经完成更新。

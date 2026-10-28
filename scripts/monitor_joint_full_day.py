@@ -76,7 +76,7 @@ print(json.dumps(dict(checked_at=time.time(),files=files,processes=processes,gpu
         assert row['gradient_norm']>0
         if 'update_norm' in row:
             assert row['update_norm']>0
-        assert math.isclose(row['loss'],sum(row[k]*w for k,w in config['loss'].items()),rel_tol=2e-5,abs_tol=2e-6)
+        assert math.isclose(row['total'],sum(row[k]*w for k,w in config['loss'].items()),rel_tol=2e-5,abs_tol=2e-6)
     result.update(logged_rows=len(rows),last_step=rows[-1]['step'] if rows else 0,
                   all_logged_finite=True,actual_lr_verified=bool(rows),copies=receipts)
     write(root/'monitor.json',result)
