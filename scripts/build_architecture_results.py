@@ -133,7 +133,13 @@ def build(root, capacity=False):
         baseline_shape = f"{baseline[0]}x{baseline[1]}"
         baseline_label = baseline_shape.replace("x", "×")
         shapes = sorted({(s["blocks"], s["width"]) for s in specs})
-        default_shape = "4x2048" if plan.get("screen_profile") == "wide2048" else "4x1024"
+        default_shape = (
+            "4x4096"
+            if plan.get("screen_profile") == "wide4096"
+            else "4x2048"
+            if plan.get("screen_profile") == "wide2048"
+            else "4x1024"
+        )
         panel_labels = {
             "baseline": baseline_label + " · 同 seed 基线",
             "candidate": "选中规模",

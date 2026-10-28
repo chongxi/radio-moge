@@ -20,7 +20,8 @@ def atomic(path, data):
     p.replace(path)
 
 
-def prepare(root, source, revision, wide2048=False):
+def prepare(root, source, revision, wide2048=False, wide4096=False):
+    assert not (wide2048 and wide4096)
     assert json.loads((source / "completion-verification.json").read_text())["stage"] == "passed"
     plan = copy.deepcopy(json.loads((source / "plan.json").read_text()))
     cache = json.loads((source / "cache-index.json").read_text())
@@ -36,9 +37,13 @@ def prepare(root, source, revision, wide2048=False):
     payload = json.dumps(cache, indent=2).encode()
     atomic(root / "cache-index.json", payload)
     shapes = (
-        ((4, 1024), (4, 1536), (4, 2048))
-        if wide2048
-        else ((4, 512), (4, 768), (4, 1024), (8, 512), (8, 768), (8, 1024))
+        ((4, 2048), (4, 4096))
+        if wide4096
+        else (
+            ((4, 1024), (4, 1536), (4, 2048))
+            if wide2048
+            else ((4, 512), (4, 768), (4, 1024), (8, 512), (8, 768), (8, 1024))
+        )
     )
     candidates = capacity_candidates(shapes)
     count = len(candidates)
@@ -48,8 +53,8 @@ def prepare(root, source, revision, wide2048=False):
         created_at=time.time(),
         candidates=candidates,
         candidate_order=[c["name"] for c in candidates],
-        screen_profile="wide2048" if wide2048 else "capacity",
-        comparison_baseline_shape=[4, 1024] if wide2048 else [4, 512],
+        screen_profile="wide4096" if wide4096 else "wide2048" if wide2048 else "capacity",
+        comparison_baseline_shape=[4, 2048] if wide4096 else [4, 1024] if wide2048 else [4, 512],
         experiment_shapes=[list(s) for s in shapes],
         total_screen_seconds=3600,
         max_seconds_per_candidate=600,
@@ -148,6 +153,8 @@ if __name__ == "__main__":
     p.add_argument("--root", type=Path, required=True)
     p.add_argument("--source", type=Path, required=True)
     p.add_argument("--revision", required=True)
-    p.add_argument("--wide2048", action="store_true")
+    widths = p.add_mutually_exclusive_group()
+    widths.add_argument("--wide2048", action="store_true")
+    widths.add_argument("--wide4096", action="store_true")
     a = p.parse_args()
-    prepare(a.root, a.source, a.revision, a.wide2048)
+    prepare(a.root, a.source, a.revision, a.wide2048, a.wide4096)

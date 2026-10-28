@@ -11,7 +11,8 @@ def read(path, fallback=None):
 
 def render(root, destination):
     plan = read(root / "plan.json")
-    wide = plan.get("screen_profile") == "wide2048"
+    wide4096 = plan.get("screen_profile") == "wide4096"
+    wide = plan.get("screen_profile") in ("wide2048", "wide4096")
     count = len(plan["candidates"])
     m = read(root / "monitor.json", {})
     s = m.get("status") or {}
@@ -30,7 +31,9 @@ def render(root, destination):
             )
         runs[c["name"]] = read(arm / "wandb-run.json", {}).get("id")
     old = root.parent / (
-        "adapter-combined-capacity-screen-20261028"
+        "adapter-combined-wide2048-screen-20261028"
+        if wide4096
+        else "adapter-combined-capacity-screen-20261028"
         if wide
         else "adapter-scratch-diverse-screen-20261028"
     )
@@ -43,6 +46,10 @@ def render(root, destination):
     )
     if wide:
         oldhtml = oldhtml.replace("上一轮：16 架构从零初筛", "上一轮：六种容量、两个初始化 seed")
+    if wide4096:
+        oldhtml = oldhtml.replace(
+            "上一轮：六种容量、两个初始化 seed", "上一轮：宽度 1024 / 1536 / 2048，两个初始化 seed"
+        )
     progress = f"已完成 {len(s.get('completed', []))} / {count}；当前 {s.get('current') or '缓存加载／GPU预检'}，{s.get('step', 0)} 步"
     stage = s.get("stage", "prepared")
     if stage == "complete":
@@ -87,6 +94,21 @@ for(const id of ['seed','shape','partition','source','axis','target'])$(id).onch
         document = document.replace(
             "上一轮结果与真实点云（已完成）", "上一轮容量结果与真实点云（已评估）"
         )
+    if wide4096:
+        document = document.replace("宽度 2048", "宽度 4096")
+        document = document.replace("宽度 1024→2048", "宽度 2048→4096")
+        document = document.replace("加宽到 2048", "加宽到 4096")
+        document = document.replace("三个宽度", "两个宽度")
+        document = document.replace(
+            "宽度 1024 / 1536 / 2048。约 60.4M / 128.5M / 221.7M 参数。",
+            "宽度 2048 / 4096。约 221.7M / 846.4M 参数。",
+        )
+        document = document.replace("全部 6 次训练", "全部 4 次训练").replace("4×1024", "4×2048")
+        document = document.replace(
+            "shapes=['4x1024','4x1536','4x2048']", "shapes=['4x2048','4x4096']"
+        )
+        document = document.replace("$('shape').value='4x2048'", "$('shape').value='4x4096'")
+        document = document.replace("'combined_4x1024_s'", "'combined_4x2048_s'")
     confirm = {}
     for c in plan["candidates"]:
         p = root / "confirmation" / c["name"]
@@ -124,6 +146,8 @@ for(const id of ['seed','shape','partition','source','axis','target'])$(id).onch
         paired_html += "</table></div><p>固定复测面板 224 图的特征为七来源宏平均；深度 GT 仅 32 张 NYU，平面与边缘检查为 56 图。该面板之前看过，不能称为新的独立测试。训练时间是缓存特征循环，不是全数据收敛时间。</p></section>"
     if wide:
         paired_html = paired_html.replace("4×512", "4×1024")
+    if wide4096:
+        paired_html = paired_html.replace("4×1024", "4×2048")
     values = dict(
         STAGE=html.escape(stage),
         TIME=time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),

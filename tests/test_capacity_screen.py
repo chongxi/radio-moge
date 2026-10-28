@@ -92,3 +92,20 @@ def test_reused_cache_checksum_failure_never_starts_gpu_child(tmp_path, monkeypa
     with pytest.raises(AssertionError):
         module.run(root, tmp_path, "test")
     assert json.loads((root / "queue-status.json").read_text())["stage"] == "needs_inspection"
+
+
+def test_4096_grid_keeps_exact_2048_control_and_counts_parameters_without_allocation():
+    previous = capacity_candidates(((4, 1024), (4, 1536), (4, 2048)))
+    rows = capacity_candidates(((4, 2048), (4, 4096)))
+    assert len(rows) == 4
+    for seed in (42, 43):
+        control = next(r for r in rows if r["width"] == 2048 and r["seed"] == seed)
+        assert control == next(r for r in previous if r["width"] == 2048 and r["seed"] == seed)
+        treatment = next(r for r in rows if r["width"] == 4096 and r["seed"] == seed)
+        assert {k: v for k, v in treatment.items() if k not in ("name", "width", "heads")} == {
+            k: v for k, v in control.items() if k not in ("name", "width", "heads")
+        }
+        assert treatment["heads"] == 64
+    with torch.device("meta"):
+        counts = [sum(p.numel() for p in make_candidate(r).parameters()) for r in rows[:2]]
+    assert counts == [221739844, 846392900]

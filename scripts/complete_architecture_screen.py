@@ -115,7 +115,9 @@ def complete(root, capacity=False):
     handoff_path = root.parent / "handoff.json"
     handoff = read(handoff_path)
     key = (
-        "active_adapter_wide2048_screen"
+        "active_adapter_wide4096_screen"
+        if plan.get("screen_profile") == "wide4096"
+        else "active_adapter_wide2048_screen"
         if plan.get("screen_profile") == "wide2048"
         else "active_adapter_capacity_screen"
     )
