@@ -94,6 +94,10 @@ def render(base, output):
 <div style="overflow:auto"><table><tr><th>组</th><th>数据</th><th>步数</th><th>平面残差</th><th>GT AbsRel</th><th>边缘误差</th><th>Spatial cos</th><th>Summary cos</th><th>Summary 幅值比</th></tr>{''.join(table)}</table></div></details></section></main>'''
     if (root / 'result-section.html').exists():
         new = new.replace('</main>', (root / 'result-section.html').read_text() + '</main>')
+    diagnosis = base / 'teacher-plane-loss-diagnostics-20261028/result-section.html'
+    if diagnosis.exists():
+        new = new.replace('<section><h2>中间评估曲线</h2>',
+                          diagnosis.read_text() + '<section><h2>中间评估曲线</h2>')
     prefix, rest = source.split('<main>', 1)
     old, suffix = rest.rsplit('</main>', 1)
     if (root / 'result-section.html').exists():
