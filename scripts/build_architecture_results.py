@@ -142,7 +142,7 @@ def build(root, capacity=False):
             else "4x1024"
         )
         if attention:
-            baseline_label, default_shape = "32-head 基线", "summary_readout"
+            baseline_label, default_shape = "32-head 基线", "qknorm"
         panel_labels = {
             "baseline": baseline_label + " · 同 seed 基线",
             "candidate": "选中规模",
