@@ -22,8 +22,15 @@ def render(base, output):
         rows_path = pilot / arm / 'train.jsonl'
         rows = [json.loads(s) for s in rows_path.read_text().splitlines()] if rows_path.exists() else []
         step = rows[-1]['step'] if rows else 0
+        wandb_path = pilot / arm / 'wandb-run.json'
+        link = ''
+        if wandb_path.exists():
+            run_id = json.loads(wandb_path.read_text())['id']
+            link = ('<p><a target="_blank" rel="noopener" href="'
+                    'https://forge.coreweave.com/wandb/brainsim/radio-moge/runs/'
+                    + html.escape(run_id, quote=True) + '">打开训练曲线 ↗</a></p>')
         progress.append(f'<div class="card"><b>{title}</b><p>{step} / 300 次更新</p>'
-                        f'<progress value="{step}" max="300"></progress></div>')
+                        f'<progress value="{step}" max="300"></progress>{link}</div>')
     report = json.loads((diagnostic / 'report.json').read_text())
     image = base64.b64encode((diagnostic / 'plane-diagnostic.png').read_bytes()).decode()
     overlay = base64.b64encode((diagnostic / 'plane-overlay.png').read_bytes()).decode()
