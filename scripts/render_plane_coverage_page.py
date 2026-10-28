@@ -52,6 +52,12 @@ def render(base, output):
     labels = {'preparing': '准备与配置检查', 'starting': '启动中', 'plane': '平面约束组运行中',
               'control': '特征损失对照组运行中', 'assessment': '训练结束，正在独立截图评估',
               'complete': '训练已完成，正在核验并备份', 'needs_inspection': '运行异常，正在检查'}
+    finished = (root / 'completion-verification.json').exists()
+    audited = (root / 'evaluation-verification.json').exists()
+    if finished:
+        labels['complete'] = '实验完成 · 评估与备份已核验'
+    curve_note = ('两组全部 7 个预定评估点已逐图独立核验；最终对比固定使用第 300 步。'
+                  if audited else '图中只显示已写完的评估日志；最终结论等待两组匹配步数及独立核验。')
     stamp = time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())
     cards, series = [], []
     for arm, title in [('plane', '特征＋平面约束'), ('control', '特征损失对照')]:
@@ -83,7 +89,7 @@ def render(base, output):
 <p>两组各最多 300 步或 30 分钟；每 50 步评估相同的 16 张训练诊断图和 16 张独立验证图。截图继续单独保留。</p>
 <p class="notice">本轮约 2.34 遍数据，上轮约 18.75 遍：比较的是相同更新预算下，更广场景覆盖能否改善泛化。训练图与验证图分开报告，不把训练诊断视为独立验证。</p>
 <div class="grid">{''.join(cards)}</div><section><h2>中间评估曲线</h2>
-<p>橙色：平面约束；蓝绿色：对照。实线：验证集；虚线：训练诊断。图中只显示已写完的评估日志；最终结论等待两组匹配步数及独立核验。</p>
+<p>橙色：平面约束；蓝绿色：对照。实线：验证集；虚线：训练诊断。{curve_note}</p>
 <div class="grid">{charts}</div><details><summary>查看 cosine、summary 幅值和几何指标原始记录</summary>
 <div style="overflow:auto"><table><tr><th>组</th><th>数据</th><th>步数</th><th>平面残差</th><th>GT AbsRel</th><th>边缘误差</th><th>Spatial cos</th><th>Summary cos</th><th>Summary 幅值比</th></tr>{''.join(table)}</table></div></details></section></main>'''
     if (root / 'result-section.html').exists():
@@ -96,7 +102,8 @@ def render(base, output):
         end = old.index('<section><details>', start)
         old = old[:start] + old[end:]
         old = old.replace('id="results"', 'id="prior-results"')
-    page = prefix + new + '<details style="max-width:1140px;margin:20px auto"><summary style="padding:20px">展开上一轮：64 张图的小子集结果与交互点云</summary><main>' + old + '</main></details>' + suffix
+    old_title = '小子集结果' if (root / 'result-section.html').exists() else '小子集结果与交互点云'
+    page = prefix + new + '<details style="max-width:1140px;margin:20px auto"><summary style="padding:20px">展开上一轮：64 张图的' + old_title + '</summary><main>' + old + '</main></details>' + suffix
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix('.incoming')
     temporary.write_text(page)

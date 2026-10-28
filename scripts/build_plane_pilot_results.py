@@ -33,6 +33,39 @@ def build(root):
     audit = json.loads((root / 'evaluation-verification.json').read_text())
     assert audit['stage'] == 'passed'
     steps = audit['steps']
+    plan = json.loads((root / 'plan.json').read_text())
+    report_path = root / 'result-report.json'
+    report = json.loads(report_path.read_text()) if report_path.exists() else {}
+    validation = audit['results']['validation']
+    passes = steps * plan['effective_batch'] / plan['train_images']
+    conclusion = html.escape(report.get('conclusion_zh', '请结合平整度、真实深度与边缘指标判断效果。'))
+    title = html.escape(report.get('title_zh', '最终匹配步数的评估结果'))
+    cadence = ('每 50 步均已记录训练诊断与独立验证，曲线显示全部预定评估点。'
+               if plan.get('evaluation_steps') else '本轮仅记录训练前与最终评估。')
+    intro = (f'<section id="results"><h2>{title}</h2><p class="notice">{conclusion}</p>'
+             '<div class="grid">CARDS</div>'
+             f'<p>两组均完成 {steps} 次更新；同一初始权重、数据顺序、学习率与优化器设置。'
+             '所有对比使用最终权重，教师平面区域完全一致。平面残差按区域尺度归一化，缩小点云不能获得优势。</p>'
+             f'<p>{steps} 次更新 × 有效 batch {plan["effective_batch"]} ÷ '
+             f'{plan["train_images"]} 张训练图，约相当于 {passes:.2f} 遍数据。{cadence}'
+             f'验证集有 {validation["flatness_better_than_control"]}/{validation["images_with_planes"]}'
+             ' 张图的平均平面残差低于对照。固定的 16 张训练诊断图不代表整个训练集；'
+             '单次小规模实验不等于标准基准或收敛证明。</p>')
+    old_comparison = report.get('comparison_old64', {})
+    if old_comparison:
+        comparison_rows = []
+        for key, label in [('planes/student/normalized_rms', '验证平面残差 ↓'),
+                           ('gt_student/abs_rel', '验证 GT AbsRel ↓'),
+                           ('depth_edges/log_gradient_mae', '验证边缘误差 ↓')]:
+            item = old_comparison['validation'][key]
+            comparison_rows.append('<tr><td>' + label + '</td>' + ''.join(
+                f'<td>{item[group][arm]:.6f}</td>'
+                for group in ('old64', 'coverage512') for arm in ('control', 'plane')) + '</tr>')
+        intro += ('<details><summary>与上一轮 64 张图比较：相同验证面板、相同 300 步</summary>'
+                  '<p>覆盖扩大 8 倍，每张图的重复训练次数相应减少；这是相同更新预算下的比较，'
+                  '不能区分充分训练后的最终上限。</p><div style="overflow:auto"><table><tr>'
+                  '<th>指标</th><th>64 图对照</th><th>64 图平面</th><th>512 图对照</th><th>512 图平面</th>'
+                  '</tr>' + ''.join(comparison_rows) + '</table></div></details>')
     verified = json.loads((root / 'final-review/prepared-dataset-backup-status.json').read_text())
     checked = {i['destination']: i['sha256'] for i in verified['verified_checkpoints']}
     def manifest(partition):
@@ -116,15 +149,7 @@ def build(root):
         rows.append(f'<tr><td>{title}</td><td>{m["initial"]:.6f}</td>'
                     f'<td>{m["control"]:.6f}</td><td>{m["plane"]:.6f}</td></tr>')
     data_json = json.dumps(samples, separators=(',', ':'), allow_nan=False).replace('</', '<\\/')
-    fragment = '''<section id="results"><h2>结果：训练图能变平，未见稳定泛化</h2>
-<p class="notice"><b>这次小实验验证了“平面约束能驱动形状变化”，但没有验证它能改善新场景。</b>
-训练样本平整度明显改善；独立验证集平均平整度不优于原损失对照，且深度精度下降。
-因此不把这个版本直接替换成正式模型，也不把训练集收益当成泛化收益。</p>
-<div class="grid">CARDS</div><p>两组均完成 300 次更新；同一初始权重、数据顺序、学习率与优化器设置。
-所有对比使用最终权重，教师平面区域完全一致。平面残差按区域尺度归一化，缩小点云不能获得优势。</p>
-<p>300 次更新 × 有效 batch 4 ÷ 64 张训练图，约相当于 18.75 遍数据。
-训练图已明显受益，但仅有训练前与第 300 步完整评估，还不能判断继续训练能否改善验证表现。
-验证集有 11/16 张图的平面残差下降，但少数退化抵消了平均收益；不能据此断言完全没有泛化，也不能把原因确定为训练不足。</p>
+    fragment = intro + '''
 <details><summary>独立验证集详细指标（16 张，逐图等权平均）</summary><div style="overflow:auto">
 <table><thead><tr><th>指标</th><th>训练前</th><th>特征损失对照</th><th>加入平面约束</th></tr></thead>
 <tbody>ROWS</tbody></table></div></details></section>
