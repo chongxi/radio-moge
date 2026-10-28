@@ -16,6 +16,7 @@ import torch.nn.functional as F
 
 from radio_moge.adapters import EncoderFeatures, RadioFeatures
 from radio_moge.architecture_screen import conditional_predict, flow_training, make_candidate
+from radio_moge.capacity_screen import initialization_seed
 from radio_moge.checkpoint import atomic_json, atomic_save, rng_state
 from radio_moge.losses import FeatureStatistics, weighted_loss
 from radio_moge.tracking import ExperimentTracker, preserve_rng
@@ -176,7 +177,7 @@ def preflight(root, plan, dimensions, cache, stats):
     proofs = {}
     features, target = batch(cache, [0, 256, 512, 768])
     for spec in plan["candidates"]:
-        torch.manual_seed(plan["seed"])
+        torch.manual_seed(initialization_seed(spec, plan))
         model = make_candidate(spec, dimensions).cuda()
         torch.cuda.reset_peak_memory_stats()
         tick = time.perf_counter()
@@ -279,8 +280,8 @@ def run(root, revision):
             status.update(stage="budget_exhausted", updated_at=time.time(), current=None)
             atomic_json(status, root / "status.json")
             return
-        torch.manual_seed(plan["seed"])
-        torch.cuda.manual_seed_all(plan["seed"])
+        torch.manual_seed(initialization_seed(spec, plan))
+        torch.cuda.manual_seed_all(initialization_seed(spec, plan))
         output = root / spec["name"]
         output.mkdir(exist_ok=False)
         arm_started = time.perf_counter()
@@ -293,7 +294,7 @@ def run(root, revision):
             architecture=spec,
             dimensions=dimensions,
             fresh_initialization=True,
-            seed=plan["seed"],
+            seed=initialization_seed(spec, plan),
             train={
                 k: plan[k]
                 for k in ["effective_batch", "microbatch", "lr", "warmup_updates", "updates"]

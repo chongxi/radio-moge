@@ -2,6 +2,7 @@
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -30,6 +31,11 @@ def run(root, repo, revision):
         )
         atomic(root / "queue-status.json", state)
         try:
+            plan = json.loads((root / "plan.json").read_text())
+            if "cache_reuse" in plan:
+                payload = (root / "cache-index.json").read_bytes()
+                assert hashlib.sha256(payload).hexdigest() == plan["cache_reuse"]["index_sha256"]
+                assert json.loads(payload)["stage"] == "passed"
             for stage, command in [
                 (
                     "cache",
@@ -55,6 +61,8 @@ def run(root, repo, revision):
                     ],
                 ),
             ]:
+                if stage == "cache" and "cache_reuse" in plan:
+                    continue
                 with (root / f"{stage}-console.log").open("w") as log:
                     child = subprocess.Popen(
                         command, cwd=repo, stdout=log, stderr=subprocess.STDOUT

@@ -112,7 +112,7 @@ def audit(root):
         if config_path.exists():
             config = read(config_path)
             assert config["architecture"] == spec and config["fresh_initialization"]
-            assert config["seed"] == plan["seed"] and config["loss"] == plan["loss_weights"]
+            assert config["seed"] == spec.get("seed", plan["seed"]) and config["loss"] == plan["loss_weights"]
             assert all(v == plan[k] for k, v in config["train"].items())
         train = lines(arm / "train.jsonl")
         for row in train:
@@ -190,7 +190,7 @@ def audit(root):
         stability=stability,
         matched_step_rankings=rungs,
         confirmation_evaluated=False,
-        limitations="Single seed/common LR/fixed views; rankings include completed paired points only; no convergence claim.",
+        limitations=plan.get("audit_limitations", "Single seed/common LR/fixed views; rankings include completed paired points only; no convergence claim."),
     )
     atomic(root / "curve-verification.json", report)
     print(
