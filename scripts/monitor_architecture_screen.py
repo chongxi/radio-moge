@@ -184,6 +184,7 @@ r=Path(ROOT);known=json.load(sys.stdin);plan=json.loads((r/'plan.json').read_tex
 # These reports are generated and owned by the workspace. A remote mirror may
 # be older than a just-completed local audit; never import it over newer work.
 local_reports={'curve-verification.json','confirmation-verification.json','screen-report.json','result-report.json','capacity-report.json','continuation.json','seed43-verification.json','wandb-final-verification.json','visualization-verification.json','completion-verification.json','browser-startup-verification.json','browser-final-verification.json','metadata-remote-sync.json','handoff-completion-snapshot.json'}
+local_reports.add('variant-training-verification.json')
 paths=[p for p in r.glob('*.json') if p.name not in local_reports]+list(r.glob('*.jsonl'))
 paths+=list((r/'confirmation').rglob('*.json'))
 for c in plan['candidates']:
