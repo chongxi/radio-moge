@@ -55,7 +55,7 @@ def render(base, output):
 <h1>把表面弯曲与教师朝向分开</h1><span class="tag">{stages.get(state['stage'], html.escape(state['stage']))}</span>
 <button onclick="location.reload()">刷新</button><p class="muted">更新于 {stamp}</p>
 <p>两组均使用特征损失 + 20 × flatness + 2 × normal + 0.1 × anchor。唯一训练变量是 flatness 的定义；旧公式对照也保留完整几何监督。</p>
-<div class="grid"><div class="card"><b>新公式</b><p>λ₀ / (λ₁ + λ₂ + ε)</p><p>学生点云中心化协方差的最小特征值，按自身平面内尺度归一化。分母保留梯度。</p></div>
+<div class="grid"><div class="card"><b>新公式</b><p>λ₀ / max(λ₁ + λ₂, ε)</p><p>学生点云中心化协方差的最小特征值，按自身平面内尺度归一化。分母保留梯度。</p></div>
 <div class="card"><b>旧公式</b><p>mean[(centered points · teacher normal)²] / mean[‖centered points‖²]</p><p>同时包含表面弯曲与朝向偏差。保留旧实现用于对照。</p></div></div>
 <p>两组从同一父权重重新初始化 Adam 与随机状态；学习率 1×10⁻⁵、有效 batch 4、最多各 300 步或 30 分钟。每 50 步评估固定的 16 张验证图和 16 张训练诊断图，截图单独评估。最终按匹配步数比较，不按验证结果挑选最好的一步。</p>
 <p class="notice">训练诊断不是独立验证。预期目标是未见场景平面更平，同时保住真实深度、边缘和平面外结构；训练损失下降本身不代表成功。</p>

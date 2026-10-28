@@ -58,6 +58,30 @@ def build(root):
              ' 张图的平均平面残差低于对照。固定的 16 张训练诊断图不代表整个训练集；'
              '单次小规模实验不等于标准基准或收敛证明。</p>')
     old_comparison = report.get('comparison_old64', {})
+    if ablation:
+        wall = report['target_wall']
+        intro += ('<p>这是已在前几轮查看过的小验证面板；目标截图还用于提出本次修改，'
+                  '因此结果用于诊断，不是新的盲测基准。教师一致性误差与真实深度精度分开解读。</p>'
+                  '<h3>你关心的墙面：单独查看区域 1</h3>'
+                  '<table><tr><th>自身平面归一化 RMS ↓</th><th>训练前</th><th>旧 flatness</th>'
+                  f'<th>新 flatness</th></tr><tr><td>墙面／黑板区域 1</td><td>{wall["initial"]:.6f}</td>'
+                  f'<td>{wall["old"]:.6f}</td><td>{wall["new"]:.6f}</td></tr></table>'
+                  f'<p>相对旧公式变化 {wall["change_percent"]:+.2f}%；相对训练前变化 '
+                  f'{wall["new_vs_initial_percent"]:+.2f}%。这与整张截图所有平面的平均值不同。</p>')
+        counts = report.get('new_lower_error_points', {})
+        intro += (f'<p>在 {report.get("post_start_curve_points", 0)} 个训练后预定评估点中，'
+                  f'新公式有 {counts.get("planes/student/normalized_rms", 0)} 个点的验证平均平面残差更低，'
+                  f'{counts.get("gt_student/abs_rel", 0)} 个点的验证 GT AbsRel 更低。'
+                  '这说明趋势，但不等同于独立重复实验或统计显著性。</p>')
+        repeats = report['prior_old_objective_reproduction']['percent_differences']
+        repeat_rows = ''.join(f'<tr><td>{label}</td><td>{repeats["validation"][key]:+.3f}%</td></tr>'
+                              for key, label in [('planes/student/normalized_rms', '验证平面残差'),
+                                                 ('gt_student/abs_rel', '验证 GT AbsRel'),
+                                                 ('depth_edges/log_gradient_mae', '验证边缘误差')])
+        intro += ('<details><summary>旧公式重跑的数值波动</summary><p>本次旧公式对照与上一轮相同配置的平面组'
+                  '并非逐位复现。下表是这两次旧公式运行之间的变化，不能据一次重复估计完整方差；'
+                  '很小的差异不应当作稳健结论。</p><table><tr><th>指标</th><th>重跑相对上次</th></tr>'
+                  + repeat_rows + '</table></details>')
     if old_comparison:
         comparison_rows = []
         for key, label in [('planes/student/normalized_rms', '验证平面残差 ↓'),

@@ -112,7 +112,9 @@ def report(root):
     wall = diagnostic['screenshot']
     old_wall = wall['control']['regions'][0]['own_plane_normalized_rms']
     new_wall = wall['plane']['regions'][0]['own_plane_normalized_rms']
+    initial_wall = wall['initial_new']['regions'][0]['own_plane_normalized_rms']
     wall_change = 100 * (new_wall / old_wall - 1)
+    wall_change_from_initial = 100 * (new_wall / initial_wall - 1)
     checks = {
         'validation_flatness_improved': changes['planes/student/normalized_rms'] < 0,
         'validation_GT_absrel_not_worse': changes['gt_student/abs_rel'] <= 0,
@@ -130,19 +132,31 @@ def report(root):
                              for key, value in result['metrics'].items()}
                        for part, result in audit['results'].items()}
     maximum = max(abs(v) for d in reproducibility.values() for v in d.values())
+    repeat_percent = {part: {key: 100 * value / old_audit['results'][part]['metrics'][key]['plane']
+                            for key, value in differences.items()}
+                      for part, differences in reproducibility.items()}
+    post_start = [x['validation'] for step, x in curve['comparisons'].items() if int(step) > 0]
+    curve_counts = {key: sum(row[key]['plane'] < row[key]['control'] for row in post_start)
+                    for key in ('planes/student/normalized_rms', 'gt_student/abs_rel',
+                                'depth_edges/log_gradient_mae', 'outside_plane/teacher_abs_rel')}
     flat, gt, edge = (changes[k] for k in ('planes/student/normalized_rms', 'gt_student/abs_rel',
                                          'depth_edges/log_gradient_mae'))
     conclusion = (f'相对旧 flatness，新公式在验证集的平面残差变化 {flat:+.2f}%，'
                   f'真实深度 AbsRel 变化 {gt:+.2f}%，边缘误差变化 {edge:+.2f}%；'
-                  f'独立截图目标墙面的残差变化 {wall_change:+.2f}%。'
+                  f'截图目标墙面相对旧公式变化 {wall_change:+.2f}%，'
+                  f'相对训练前变化 {wall_change_from_initial:+.2f}%。'
                   + ('本次小面板满足预设的联合检查，仍需更大独立验证。' if all(checks.values())
                      else '本次未同时满足“更平且保住深度、边缘与外部结构”的联合要求。'))
     proof = dict(stage='passed', checked_at=time.time(), title_zh='自身平面 flatness：最终匹配对照',
                  conclusion_zh=conclusion, arm_labels=plan['arm_labels'], steps=300,
-                 validation_changes_percent=changes, target_wall=dict(old=old_wall, new=new_wall, change_percent=wall_change),
+                 validation_changes_percent=changes,
+                 target_wall=dict(initial=initial_wall, old=old_wall, new=new_wall,
+                                  change_percent=wall_change, new_vs_initial_percent=wall_change_from_initial),
                  joint_geometry_checks=checks, joint_geometry_success=all(checks.values()),
                  prior_old_objective_reproduction=dict(max_absolute_difference=maximum, differences=reproducibility,
+                                                      percent_differences=repeat_percent,
                                                       within_1e_8=maximum < 1e-8),
+                 post_start_curve_points=len(post_start), new_lower_error_points=curve_counts,
                  gradient_diagnostic=str(root / 'gradient-diagnostics/analysis-verification.json'),
                  evidence_hashes={name: hashlib.sha256((root / name).read_bytes()).hexdigest()
                                   for name in ('evaluation-verification.json', 'curve-verification.json',
