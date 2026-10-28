@@ -17,6 +17,9 @@ def render(base, output):
               'control': '原损失对照组训练中', 'assessment': '训练结束，正在评估',
               'complete': '训练和评估已结束，结果核验中', 'needs_inspection': '运行异常，正在检查'}
     status = labels.get(state['stage'], state['stage'])
+    result_path = pilot / 'result-section.html'
+    if result_path.exists():
+        status = '实验完成 · 结果已核验'
     progress = []
     for arm, title in [('plane', '特征损失＋平面约束'), ('control', '原有特征损失')]:
         rows_path = pilot / arm / 'train.jsonl'
@@ -65,6 +68,15 @@ td,th{{padding:10px;text-align:left;border-bottom:1px solid #ddd}}.notice{{borde
 <details><summary>查看教师选中的平面区域</summary><img alt="教师平面分区" src="data:image/png;base64,{overlay}"></details>
 </section><p class="muted">这是小规模可行性测试。教师平面是伪标签；验证集结果与单张截图将分开报告。
 当前不对平面以外的物体施加平滑损失。</p></main></html>'''
+    if result_path.exists():
+        start = page.index('<section><h2>训练后的结果</h2>')
+        end = page.index('<section><h2>问题诊断：', start)
+        page = page[:start] + result_path.read_text() + page[end:]
+        page = page.replace('<section><h2>问题诊断：你截图中的会议室</h2>',
+                            '<section><details><summary>展开训练前的问题诊断（历史图）</summary>'
+                            '<h2>问题诊断：你截图中的会议室</h2>')
+        page = page.replace('</details>\n</section><p class="muted">',
+                            '</details></details>\n</section><p class="muted">')
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix('.incoming')
     temporary.write_text(page)
