@@ -1,5 +1,10 @@
 import hashlib
 import io
+import ast
+import json
+from pathlib import Path
+import subprocess
+import sys
 import tarfile
 
 import pytest
@@ -53,3 +58,26 @@ def test_extract_bundle_rejects_changed_bytes(tmp_path):
     with pytest.raises(AssertionError):
         extract_bundle(archive, tmp_path / "out", expected)
     assert not (tmp_path / "out/data/metrics.json").exists()
+
+
+def test_monitor_does_not_import_stale_workspace_reports(tmp_path, monkeypatch, capsys):
+    script = Path(__file__).parents[1] / "scripts/monitor_architecture_screen.py"
+    tree = ast.parse(script.read_text())
+    probe = next(
+        n.value
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Constant)
+        and isinstance(n.value, str)
+        and "known=json.load(sys.stdin)" in n.value
+    )
+    (tmp_path / "plan.json").write_text(json.dumps({"candidates": []}))
+    (tmp_path / "status.json").write_text(json.dumps({"stage": "complete"}))
+    (tmp_path / "curve-verification.json").write_text(json.dumps({"total_proofs": 82}))
+    (tmp_path / "continuation.json").write_text(json.dumps({"stage": "outdated"}))
+    monkeypatch.setattr(sys, "stdin", io.StringIO("{}"))
+    monkeypatch.setattr(subprocess, "check_output", lambda *args, **kwargs: "0 %, 0 MiB")
+    exec(compile(probe.replace("ROOT", repr(str(tmp_path))), "remote_probe", "exec"), {})
+    files = json.loads(capsys.readouterr().out)["files"]
+    assert "status.json" in files
+    assert "curve-verification.json" not in files
+    assert "continuation.json" not in files

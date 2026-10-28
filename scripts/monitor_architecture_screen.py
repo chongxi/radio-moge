@@ -181,7 +181,10 @@ def monitor(
     code = """from pathlib import Path
 import sys,json,hashlib,base64,subprocess,time
 r=Path(ROOT);known=json.load(sys.stdin);plan=json.loads((r/'plan.json').read_text())
-paths=list(r.glob('*.json'))+list(r.glob('*.jsonl'))
+# These reports are generated and owned by the workspace. A remote mirror may
+# be older than a just-completed local audit; never import it over newer work.
+local_reports={'curve-verification.json','confirmation-verification.json','screen-report.json','result-report.json','capacity-report.json','continuation.json','seed43-verification.json','wandb-final-verification.json','visualization-verification.json','completion-verification.json','browser-startup-verification.json','browser-final-verification.json','metadata-remote-sync.json','handoff-completion-snapshot.json'}
+paths=[p for p in r.glob('*.json') if p.name not in local_reports]+list(r.glob('*.jsonl'))
 paths+=list((r/'confirmation').rglob('*.json'))
 for c in plan['candidates']:
  d=r/c['name'];paths+=list(d.glob('*.json'))+list(d.glob('*.jsonl'))+list(d.glob('validation-*/*.json'))+list(d.glob('train_probe-*/*.json'))
