@@ -27,6 +27,23 @@ def test_paired_gains_require_both_seeds_not_only_higher_mean():
     assert result["paired_difference_vs_4x512"]["43"]["summary/cosine"] < 0
 
 
+def test_wide_pairing_uses_1024_control_for_each_seed():
+    specs = [{"blocks": 4, "width": w} for w in (1024, 2048)]
+    rows = {
+        f"combined_4x{width}_s{seed}": {
+            "spatial/cosine": 0.8 + seed / 1000 + (width == 2048) * 0.01,
+            "summary/cosine": 0.7 + seed / 1000 + (width == 2048) * 0.02,
+        }
+        for width in (1024, 2048)
+        for seed in (42, 43)
+    }
+    result = paired(rows, specs, [42, 43], baseline=(4, 1024))
+    assert result["4x2048"]["both_cosines_higher_in_each_seed"]
+    assert result["4x2048"]["paired_difference_vs_4x1024"]["43"]["spatial/cosine"] == pytest.approx(
+        0.01
+    )
+
+
 def make_archive(path, name="data/metrics.json", content=b'{"value":1}'):
     with tarfile.open(path, "w") as tar:
         entry = tarfile.TarInfo(name)

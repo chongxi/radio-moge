@@ -30,7 +30,8 @@ def build(root, capacity=False):
     names = [item["name"] for item in selected] + ["teacher"]
     labels_by_name = dict(LABELS)
     if capacity:
-        specs = json.loads((root / "plan.json").read_text())["candidates"]
+        plan = json.loads((root / "plan.json").read_text())
+        specs = plan["candidates"]
         labels_by_name.update(
             {s["name"]: f"{s['blocks']}×{s['width']} · seed {s['seed']}" for s in specs}
         )
@@ -128,8 +129,13 @@ def build(root, capacity=False):
     )
     panel_labels = {n: labels_by_name[n] for n in names}
     if capacity:
+        baseline = plan.get("comparison_baseline_shape", [4, 512])
+        baseline_shape = f"{baseline[0]}x{baseline[1]}"
+        baseline_label = baseline_shape.replace("x", "×")
+        shapes = sorted({(s["blocks"], s["width"]) for s in specs})
+        default_shape = "4x2048" if plan.get("screen_profile") == "wide2048" else "4x1024"
         panel_labels = {
-            "baseline": "4×512 · 同 seed 基线",
+            "baseline": baseline_label + " · 同 seed 基线",
             "candidate": "选中规模",
             "teacher": "MoGe 教师",
         }
@@ -146,11 +152,7 @@ def build(root, capacity=False):
         )
         controls = '<label>初始化 seed <select id="geom-seed"><option>42</option><option>43</option></select></label><label>对比规模 <select id="geom-shape">'
         controls += (
-            "".join(
-                f'<option value="{d}x{w}">{d} × {w}</option>'
-                for d in (4, 8)
-                for w in (512, 768, 1024)
-            )
+            "".join(f'<option value="{d}x{w}">{d} × {w}</option>' for d, w in shapes)
             + "</select></label>"
         )
         fragment = fragment.replace(
@@ -160,11 +162,14 @@ def build(root, capacity=False):
         new_load = """function load(){const raw=samples[+$('sample').value],seed=$('geom-seed').value,shape=$('geom-shape').value,wanted=['combined_4x512_s'+seed,'combined_'+shape+'_s'+seed,'teacher'];
  current={...raw,planes:Object.fromEntries(names.map((n,i)=>[n,raw.planes[wanted[i]]]))};clouds={};for(let i=0;i<names.length;i++)clouds[names[i]]=new Float32Array(bytes(raw.clouds[wanted[i]]).buffer);colors=bytes(raw.colors);labels=bytes(raw.labels);
  titles[0]='4×512 · seed '+seed;titles[1]=shape.replace('x','×')+' · seed '+seed;names.forEach((n,i)=>$('cloud-'+n).previousElementSibling.textContent=titles[i]);"""
+        new_load = new_load.replace(
+            "combined_4x512_s", "combined_" + baseline_shape + "_s"
+        ).replace("4×512", baseline_label)
         assert old_load in fragment
         fragment = fragment.replace(old_load, new_load)
         fragment = fragment.replace(
             "$('sample').onchange=load;",
-            "$('geom-shape').value='4x1024';$('geom-seed').onchange=load;$('geom-shape').onchange=load;$('sample').onchange=load;",
+            f"$('geom-shape').value='{default_shape}';$('geom-seed').onchange=load;$('geom-shape').onchange=load;$('sample').onchange=load;",
         )
     panels = "".join(
         f'<div class="cloud-panel"><h3>{html.escape(label)}</h3><canvas id="cloud-{n}" width="720" height="440" aria-label="{html.escape(label)}交互点云"></canvas></div>'

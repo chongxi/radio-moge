@@ -23,18 +23,18 @@ GEOMETRY = (
 )
 
 
-def paired(rows, specs, seeds):
+def paired(rows, specs, seeds, baseline=(4, 512)):
     result = {}
     shapes = sorted({(s["blocks"], s["width"]) for s in specs})
     for blocks, width in shapes:
         group = [rows[f"combined_{blocks}x{width}_s{seed}"] for seed in seeds]
-        bases = [rows[f"combined_4x512_s{seed}"] for seed in seeds]
+        bases = [rows[f"combined_{baseline[0]}x{baseline[1]}_s{seed}"] for seed in seeds]
         keys = set(group[0]) & set(bases[0])
         keys = sorted(k for k in keys if all(type(r[k]) in (int, float) for r in group + bases))
         result[f"{blocks}x{width}"] = {
             "mean": {k: math.fsum(r[k] for r in group) / len(group) for k in keys},
             "range": {k: [min(r[k] for r in group), max(r[k] for r in group)] for k in keys},
-            "paired_difference_vs_4x512": {
+            f"paired_difference_vs_{baseline[0]}x{baseline[1]}": {
                 str(seed): {k: r[k] - b[k] for k in keys}
                 for seed, r, b in zip(seeds, group, bases, strict=True)
             },
@@ -50,9 +50,11 @@ def paired(rows, specs, seeds):
 def run(root):
     plan = read(root / "plan.json")
     specs, seeds = plan["candidates"], plan["initialization_seeds"]
+    baseline = plan.get("comparison_baseline_shape", [4, 512])
+    baseline_label = f"{baseline[0]}×{baseline[1]}"
     status, queue = read(root / "status.json"), read(root / "queue-status.json")
     audit = read(root / "curve-verification.json")
-    assert status["stage"] == "complete" and len(status["completed"]) == len(specs) == 12
+    assert status["stage"] == "complete" and len(status["completed"]) == len(specs)
     assert queue["child_pid"] is None and queue["child_exit"] == 0
     assert audit["total_proofs"] == 2 * len(plan["evaluation_steps"]) * len(specs)
     stops = {r["name"]: r for r in status["completed"]}
@@ -111,7 +113,7 @@ def run(root):
         independent_audit_points=audit["total_proofs"],
         initialization_seeds=seeds,
         endpoints=rows,
-        paired=paired(rows, specs, seeds),
+        paired=paired(rows, specs, seeds, baseline),
         first_observed_crossings=crossings,
         ranks_500_1000=ranks,
         limitations=plan["limitations"],
@@ -143,16 +145,16 @@ def run(root):
             {k: rows[name][k] for k in ("parameters", "train_seconds", "elapsed_seconds")}
         )
         confirmation[name]["gt_count"] = checked["gt_count"]
-    grouped = paired(confirmation, specs, seeds)
+    grouped = paired(confirmation, specs, seeds, baseline)
     better = [
         shape for shape, values in grouped.items() if values["both_cosines_higher_in_each_seed"]
     ]
     conclusion = (
         "相同 1,000 步下，"
         + (
-            "、".join(better) + " 在两个初始化 seed 中都比 4×512 的两项 cosine 更高。"
+            "、".join(better) + f" 在两个初始化 seed 中都比 {baseline_label} 的两项 cosine 更高。"
             if better
-            else "没有更大规模在两个初始化 seed 中同时提高两项 cosine。"
+            else f"没有更大规模在两个初始化 seed 中同时提高相对 {baseline_label} 的两项 cosine。"
         )
         + "深度误差、平面残差和耗时需分别比较，参数最多不等于综合最优。"
     )

@@ -18,7 +18,11 @@ def atomic(path, value):
 
 
 def complete(root, capacity=False):
-    candidate_count, point_count, confirmation_count = (12, 120, 12) if capacity else (16, 180, 4)
+    plan = read(root / "plan.json")
+    count = len(plan["candidates"])
+    candidate_count, point_count, confirmation_count = (
+        (count, 2 * len(plan["evaluation_steps"]) * count, count) if capacity else (16, 180, 4)
+    )
     proofs = {
         name: read(root / name)
         for name in (
@@ -110,9 +114,12 @@ def complete(root, capacity=False):
     atomic(root / "continuation.json", continuation)
     handoff_path = root.parent / "handoff.json"
     handoff = read(handoff_path)
-    active = handoff[
-        "active_adapter_capacity_screen" if capacity else "active_adapter_architecture_screen"
-    ]
+    key = (
+        "active_adapter_wide2048_screen"
+        if plan.get("screen_profile") == "wide2048"
+        else "active_adapter_capacity_screen"
+    )
+    active = handoff[key if capacity else "active_adapter_architecture_screen"]
     assert active["name"] == root.name
     active.update(
         stage="complete",
