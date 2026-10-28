@@ -34,7 +34,7 @@ from .decoder import geometry_points_with_grad, postprocess
 from .losses import FeatureStatistics, geometry_losses, weighted_loss
 from .planes import PlaneConfig, detect_planes, plane_losses
 from .system import build_system
-from .tracking import ExperimentTracker
+from .tracking import ExperimentTracker, preserve_rng
 
 
 def make_loader(records, config, start, count, calibration=False):
@@ -176,10 +176,18 @@ def train(
     val_path = config["data"].get("val_manifest")
     validation = read_manifest(val_path) if val_path else []
     check_split(records, validation)
+    probe_path = config['data'].get('train_probe_manifest')
+    train_probe = read_manifest(probe_path) if probe_path else []
+    if train_probe and not {r['image'] for r in train_probe} <= {r['image'] for r in records}:
+        raise ValueError('Training diagnostics must be a subset of the training images')
+    if train_probe and not validation:
+        raise ValueError('Training diagnostics require a separate validation manifest')
     digests = {
         "train": manifest_digest(records),
         "val": manifest_digest(validation) if validation else None,
     }
+    if train_probe:
+        digests['train_probe'] = manifest_digest(train_probe)
     output = Path(config["output_dir"])
     output.mkdir(parents=True, exist_ok=True)
     if any(output.iterdir()) and not resume:
@@ -393,6 +401,19 @@ def train(
             if best is None or score < best:
                 best = score
                 save("best.pt")
+        if train_probe:
+            # Diagnostics never affect best selection, gradients, or training randomness.
+            destination = output / f'train-probe-{step:07d}'
+            with preserve_rng():
+                probe_metrics = evaluate(system, raw_adapter, statistics, train_probe, config,
+                                         destination, None)
+                probe_metrics['feature/total'] = sum(
+                    probe_metrics.get(f'feature/{key}', 0) * config['loss'].get(key, 0)
+                    for key in ('spatial', 'summary', 'cosine'))
+                with (output / 'train-probe.jsonl').open('a') as file:
+                    file.write(json.dumps({'step': step, **probe_metrics}, allow_nan=False) + '\n')
+                tracker.log('train_probe', probe_metrics, step)
+                print(json.dumps({'train_probe_step': step, **probe_metrics}), flush=True)
 
     try:
         if not resume:

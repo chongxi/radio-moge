@@ -112,6 +112,46 @@ def test_plane_constraints_are_opt_in_and_require_anchor(tmp_path):
     validate_config(config)
 
 
+def test_training_probe_is_observational_and_not_used_for_selection(tmp_path, monkeypatch):
+    config = config_for(tmp_path)
+    config['train'].update(steps=4, eval_every=2, eval_at_start=True)
+    calls = []
+
+    def evaluate(system, adapter, stats, records, cfg, destination, limit):
+        probe = destination.name.startswith('train-probe-')
+        calls.append(destination.name)
+        if probe:
+            # Even a diagnostic that consumes RNG cannot change the optimization trajectory.
+            torch.rand(7)
+        return {'feature/spatial': 1., 'teacher_depth/abs_rel': 0. if probe else .2,
+                'postprocess_failed': 0}
+
+    monkeypatch.setattr('radio_moge.train.evaluate', evaluate)
+    config['output_dir'] = str(tmp_path / 'without-probe')
+    baseline = torch.load(train(config, system_adapter=tiny_system()), weights_only=True)
+    manifest = tmp_path / 'probe.jsonl'
+    manifest.write_text(Path(config['data']['train_manifest']).read_text().splitlines()[0] + '\n')
+    config['data']['train_probe_manifest'] = str(manifest)
+    config['output_dir'] = str(tmp_path / 'with-probe')
+    checked = torch.load(train(config, system_adapter=tiny_system()), weights_only=True)
+    assert checked['best'] == baseline['best'] == .2
+    for key, value in baseline['adapter'].items():
+        torch.testing.assert_close(value, checked['adapter'][key], rtol=0, atol=0)
+    torch.testing.assert_close(baseline['rng']['torch'], checked['rng']['torch'], rtol=0, atol=0)
+    rows = [json.loads(s) for s in (tmp_path / 'with-probe/train-probe.jsonl').read_text().splitlines()]
+    assert [r['step'] for r in rows] == [0, 2, 4]
+    assert [x for x in calls if x.startswith('train-probe')] == [
+        'train-probe-0000000', 'train-probe-0000002', 'train-probe-0000004']
+
+
+def test_training_probe_rejects_nontraining_images(tmp_path):
+    config = config_for(tmp_path)
+    config['output_dir'] = str(tmp_path / 'bad-probe')
+    config['data']['train_probe_manifest'] = config['data']['val_manifest']
+    with pytest.raises(ValueError, match='subset of the training'):
+        train(config, system_adapter=tiny_system())
+
+
 def test_plane_loss_reaches_training_logs_and_adapter(tmp_path, monkeypatch):
     import importlib
     from radio_moge.decoder import camera_points

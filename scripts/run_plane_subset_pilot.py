@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import random
+import shutil
 import subprocess
 import sys
 import time
@@ -62,11 +63,12 @@ def identity(path):
     return [s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns]
 
 
-def prepare(base, root, revision):
+def prepare(base, root, revision, expanded=False):
     root.mkdir(exist_ok=False)
     data = base.parents[1] / 'datasets'
     source = data / 'attention-full-mix-v1-20261022'
-    train = select_scenes(read_nyu(source / 'train.jsonl'), 32, 2, 42)
+    scene_count = 256 if expanded else 32
+    train = select_scenes(read_nyu(source / 'train.jsonl'), scene_count, 2, 42)
     validation = select_scenes(read_nyu(source / 'val-selection.jsonl'), 16, 1, 142)
     screenshot = [r for r in read_nyu(data / 'nyuv2-labeled-s42/test.jsonl')
                   if r['id'] == 'nyuv2_0271']
@@ -75,17 +77,25 @@ def prepare(base, root, revision):
     check_split(train, screenshot)
     check_split(validation, screenshot)
     # One image from 16 training scenes: labelled as training diagnostics, never held-out scores.
-    train_probe = train[::4]
+    train_probe = train[:64:4]
+    reference = base / 'teacher-plane-subset-pilot-20261028'
+    if expanded:
+        assert json.loads((reference / 'completion-verification.json').read_text())['stage'] == 'passed'
+        for name, expected in [('train', train[:64]), ('validation', validation),
+                               ('train-probe', train_probe), ('screenshot', screenshot)]:
+            previous = [json.loads(s) for s in (reference / f'{name}.jsonl').read_text().splitlines()]
+            assert previous == expected, f'Original {name} panel changed'
     for name, records in [('train', train), ('validation', validation),
                           ('train-probe', train_probe), ('screenshot', screenshot)]:
         write_manifest(root / f'{name}.jsonl', records)
     parent = base / 'attention-24h/final-review/last.pt'
     plan = dict(
-        purpose='Small-subset test of teacher-selected plane constraints', revision=revision,
+        purpose=('Expanded scene coverage with fixed plane-loss weights and adapter' if expanded
+                 else 'Small-subset test of teacher-selected plane constraints'), revision=revision,
         parent=str(parent), parent_step=83494,
         parent_sha256='54a3e5783148f20c0676c6235131b5850dea323200885a442601a4a96605fdef',
         max_updates=300, max_seconds_per_arm=1800, lr=1e-5,
-        train_images=len(train), train_scenes=32, validation_images=len(validation),
+        train_images=len(train), train_scenes=scene_count, validation_images=len(validation),
         validation_scenes=16, screenshot_ids=[r['id'] for r in screenshot],
         effective_batch=4, seed=42, augment=False,
         plane_weights=dict(plane_flatness=20.0, plane_normal=2.0, plane_anchor=.1),
@@ -100,6 +110,15 @@ def prepare(base, root, revision):
                      'Teacher planes are pseudo-labels.',
                      'Frozen pretrained adapter has previously seen the training pool.',
                      'Screenshot is a separate qualitative test, not used for tuning.'])
+    if expanded:
+        plan.update(profile='coverage-512', reference_pilot=str(reference),
+                    evaluation_steps=list(range(0, 301, 50)), original_64_retained=True,
+                    diagnostic_images=16, nominal_train_passes=300 * 4 / len(train),
+                    changed_factors=['Training coverage 64 images/32 scenes to 512/256',
+                                     'Every-50-step validation and fixed training diagnostics'],
+                    limitations=plan['limitations'] + [
+                        'Same 300-update budget gives fewer passes per image than the 64-image run.',
+                        'Fixed original 16-image validation is small; this remains a pilot.'])
     atomic_json(plan, root / 'plan.json')
     original = json.loads((base / 'attention-24h/config.json').read_text())
     for arm in ('plane', 'control'):
@@ -112,16 +131,18 @@ def prepare(base, root, revision):
         config['data'].pop('mixture_weights', None)
         config['train'].update(steps=300, max_seconds=1800, lr=1e-5, lr_schedule='constant',
                                batch_size=2, accumulation=2, warmup=0, log_every=10,
-                               update_norm_every=10, save_every=100, eval_every=300,
+                               update_norm_every=10, save_every=100, eval_every=50 if expanded else 300,
                                eval_at_start=True, tensorboard=False)
         config['planes'] = plane_config_dict()
+        if expanded:
+            config['data']['train_probe_manifest'] = str(root / 'train-probe.jsonl')
         config['loss'].update({k: v if arm == 'plane' else 0.
                                for k, v in plan['plane_weights'].items()})
         config['evaluation'].update(planes=True, visualizations=2, limit=None,
                                     geometry_ids=[validation[0]['id'], validation[1]['id'],
                                                   train_probe[0]['id'], 'nyuv2_0271'])
         config['tracking'].update(name=f'{root.name}-{arm}', images=2,
-                                  tags=['plane-pilot', arm, 'subset-64', 'lr-1e-5'])
+                                  tags=['plane-pilot', arm, f'subset-{len(train)}', 'lr-1e-5'])
         atomic_json(config, root / f'{arm}-config.json')
     return plan
 
@@ -135,6 +156,7 @@ def assess(root):
     from radio_moge.system import build_system
 
     config = json.loads((root / 'plane-config.json').read_text())
+    has_probe_curve = bool(config['data'].get('train_probe_manifest'))
     system, adapter = build_system(config, 'cuda')
     stats = FeatureStatistics(adapter.config['target_dim'], adapter.config['target_summary_dim'])
     stats.cuda()
@@ -154,6 +176,18 @@ def assess(root):
         step = state['step']
         del state
         for partition in ('train-probe', 'screenshot'):
+            if partition == 'train-probe' and has_probe_curve:
+                # These exact weights/images were already evaluated in the training process.
+                source = root / ('plane' if name == 'initial' else name) / f'train-probe-{step:07d}'
+                destination = root / 'assessment' / name / partition
+                destination.mkdir(parents=True, exist_ok=False)
+                for item in source.iterdir():
+                    temporary = destination / (item.name + '.incoming')
+                    shutil.copyfile(item, temporary)
+                    temporary.replace(destination / item.name)
+                print(json.dumps(dict(assessment=name, partition=partition, step=step,
+                                      reused_evaluation=str(source))), flush=True)
+                continue
             result = evaluate(system, adapter, stats, read_manifest(root / f'{partition}.jsonl'),
                               config, root / 'assessment' / name / partition)
             print(json.dumps(dict(assessment=name, partition=partition, step=step,
@@ -229,11 +263,12 @@ if __name__ == '__main__':
     parser.add_argument('--repo', type=Path)
     parser.add_argument('--revision')
     parser.add_argument('--prepare', action='store_true')
+    parser.add_argument('--expanded', action='store_true', help='512 images from 256 NYU scenes')
     parser.add_argument('--assess', action='store_true')
     args = parser.parse_args()
     if args.assess:
         assess(args.root)
     elif args.prepare:
-        print(json.dumps(prepare(args.base, args.root, args.revision)))
+        print(json.dumps(prepare(args.base, args.root, args.revision, args.expanded)))
     else:
         run(args.base, args.root, args.repo, args.revision)

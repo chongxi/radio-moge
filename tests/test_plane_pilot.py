@@ -20,6 +20,16 @@ def test_scene_sampling_is_reproducible_without_duplicate_frames():
     assert len({r['group'] for r in selected}) == 32
 
 
+def test_expanded_sampling_keeps_original_images_and_diagnostic_panel():
+    rows = [dict(id=f'{g}-{i}', group=str(g)) for g in range(336) for i in range(3)]
+    small = runner.select_scenes(rows, 32, 2, 42)
+    large = runner.select_scenes(list(reversed(rows)), 256, 2, 42)
+    assert large[:64] == small
+    assert large[:64:4] == small[::4]
+    assert len(large) == len({r['id'] for r in large}) == 512
+    assert len({r['group'] for r in large}) == 256
+
+
 def test_control_matches_budget_limited_plane_steps_and_duplicate_is_rejected(tmp_path, monkeypatch):
     base = tmp_path / 'base'
     (base / 'attention-24h').mkdir(parents=True)

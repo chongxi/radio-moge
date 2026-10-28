@@ -52,7 +52,7 @@ class ExperimentTracker:
                 settings=wandb.Settings(init_timeout=60, save_code=False, disable_git=True),
             )
         self.run.define_metric("optimizer_step")
-        for namespace in ("train/*", "validation/*"):
+        for namespace in ("train/*", "validation/*", "train_probe/*"):
             self.run.define_metric(namespace, step_metric="optimizer_step")
         atomic_json(
             {"id": self.run.id, "entity": self.run.entity, "project": self.run.project,
