@@ -15,8 +15,7 @@ def atomic(path, value):
     temporary.replace(path)
 
 
-def start(base, remote_base):
-    name = 'teacher-plane-subset-pilot-20261028'
+def start(base, remote_base, name='teacher-plane-subset-pilot-20261028'):
     root, remote = base / name, remote_base / name
     review = root / 'final-review'
     if (review / 'launch.json').exists():
@@ -36,6 +35,7 @@ paths+=list(r.glob('*.json'))+list(r.glob('*.jsonl'))+list(r.glob('*-console.log
 for arm in ('plane','control'):
  paths+=list((r/arm).glob('*.json'))+list((r/arm).glob('*.jsonl'))
  paths+=list((r/arm).glob('eval-*/*.json'))
+ paths+=list((r/arm).glob('train-probe-*/*.json'))
 paths+=list((r/'assessment').glob('*/*/*.json'))
 paths=sorted(set(paths),key=lambda p:(p.suffix!='.npz',str(p)))
 paths+=[r/arm/file for arm in ('plane','control') for file in ('latest.pt','best.pt')]
@@ -103,5 +103,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--base', type=Path, required=True)
     parser.add_argument('--remote-base', type=Path, required=True)
+    parser.add_argument('--name', default='teacher-plane-subset-pilot-20261028')
     args = parser.parse_args()
-    start(args.base, args.remote_base)
+    start(args.base, args.remote_base, args.name)
