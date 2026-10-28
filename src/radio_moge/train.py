@@ -30,7 +30,9 @@ from .data import (
     read_manifest,
 )
 from .evaluate import evaluate, synchronize
+from .decoder import geometry_points_with_grad, postprocess
 from .losses import FeatureStatistics, geometry_losses, weighted_loss
+from .planes import PlaneConfig, detect_planes, plane_losses
 from .system import build_system
 from .tracking import ExperimentTracker
 
@@ -86,6 +88,10 @@ def validate_config(config):
         raise ValueError("Invalid training resolution bucket")
     if any(v < 0 for v in config["loss"].values()):
         raise ValueError("Loss weights must be nonnegative")
+    if any(config["loss"].get(k, 0) for k in ("plane_flatness", "plane_normal", "plane_anchor")):
+        PlaneConfig(**config.get("planes", {}))
+        if config["loss"].get("plane_anchor", 0) <= 0:
+            raise ValueError("Plane losses require a positive plane_anchor against collapse")
     if train.get("max_seconds") is not None and (
         not math.isfinite(train["max_seconds"]) or train["max_seconds"] <= 0
     ):
@@ -349,7 +355,10 @@ def train(
     accumulation = settings["accumulation"]
     loader = make_loader(records, config, cursor, max(0, total - step) * accumulation)
     iterator = iter(loader)
-    geometry_enabled = any(
+    plane_enabled = any(config["loss"].get(k, 0)
+                        for k in ("plane_flatness", "plane_normal", "plane_anchor"))
+    plane_config = PlaneConfig(**config.get("planes", {})) if plane_enabled else None
+    geometry_enabled = plane_enabled or any(
         config["loss"].get(k, 0) for k in ("points", "mask", "scale", "gradient", "normal")
     )
     success = False
@@ -410,6 +419,19 @@ def train(
                     # Do not put this path in no_grad: decoder input gradients train the adapter.
                     predicted_raw = system.decoder(prediction, image.shape[-2:])
                     losses.update(geometry_losses(predicted_raw, target_raw))
+                    if plane_enabled:
+                        # Teacher masks/planes are fixed pseudo-labels. Never filter on student fit.
+                        target_geometry = postprocess(
+                            target_raw, image, config["models"].get("moge_source"))
+                        patches = [detect_planes(p.cpu().numpy(), m.cpu().numpy(), plane_config)
+                                   for p, m in zip(target_geometry["points"],
+                                                   target_geometry["mask"], strict=True)]
+                        student_points = geometry_points_with_grad(
+                            predicted_raw, config["models"].get("moge_source"))
+                        losses.update(plane_losses(student_points, target_geometry["points"],
+                                                   patches))
+                        losses["plane_regions"] = student_points.new_tensor(
+                            sum(map(len, patches)) / len(patches))
                 loss = weighted_loss(losses, config["loss"])
                 if not torch.isfinite(loss):
                     raise FloatingPointError(f"Nonfinite loss before optimizer step {step + 1}")

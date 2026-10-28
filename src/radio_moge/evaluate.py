@@ -13,6 +13,7 @@ from .decoder import postprocess
 from .feature_diagnostics import feature_metrics
 from .losses import FeatureStatistics, geometry_losses
 from .metrics import aggregate, dataset_metrics, depth_metrics, fov_error, mask_iou
+from .planes import PlaneConfig, detect_planes, planarity_metrics
 from .system import build_system
 
 
@@ -50,6 +51,10 @@ def evaluate(system, adapter, statistics, records, config, output=None, limit=No
     was_training = adapter.training
     adapter.eval()
     settings = config["evaluation"]
+    inspect_planes = settings.get("planes", False) or any(
+        config.get("loss", {}).get(k, 0)
+        for k in ("plane_flatness", "plane_normal", "plane_anchor"))
+    plane_config = PlaneConfig(**config.get("planes", {})) if inspect_planes else None
     rows = []
     if output is not None:
         output = Path(output)
@@ -110,6 +115,19 @@ def evaluate(system, adapter, statistics, records, config, output=None, limit=No
                 row["fov_error_deg"] = fov_error(student["intrinsics"], teacher["intrinsics"])
                 if not np.isfinite(row["fov_error_deg"]):
                     raise ValueError("Focal recovery produced nonfinite intrinsics")
+                if inspect_planes:
+                    tpoints = teacher["points"][0].cpu().numpy()
+                    patches = detect_planes(tpoints, valid[0].cpu().numpy(), plane_config)
+                    row['planes/regions'] = len(patches)
+                    row['planes/coverage'] = sum(p.mask.sum() for p in patches) / valid[0].numel()
+                    try:
+                        for name, pts in (('teacher', tpoints),
+                                          ('student', student['points'][0].cpu().numpy())):
+                            row.update({f'planes/{name}/{k}': v
+                                        for k, v in planarity_metrics(pts, patches).items()})
+                        row['planes/failed'] = 0
+                    except (ValueError, np.linalg.LinAlgError):
+                        row['planes/failed'] = 1
                 if gt is not None:
                     gt = gt.to(device).unsqueeze(0)
                     for name, prediction in (("student", student), ("teacher", teacher)):

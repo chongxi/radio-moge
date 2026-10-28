@@ -135,3 +135,47 @@ def postprocess(raw, image, moge_source=None):
         force_projection=True,
         apply_mask=False,
     )
+
+
+def camera_points(depth, intrinsics):
+    """Differentiable normalized pixel-center unprojection, matching the viewer."""
+    h, w = depth.shape[-2:]
+    v, u = torch.meshgrid(
+        (torch.arange(h, device=depth.device, dtype=depth.dtype) + 0.5) / h,
+        (torch.arange(w, device=depth.device, dtype=depth.dtype) + 0.5) / w,
+        indexing="ij",
+    )
+    uv = torch.stack((u, v, torch.ones_like(u)), -1)
+    rays = torch.einsum("bij,hwj->bhwi", torch.linalg.inv(intrinsics), uv)
+    return rays * depth[..., None]
+
+
+def geometry_points_with_grad(raw, moge_source=None):
+    """Match force_projection=True, retaining depth/scale input gradients.
+
+    The upstream CPU focal/shift solver is nondifferentiable. Its estimates are
+    recomputed each call and detached; this is an explicit stop-gradient through
+    camera recovery, NOT a fully differentiated recovery algorithm.
+    """
+    from .upstream import import_moge
+
+    import_moge(moge_source)
+    from moge.utils.geometry_torch import recover_focal_shift
+
+    with torch.autocast(raw["points"].device.type, enabled=False):
+        p = raw["points"].float()
+        h, w = p.shape[1:3]
+        with torch.no_grad():
+            mask = raw["mask"].detach() > 0.5
+            focal, shift = recover_focal_shift(p.detach(), mask)
+            aspect = w / h
+            fx = focal / 2 * (1 + aspect ** 2) ** 0.5 / aspect
+            fy = focal / 2 * (1 + aspect ** 2) ** 0.5
+            k = torch.eye(3, device=p.device, dtype=p.dtype)[None].repeat(len(p), 1, 1)
+            k[:, 0, 0], k[:, 1, 1] = fx, fy
+            k[:, 0, 2] = k[:, 1, 2] = 0.5
+        depth = p[..., 2] + shift[:, None, None]
+        points = camera_points(depth, k)
+        if "metric_scale" in raw:
+            points = points * raw["metric_scale"].float()[:, None, None, None]
+        return points

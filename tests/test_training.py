@@ -100,6 +100,45 @@ def config_for(tmp_path):
     return config
 
 
+def test_plane_constraints_are_opt_in_and_require_anchor(tmp_path):
+    from radio_moge.train import validate_config
+
+    config = config_for(tmp_path)
+    validate_config(config)
+    config['loss']['plane_flatness'] = .1
+    with pytest.raises(ValueError, match='plane_anchor'):
+        validate_config(config)
+    config['loss']['plane_anchor'] = .1
+    validate_config(config)
+
+
+def test_plane_loss_reaches_training_logs_and_adapter(tmp_path, monkeypatch):
+    import importlib
+    from radio_moge.decoder import camera_points
+
+    trainer = importlib.import_module('radio_moge.train')
+    config = config_for(tmp_path)
+    config['output_dir'] = str(tmp_path / 'plane-smoke')
+    config['train'].update(steps=1, accumulation=1)
+    config['loss'].update(plane_flatness=.1, plane_normal=.1, plane_anchor=.1)
+
+    def projected(raw, teacher=False):
+        depth = torch.full_like(raw['mask'], 3) if teacher else 2 + raw['points'][..., 2].sigmoid()
+        k = torch.tensor([[1., 0, .5], [0, 1., .5], [0, 0, 1.]])[None].repeat(len(depth), 1, 1)
+        return camera_points(depth, k)
+
+    monkeypatch.setattr(trainer, 'postprocess', lambda raw, *args: {
+        'points': projected(raw, teacher=True), 'mask': torch.ones_like(raw['mask'], dtype=torch.bool)})
+    monkeypatch.setattr(trainer, 'geometry_points_with_grad', lambda raw, *args: projected(raw))
+    path = train(config, system_adapter=tiny_system())
+    row = json.loads((path.parent / 'train.jsonl').read_text().splitlines()[0])
+    assert row['plane_regions'] > 0 and row['plane_anchor'] > 0
+    assert all(np.isfinite(row[k]) for k in ('plane_flatness', 'plane_normal', 'plane_anchor'))
+    initial = torch.load(path.parent / 'initial.pt', weights_only=True)
+    final = torch.load(path, weights_only=True)
+    assert any(not torch.equal(v, final['adapter'][k]) for k, v in initial['adapter'].items())
+
+
 def test_training_overfits_and_resume_is_identical(tmp_path):
     config = config_for(tmp_path)
     config["output_dir"] = str(tmp_path / "full")

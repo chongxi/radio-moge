@@ -8,7 +8,7 @@ from torch import nn
 
 from radio_moge.adapters import EncoderFeatures, GeometryAdapter, RadioFeatures
 from radio_moge.config import ROOT
-from radio_moge.decoder import MoGeDecoder, postprocess
+from radio_moge.decoder import MoGeDecoder, geometry_points_with_grad, postprocess
 from radio_moge.export import GeometryHead, export
 from radio_moge.upstream import extract_radio, import_moge
 
@@ -89,6 +89,25 @@ def test_upstream_postprocessing_parity_and_no_mutation(moge):
     assert torch.equal(raw["points"], original)
 
 
+def test_plane_geometry_projection_matches_inference_and_backpropagates(moge):
+    model, _ = moge
+    image = torch.rand(1, 3, 32, 48)
+    with torch.no_grad():
+        spatial, summary = model.encoder(image, 2, 3, return_class_token=True)
+    features = EncoderFeatures(spatial.detach().requires_grad_(),
+                               summary.detach().requires_grad_())
+    raw = MoGeDecoder(model)(features, image.shape[-2:])
+    original = raw['points'].detach().clone()
+    expected = postprocess(raw, image)['points']
+    actual = geometry_points_with_grad(raw)
+    torch.testing.assert_close(actual.detach(), expected, rtol=2e-5, atol=2e-5)
+    actual.square().mean().backward()
+    assert torch.isfinite(features.spatial.grad).all() and features.spatial.grad.abs().sum() > 0
+    assert torch.isfinite(features.summary.grad).all() and features.summary.grad.abs().sum() > 0
+    assert torch.equal(raw['points'].detach(), original)
+    assert all(p.grad is None for p in model.parameters())
+
+
 @pytest.mark.parametrize("cleaning", ["none", "zero-channel"])
 def test_export_reload_has_no_encoder(moge, tmp_path, monkeypatch, cleaning):
     model, config = moge
@@ -151,7 +170,7 @@ def test_full_evaluation_reports_geometry_and_ground_truth(moge, tmp_path):
     np.save(depth_path, np.ones((32, 48), dtype=np.float32))
     config = load_config(ROOT / "configs/mlp.yaml")
     config["train"]["precision"] = "no"
-    config["evaluation"].update(num_tokens=6, max_side=48)
+    config["evaluation"].update(num_tokens=6, max_side=48, planes=True)
     system = FrozenSystem(
         TinyRadio().eval().requires_grad_(False), model.encoder, MoGeDecoder(model), model_config
     )
@@ -170,6 +189,8 @@ def test_full_evaluation_reports_geometry_and_ground_truth(moge, tmp_path):
     assert "gt_student/abs_rel" in metrics
     assert "gt_teacher/abs_rel" in metrics
     assert "teacher_depth/abs_rel" in metrics
+    assert 'planes/regions' in metrics
+    assert metrics['planes/failed'] == 0
     assert (tmp_path / "evaluation/0000.png").is_file()
 
 
