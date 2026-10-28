@@ -181,6 +181,25 @@ for(const id of ['seed','shape','partition','source','axis','target'])$(id).onch
     if attention:
         paired_html = paired_html.replace("两次初始化的容量结果", "两次初始化的 attention 结果")
         paired_html = paired_html.replace("4×512", "32-head 基线").replace("<th>规模</th>", "<th>变体</th>")
+        if report and "qknorm" in report["paired"]:
+            baseline = report["paired"]["baseline"]["mean"]
+            qknorm = report["paired"]["qknorm"]["mean"]
+            per_seed = []
+            for seed in plan["initialization_seeds"]:
+                old = report["confirmation"][f"attention_baseline_s{seed}"]["gt_student/abs_rel"]
+                new = report["confirmation"][f"attention_qknorm_s{seed}"]["gt_student/abs_rel"]
+                per_seed.append(f"seed {seed}：{new / old - 1:+.1%}")
+            paired_html += (
+                '<section class="panel"><h2>QK norm 的收益与代价</h2><p>'
+                f"相对基线，平均平面 RMS 变化 {qknorm['planes/student/normalized_rms'] / baseline['planes/student/normalized_rms'] - 1:+.1%}；"
+                f"NYU AbsRel 变化 {qknorm['gt_student/abs_rel'] / baseline['gt_student/abs_rel'] - 1:+.1%}，"
+                + "但两次结果分别为 " + "、".join(per_seed)
+                + f"。RMSE 变化 {qknorm['gt_student/rmse'] / baseline['gt_student/rmse'] - 1:+.2%}。误差与残差越低越好。</p><p>"
+                f"边缘保留率 {baseline['depth_edges/retention_ratio']:.3f} → {qknorm['depth_edges/retention_ratio']:.3f}；"
+                f"summary 幅值比 {baseline['summary/norm_ratio']:.3f} → {qknorm['summary/norm_ratio']:.3f}（目标为 1）。"
+                f"训练循环耗时增加 {qknorm['train_seconds'] / baseline['train_seconds'] - 1:.1%}。"
+                "cosine 和平面改善仍需与深度准确度、边缘和幅值一起判断。</p></section>"
+            )
     values = dict(
         STAGE=html.escape(stage),
         TIME=time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
