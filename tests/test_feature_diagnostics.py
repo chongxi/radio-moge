@@ -2,7 +2,9 @@ import pytest
 import torch
 
 from radio_moge.adapters import EncoderFeatures
-from radio_moge.feature_diagnostics import feature_metrics, replace_scale, scene_difference
+from radio_moge.feature_diagnostics import (
+    factorized_features, feature_metrics, replace_scale, scene_difference,
+)
 from radio_moge.losses import FeatureStatistics
 
 
@@ -43,3 +45,24 @@ def test_scene_bootstrap_uses_paired_difference_and_image_mean():
     assert result['scene_bootstrap_ci95'] == [-2, -2]
     assert result['scenes'] == 2
     assert result['images_improved'] == 3
+
+
+def test_factorized_replacements_isolate_norm_and_direction():
+    student = EncoderFeatures(torch.tensor([[[[3.0]], [[0.0]]]]), torch.tensor([[0.0, 4.0]]))
+    teacher = EncoderFeatures(torch.tensor([[[[0.0]], [[2.0]]]]), torch.tensor([[5.0, 0.0]]))
+    norm = factorized_features(student, teacher, 'spatial_norm')
+    direction = factorized_features(student, teacher, 'spatial_direction')
+    torch.testing.assert_close(norm.spatial, torch.tensor([[[[2.0]], [[0.0]]]]))
+    torch.testing.assert_close(direction.spatial, torch.tensor([[[[0.0]], [[3.0]]]]))
+    assert norm.summary is student.summary
+    torch.testing.assert_close(factorized_features(student, teacher, 'summary_norm').summary,
+                               torch.tensor([[0.0, 5.0]]))
+    torch.testing.assert_close(factorized_features(student, teacher, 'summary_direction').summary,
+                               torch.tensor([[4.0, 0.0]]))
+
+
+def test_factorized_replacements_reject_zero_direction():
+    student = EncoderFeatures(torch.zeros(1, 2, 1, 1), torch.ones(1, 2))
+    teacher = EncoderFeatures(torch.ones(1, 2, 1, 1), torch.ones(1, 2))
+    with pytest.raises(ValueError, match='zero vectors'):
+        factorized_features(student, teacher, 'spatial_direction')

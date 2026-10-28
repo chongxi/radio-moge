@@ -49,6 +49,20 @@ def replace_scale(raw, scale_source):
     return {**raw, "metric_scale": scale_source["metric_scale"]}
 
 
+def factorized_features(predicted, target, component):
+    """Replace only vector norm or only direction, along the channel dimension."""
+    branch, part = component.split("_")
+    if branch not in ("spatial", "summary") or part not in ("norm", "direction"):
+        raise ValueError(f"Unknown feature intervention: {component}")
+    p, t = getattr(predicted, branch).float(), getattr(target, branch).float()
+    pnorm, tnorm = p.norm(dim=1, keepdim=True), t.norm(dim=1, keepdim=True)
+    if (pnorm <= 1e-8).any() or (tnorm <= 1e-8).any():
+        raise ValueError("Cannot separate norm and direction for zero vectors")
+    mixed = p / pnorm * tnorm if part == "norm" else t / tnorm * pnorm
+    return EncoderFeatures(mixed if branch == "spatial" else predicted.spatial,
+                           mixed if branch == "summary" else predicted.summary)
+
+
 def scene_difference(rows, candidate, baseline, repeats=2000):
     groups = defaultdict(list)
     for row in rows:
@@ -83,7 +97,9 @@ def summarize(rows):
                     if len(set(xs)) > 1 and len(set(ys)) > 1 else None
                 )
         interventions = {}
-        for intervention in ("oracle_summary", "oracle_spatial", "teacher"):
+        variants = [k.removesuffix("/gt/abs_rel") for k in subset[0]
+                    if k.endswith("/gt/abs_rel") and not k.startswith("student/")]
+        for intervention in variants:
             interventions[intervention] = {
                 target: scene_difference(subset, f"{intervention}/{target}/abs_rel",
                                          f"student/{target}/abs_rel")
@@ -161,6 +177,9 @@ def run(plan, output, report):
                                       - target_raw["metric_scale"].log()).abs().mean().item()
             variants = {"student": raw, "oracle_summary": replace_scale(raw, target_raw),
                         "oracle_spatial": replace_scale(target_raw, raw)}
+            for component in plan.get("factorized_interventions", []):
+                mixed = factorized_features(predicted_features, target_features, component)
+                variants["oracle_" + component] = system.decoder(mixed, image.shape[-2:])
             # Check the shortcut against real mixed-feature decoder calls once per checkpoint.
             if index == 0:
                 for tag, mixed in (
