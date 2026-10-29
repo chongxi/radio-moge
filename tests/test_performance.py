@@ -102,3 +102,11 @@ def test_runtime_change_rejects_geometry_and_unreviewed_profiles(tmp_path):
     cfg = config_for(tmp_path)
     with pytest.raises(ValueError, match='feature-only'):
         validate_performance(profile(0, 0), cfg)
+
+
+def test_evaluation_cadence_follows_images_after_batch_change():
+    from radio_moge.performance import interval_due
+    perf = profile(2113, 8452, 64, 32)
+    assert not interval_due(2584, 2000, perf)
+    assert interval_due(2585, 2000, perf)  # virtual position4001 crosses4000
+    assert not interval_due(2586, 2000, perf)

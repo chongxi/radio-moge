@@ -304,7 +304,7 @@ def train(
         performance = autotune(system, adapter, raw_adapter, statistics, optimizer, scheduler,
                                accelerator, amp, records, config, state, performance, output)
     if performance is not None:
-        from .performance import schedule_position, transition_limits
+        from .performance import schedule_position, transition_limits, interval_due
         limits = transition_limits(limits, settings, performance)
         scheduler.lr_lambdas = [lambda epoch: lr_factor(
             schedule_position(epoch, performance), settings['steps'], settings['warmup'])]
@@ -423,6 +423,9 @@ def train(
             config["evaluation"]["limit"],
         )
         metrics["feature/total"] = feature_loss_total(metrics, config['loss'])
+        if performance:
+            metrics.update(schedule_position=schedule_position(step, performance),
+                           logical_data_cursor=cursor, effective_batch=performance['effective_batch'])
         if settings.get('record_cosine_speed', False):
             metrics.update(optimizer_seconds=optimizer_seconds, elapsed_seconds=elapsed_seconds())
         with (output / "validation.jsonl").open("a") as file:
@@ -563,11 +566,15 @@ def train(
                     for key, value in row.items():
                         writer.add_scalar(f"train/{key}", value, step)
                 tracker.log("train", row, step)
-            if step % settings["save_every"] == 0:
+            save_due = (interval_due(step, settings['save_every'], performance) if performance
+                        else step % settings['save_every'] == 0)
+            eval_due = (interval_due(step, settings['eval_every'], performance) if performance
+                        else step % settings['eval_every'] == 0)
+            if save_due:
                 save("latest.pt")
             if (
                 validation
-                and step % settings["eval_every"] == 0
+                and eval_due
                 and not stop
                 and not budget_exhausted()
             ):

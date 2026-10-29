@@ -58,6 +58,11 @@ def schedule_position(step, perf):
     return perf['anchor_schedule_position'] + (step - perf['anchor_step']) * perf['schedule_ratio']
 
 
+def interval_due(step, interval, perf):
+    return math.floor(schedule_position(step, perf) / interval) > math.floor(
+        schedule_position(step - 1, perf) / interval)
+
+
 def transition_limits(limits, settings, perf):
     result = deepcopy(limits)
     remaining_images = (settings['steps'] - perf['anchor_schedule_position']) * perf['base_effective_batch']
