@@ -23,6 +23,11 @@ def validate_performance(perf, config):
         raise ValueError('Expected 1–10 bounded throughput profiles')
     if perf.get('data_pipeline', 'legacy') not in ('legacy', 'prepared'):
         raise ValueError('Unsupported data preparation pipeline')
+    if type(perf.get('compact_transport', False)) is not bool:
+        raise ValueError('Compact transport must be boolean')
+    if perf.get('data_probe_filename', 'data-pipeline-benchmark.json') not in (
+            'data-pipeline-benchmark.json', 'data-pipeline-benchmark-v2.json'):
+        raise ValueError('Unexpected data pipeline proof filename')
     logical = config['train']['batch_size']
     for p in profiles:
         if p['workers'] not in range(5):

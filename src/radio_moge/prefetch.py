@@ -3,7 +3,43 @@
 from queue import Empty, Full, Queue
 from threading import Event, Thread
 
+import torch
+
 from .performance import grouped_window
+
+
+class FloatLoader:
+    """Transfer uint8 RGB through /dev/shm, normalize exactly in the parent process."""
+
+    def __init__(self, loader):
+        self.loader = loader
+
+    def __iter__(self):
+        return FloatIterator(iter(self.loader))
+
+    def __len__(self):
+        return len(self.loader)
+
+
+class FloatIterator:
+    def __init__(self, iterator):
+        self.iterator = iterator
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        image = next(self.iterator)
+        if image.dtype != torch.uint8:
+            raise TypeError('Compact RGB transport requires uint8')
+        output = torch.empty(image.shape, dtype=torch.float32, pin_memory=image.is_pinned())
+        output.copy_(image)
+        return output.div_(255)
+
+    def _shutdown_workers(self):
+        shutdown = getattr(self.iterator, '_shutdown_workers', None)
+        if shutdown is not None:
+            shutdown()
 
 
 class PreparedWindows:

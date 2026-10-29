@@ -12,13 +12,15 @@ from test_training import tiny_system
 
 
 @pytest.mark.parametrize('workers', [0, 2])
-def test_prepared_real_augmented_pixels_exact_with_resume_cursor(tmp_path, workers):
+@pytest.mark.parametrize('compact', [False, True])
+def test_prepared_real_augmented_pixels_exact_with_resume_cursor(tmp_path, workers, compact):
     cfg = feature_config(tmp_path)
     cfg['data'].update(workers=workers, buckets=[[32, 48], [48, 32]])
     records = read_manifest(cfg['data']['train_manifest'])
     loader = make_loader(records, cfg, 19, 24)
     iterator = iter(loader)
     expected = [list(grouped_window(iterator, 8, 16)) for _ in range(3)]
+    cfg['data']['compact_transport'] = compact
     prepared = PreparedWindows(make_loader(records, cfg, 19, 24), 8, 16, 3)
     try:
         for reference, actual in zip(expected, prepared, strict=True):
@@ -58,7 +60,7 @@ def test_pipeline_only_resume_preserves_exact_adam_weights_lr_and_cursor(tmp_pat
         local = deepcopy(cfg)
         local['output_dir'] = str(tmp_path / mode)
         result = train(local, resume=checkpoint, stop_after=4, system_adapter=tiny_system(),
-                       performance=dict(perf, data_pipeline=mode))
+                       performance=dict(perf, data_pipeline=mode, compact_transport=mode == 'prepared'))
         states.append(torch.load(result, weights_only=True))
     a, b = states
     assert a['step'] == b['step'] == 4 and a['cursor'] == b['cursor'] == 24
@@ -104,8 +106,9 @@ def test_disposable_pipeline_probe_restores_full_state(tmp_path, monkeypatch):
     output.mkdir()
     result = probe(system, adapter, adapter, stats, optimizer, scheduler, device, nullcontext,
                    read_manifest(cfg['data']['train_manifest']), cfg, state,
-                   state['performance'], output)
+                   dict(state['performance'], compact_transport=True), output)
     assert all(result[k] == v for k, v in state['performance'].items())
+    assert result['compact_transport'] is True
     for k, v in adapter.state_dict().items():
         assert torch.equal(v, state['adapter'][k])
     for i, row in optimizer.state_dict()['state'].items():

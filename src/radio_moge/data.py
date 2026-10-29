@@ -80,8 +80,9 @@ def oriented_rgb(row):
 class TrainingImages(Dataset):
     """A seeded crop is shared by teacher and student, including horizontal flips."""
 
-    def __init__(self, records, augment=True):
+    def __init__(self, records, augment=True, compact_transport=False):
         self.records, self.augment = records, augment
+        self.compact_transport = compact_transport
 
     def __len__(self):
         return len(self.records)
@@ -98,7 +99,10 @@ class TrainingImages(Dataset):
         image = image.crop((left, top, left + cw, top + ch))
         if self.augment and rng.random() < 0.5:
             image = ImageOps.mirror(image)
-        return tensor_from_pil(image.resize((w, h), Image.Resampling.BILINEAR))
+        image = image.resize((w, h), Image.Resampling.BILINEAR)
+        if self.compact_transport:
+            return torch.from_numpy(np.array(image, dtype=np.uint8, copy=True)).permute(2, 0, 1)
+        return tensor_from_pil(image)
 
 
 class DeterministicBatches(Sampler):

@@ -16,24 +16,27 @@ def probe(system, adapter, raw_adapter, statistics, optimizer, scheduler, accele
           amp, records, config, state, performance, output):
     from .train import make_loader
 
-    path = output / 'data-pipeline-benchmark.json'
+    path = output / performance.get('data_probe_filename', 'data-pipeline-benchmark.json')
     if path.exists():
         raise FileExistsError('Existing data pipeline probe; inspect before any retry')
     original = deepcopy(state['performance'])
     assert performance['effective_batch'] == original['effective_batch'] == 32
     assert performance['compute_batch'] == original['compute_batch'] == 16
     assert performance['workers'] == original['workers'] == 4
+    assert performance['compact_transport'] is True
     report = dict(stage='running', started_at=time.time(), rows=[], disposable_updates=0,
                   anchor_step=state['step'], anchor_cursor=state['cursor'],
                   effective_batch=32, compute_batch=16, workers=4,
                   warmup_steps=6, measured_steps=30,
-                  metric='end-to-end images/sec; fixed sample stream and batch',
+                  metric='end-to-end images/sec; fixed sample stream/batch, common uint8 transport',
+                  compact_transport=True,
                   caveat='fetch time includes waiting and CPU concatenation; not decode throughput')
     atomic_json(report, path)
     logical = config['train']['batch_size']
     accumulation = original['effective_batch'] // logical
     cfg = deepcopy(config)
     cfg['data']['workers'] = original['workers']
+    cfg['data']['compact_transport'] = True
     original_scheduler = deepcopy(scheduler.state_dict())
 
     def reset():
@@ -46,8 +49,10 @@ def probe(system, adapter, raw_adapter, statistics, optimizer, scheduler, accele
 
     # Exact real augmented pixels and compute-batch order, without retaining GPU tensors.
     reference = None
-    for prepared in (False, True):
-        loader = make_loader(records, cfg, state['cursor'], 4 * accumulation)
+    for compact, prepared, workers in [(False, False, 0), (True, False, 4), (True, True, 4)]:
+        equality_cfg = deepcopy(cfg)
+        equality_cfg['data'].update(compact_transport=compact, workers=workers)
+        loader = make_loader(records, equality_cfg, state['cursor'], 4 * accumulation)
         stream = windows(loader, accumulation, 16, 4, prepared=prepared,
                          pin=accelerator.device.type == 'cuda')
         current = []
@@ -141,7 +146,8 @@ def probe(system, adapter, raw_adapter, statistics, optimizer, scheduler, accele
     torch.cuda.empty_cache()
     for key, value in raw_adapter.state_dict().items():
         assert torch.equal(value.detach().cpu(), state['adapter'][key]), 'Restore failed'
-    result = dict(original, data_pipeline='prepared' if selected else 'legacy')
+    result = dict(original, compact_transport=True,
+                  data_pipeline='prepared' if selected else 'legacy')
     result.pop('data_autotune', None)
     report.update(stage='passed', finished_at=time.time(), paired_rounds=aggregate,
                   selected=result, adapter_restored_exactly=True,

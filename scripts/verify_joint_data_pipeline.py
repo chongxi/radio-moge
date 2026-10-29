@@ -19,7 +19,7 @@ def verify(root):
         assert json.loads(output.read_text())['stage'] == 'passed'
         print(json.dumps(dict(stage='already_verified')))
         return
-    files = ['train/data-pipeline-benchmark.json', 'data-pipeline-transition/checkpoint-verification.json',
+    files = ['train/data-pipeline-benchmark-v2.json', 'data-pipeline-transition/checkpoint-verification.json',
              'train/resume-state.json', 'train/performance.json', 'train/provenance.json']
     if any(not (root / f).exists() for f in files):
         print(json.dumps(dict(stage='pending', reason='Waiting for bounded pipeline probe')))
@@ -40,7 +40,10 @@ def verify(root):
     assert bench['input_equality']['exact_augmented_pixels_and_compute_order']
     assert bench['input_equality']['images'] == 128
     assert perf == bench['selected'] == provenance['performance'] == resume['performance']
-    assert {k: v for k, v in perf.items() if k != 'data_pipeline'} == old
+    assert {k: v for k, v in perf.items() if k not in ('data_pipeline', 'compact_transport')} == old
+    assert perf['compact_transport'] is True and bench['compact_transport'] is True
+    preflight = json.loads((root / 'preflight-compact-transport.json').read_text())
+    assert preflight['stage'] == 'passed' and preflight['images_per_pipeline'] == 256
     assert resume['step'] == bench['anchor_step'] == anchor
     assert resume['cursor'] == bench['anchor_cursor'] == 10940 + 8 * (anchor - 2735)
     assert resume['config_and_manifest_match']
@@ -75,7 +78,9 @@ def verify(root):
     proof = dict(stage='passed', checked_at=time.time(), resume_step=anchor,
                  last_observed_step=rows[-1]['step'], baseline_images_per_second=aggregate[0],
                  prepared_images_per_second=aggregate[1], selected=perf['data_pipeline'],
-                 exact_real_input_equality=True, original_schedule_batch_and_deadline_preserved=True,
+                 exact_real_input_equality=True, compact_uint8_transport=True,
+                 baseline_description='synchronous preparation with common uint8 IPC safety fix',
+                 original_schedule_batch_and_deadline_preserved=True,
                  same_wandb_id=identity['id'], checkpoint_sha256=checkpoint['checkpoint_sha256'],
                  optimizer_updates_discarded=144,
                  caveat='Throughput comparison does not establish decoder speed or accuracy gains')

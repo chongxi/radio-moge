@@ -53,13 +53,18 @@ def make_loader(records, config, start, count, calibration=False):
         sampler = DeterministicBatches(
             len(records), train["batch_size"], data["buckets"], train["seed"], start, count
         )
-    return DataLoader(
-        TrainingImages(records, data["augment"] and not calibration),
+    compact = data.get('compact_transport', False)
+    loader = DataLoader(
+        TrainingImages(records, data["augment"] and not calibration, compact_transport=compact),
         batch_sampler=sampler,
         num_workers=data["workers"],
         pin_memory=torch.cuda.is_available(),
         generator=torch.Generator().manual_seed(train["seed"]),
     )
+    if compact:
+        from .prefetch import FloatLoader
+        return FloatLoader(loader)
+    return loader
 
 
 def lr_factor(step, total, warmup):
@@ -403,6 +408,7 @@ def train(
     loader_config = deepcopy(config)
     if performance:
         loader_config['data']['workers'] = performance['workers']
+        loader_config['data']['compact_transport'] = performance.get('compact_transport', False)
     loader = make_loader(records, loader_config, cursor, max(0, total - step) * accumulation)
     prepared_windows = None
     if performance and performance.get('data_pipeline') == 'prepared':
