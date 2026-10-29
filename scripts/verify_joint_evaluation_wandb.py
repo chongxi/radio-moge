@@ -34,7 +34,14 @@ def verify(root, step):
     metrics_sha = hashlib.sha256(metrics_path.read_bytes()).hexdigest()
     assert audit['stage'] == 'passed' and audit['sha256']['metrics.json'] == metrics_sha
     identity = json.loads((root / 'train/wandb-run.json').read_text())
-    assert identity['id'] == 'eadda6e3' and identity['mode'] == 'online'
+    startup = root/'startup-verification.json'
+    if (root/'plan.json').exists() and json.loads((root/'plan.json').read_text()).get('additional_updates') == 30000:
+        proof = json.loads(startup.read_text())
+        assert proof['stage'] == 'passed' and identity == proof['new_wandb']
+        assert identity['id'] != 'eadda6e3'
+    else:
+        assert identity['id'] == 'eadda6e3'
+    assert identity['mode'] == 'online'
     proof_path = root / f'eval-{step:07d}-wandb-verification.json'
     if proof_path.exists():
         prior = json.loads(proof_path.read_text())
