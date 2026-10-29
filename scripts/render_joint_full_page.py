@@ -78,19 +78,46 @@ def render(root, page):
             gpu = utilization['summary']
             loop_speed = utilization['production_train_loop_images_per_second']
             wall_speed = utilization['production_wall_images_per_second']
-            actual = (f'<p><strong>正式续训实测：GPU 平均利用率 {gpu["utilization.gpu"]["mean"]:.1f}%'
+            actual = (f'<p><strong>第一阶段续训历史实测：GPU 平均忙碌时间占比 {gpu["utilization.gpu"]["mean"]:.1f}%'
                       f'，显存 {gpu["memory.used"]["mean"]/1024:.1f} GiB，平均功耗 '
                       f'{gpu["power.draw"]["mean"]:.0f} W / 700 W。</strong></p>'
                       f'<p>训练循环 {loop_speed:.2f} 图/秒（调整前约 25.35），'
                       f'约 {loop_speed/25.35:.2f} 倍；日志区间含保存等开销的实际速度 '
                       f'{wall_speed:.2f} 图/秒。GPU 连续采样 30 次，期间没有完成新的验证。</p>')
-        performance_panel = ('<section id="performance"><h2>H200 吞吐实测与 batch 选择</h2>' + actual +
+        performance_panel = ('<section id="performance"><h2>第一阶段：H200 batch 选择与历史实测</h2>' + actual +
             '<div class="scroll"><table><thead><tr><th>有效 batch</th><th>计算 batch 上限</th>'
             '<th>预取进程</th><th>短测图/秒 ↑</th><th>峰值分配显存 GiB</th></tr></thead><tbody>' +
             ''.join(entries) + '</tbody></table></div>'
             '<p class="muted">两轮相反顺序；每项 2 步预热、8 步计时。包括在线数据读取、两个冻结编码器、反向传播和 Adam。'
             '不同宽高的图片分开计算，因此实际计算 batch 可低于上限。160 次测试更新全部丢弃，从第 2,735 步恢复权重、Adam、学习率和随机状态。'
             '这是吞吐选型，不代表更大的 batch 已改善 cosine 或泛化。余下训练量与学习率按图片数衔接，原截止时间保持。</p></section>')
+    pipeline = read(root/'data-pipeline-verification.json', {})
+    pipeline_sample = read(root/'data-pipeline-utilization-verification.json', {})
+    pipeline_panel = ''
+    if pipeline.get('stage') == 'passed':
+        baseline = pipeline['baseline_images_per_second']
+        prepared = pipeline['prepared_images_per_second']
+        gain = 100 * (prepared / baseline - 1)
+        adopted = '提前准备窗口' if pipeline['selected'] == 'prepared' else '同步准备窗口'
+        sample_text = '<p>新流水线的持续训练窗口测量待完成；下方第一阶段利用率属于历史记录。</p>'
+        if pipeline_sample.get('stage') == 'passed':
+            gpu = pipeline_sample['summary']
+            sample_text = (f'<p>恢复后正式训练采样：GPU 平均忙碌时间占比 '
+                           f'{gpu["utilization.gpu"]["mean"]:.1f}%，显存 '
+                           f'{gpu["memory.used"]["mean"]/1024:.1f} GiB；训练循环 '
+                           f'{pipeline_sample["production_train_loop_images_per_second"]:.2f} 图/秒，'
+                           f'日志区间实际速度 {pipeline_sample["production_wall_images_per_second"]:.2f} 图/秒。</p>')
+        pipeline_panel = (f'<section id="data-pipeline"><h2>数据准备对照：{gain:+.1f}% 吞吐</h2>'
+            f'<p>有效 batch 32、计算上限 16、4 个数据进程保持相同；已采用：{adopted}。</p>'
+            '<div class="scroll"><table><thead><tr><th>数据准备方式</th><th>两轮合计图/秒 ↑</th></tr></thead><tbody>'
+            f'<tr><td>同步准备窗口</td><td>{baseline:.2f}</td></tr>'
+            f'<tr><td>提前准备窗口</td><td>{prepared:.2f}</td></tr></tbody></table></div>'
+            '<p>两轮顺序反转，每项 6 步预热、30 步计时。两种方式均使用修复后的 uint8 进程间传输，'
+            '因此这次比较衡量提前准备的效果。原始输入与计算顺序逐值一致；144 次测试更新全部丢弃，'
+            '恢复第 9,150 步的权重、Adam、学习率、随机状态后接续训练。</p>' + sample_text +
+            '<p class="muted">首次尝试因 64 MiB 共享内存不足退出，当时没有执行任何测试或正式更新；'
+            '修复后两种流水线各通过 256 张真实图片逐值检查。吞吐提升不等于 decoder 单独提速或泛化改善；'
+            'GPU 忙碌时间占比不等于峰值 FLOPS 利用率，计算上限 16 也不是硬件容量上限。</p></section>')
     performance_note = (f'性能优化后有效 batch {batch}，计算 batch 上限 {perf["compute_batch"]}，预取进程 {perf["workers"]}；学习率按图片数衔接，原预算不延长。' if perf else '初始有效 batch 16（计算 4 × 累积 4）。')
     if stage == 'training' and not train:
         stage = '正式训练初始化 · 尚未记录优化器更新'
@@ -120,6 +147,7 @@ def render(root, page):
 <p class="muted">RADIO → 冻结 MoGe · 24 小时首阶段</p><h1>4×2048 joint attention + QK norm</h1>
 <p><span class="pill">{escape(stage)}</span>　{link}</p><p class="muted">更新：{stamp} · 已记录更新步 {last.get('step',0):,} · 训练池 796,478 图 / 七来源 · 固定评估 1,268 图</p>
 {download_panel}
+{pipeline_panel}
 {performance_panel}
 <section><h2>本次训练与之前的短筛选</h2><p>从头初始化 seed43；在线 RGB 与数据增强。{performance_note}四层、32头、2D RoPE、head gate、4个 register、SwiGLU、QK norm。预算为原始 86,400 秒截止时间或 1,920,000 次训练图片呈现，先到即停；batch 增大时剩余更新步数相应减少。</p>
 <p>四个 RADIO spatial tap 继续逐图清理。按用户新要求，两个原始 summary token 也分别做 8×中位数异常幅值置零，再投影。MoGe 教师目标不清理。summary 清理是新增实验项，之前短筛选的收益不能视为它的效果证据。</p>
