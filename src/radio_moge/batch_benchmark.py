@@ -15,7 +15,7 @@ import torch
 
 from .checkpoint import atomic_json, restore_rng
 from .losses import FEATURE_LOSS_KEYS, FeatureStatistics, weighted_loss
-from .prefetch import PreparedWindows
+from .prefetch import DeviceWindows, PreparedWindows
 
 
 def validate_plan(plan, logical):
@@ -37,7 +37,8 @@ def validate_plan(plan, logical):
             raise ValueError('Logical batches must divide effective and compute batches')
         if any(plan[key] % effective for key in ('warmup_images', 'measured_images')):
             raise ValueError('All profiles must consume identical warmup and measured image counts')
-        if p.get('input_mode', 'prepared') not in ('prepared', 'prepared_legacy', 'resident_gpu'):
+        if p.get('input_mode', 'prepared') not in (
+                'prepared', 'prepared_legacy', 'resident_gpu', 'gpu_prefetch'):
             raise ValueError('Unknown input timing mode')
         if p.get('input_mode') == 'resident_gpu' and plan['warmup_images'] + plan['measured_images'] > 1536:
             raise ValueError('Resident control caches at most 1536 actual images')
@@ -51,6 +52,76 @@ def reset_state(adapter, statistics, optimizer, state):
     restore_rng(state['rng'])
 
 
+def verify_device_pipeline(records, config, state, device):
+    """Check real augmented pixels and Adam across streams before timing the model."""
+    from .train import make_loader
+
+    cfg = deepcopy(config)
+    cfg['data'].update(workers=0, compact_transport=True)
+    logical = cfg['train']['batch_size']
+    accumulation, count = 32 // logical, 4
+
+    def prepared():
+        return PreparedWindows(make_loader(records, cfg, state['cursor'], count * accumulation),
+                               accumulation, 16, count, pin=True)
+
+    reference = prepared()
+    try:
+        expected = [next(reference) for _ in range(count)]
+    finally:
+        reference.close()
+    actual = DeviceWindows(prepared(), device)
+    params = [torch.nn.Parameter(torch.tensor([.1, .2, .3], device=device)) for _ in range(2)]
+    optimizers = [torch.optim.AdamW([p], lr=1.5e-5) for p in params]
+    images = 0
+    try:
+        for cpu_group, device_group in zip(expected, actual, strict=True):
+            assert len(cpu_group) == len(device_group)
+            for cpu, gpu in zip(cpu_group, device_group, strict=True):
+                assert gpu.is_cuda and torch.equal(cpu, gpu.cpu())
+                images += len(cpu)
+            for group, param, optimizer in zip((cpu_group, device_group), params, optimizers, strict=True):
+                optimizer.zero_grad(set_to_none=True)
+                for image in group:
+                    x = image.to(device, non_blocking=True).mean(dim=(2, 3))
+                    loss = ((x * param).sum(dim=1).square()).sum() / 32
+                    loss.backward()
+                optimizer.step()
+        torch.cuda.current_stream(device).synchronize()
+        assert torch.equal(params[0], params[1])
+        a, b = [o.state_dict()['state'][0] for o in optimizers]
+        assert all(torch.equal(a[k], b[k]) for k in a)
+    finally:
+        actual.close()
+    assert not actual.thread.is_alive() and not actual.cpu_windows.thread.is_alive()
+
+    # Closing with queued copies, and forwarding a producer exception, must not
+    # leave a copy thread or a CPU producer behind.
+    sample = torch.ones(4, 3, 8, 8, pin_memory=True)
+    early = DeviceWindows(PreparedWindows([sample] * 12, 1, 4, 12, pin=True), device)
+    next(early)
+    early.close()
+    early.close()
+    assert not early.thread.is_alive() and not early.cpu_windows.thread.is_alive()
+
+    def broken():
+        raise ValueError('device-prefetch test decode failure')
+        yield sample
+
+    failed = DeviceWindows(PreparedWindows(broken(), 1, 4, 1, pin=True), device)
+    try:
+        next(failed)
+        raise AssertionError('Producer error was lost')
+    except ValueError as error:
+        assert str(error) == 'device-prefetch test decode failure'
+    finally:
+        failed.close()
+    assert not failed.thread.is_alive() and not failed.cpu_windows.thread.is_alive()
+    return dict(stage='passed', actual_augmented_images_exact=images,
+                probe_adam_weights_and_moments_exact=True, early_close_passed=True,
+                producer_error_forwarded=True, all_threads_stopped=True)
+
+
 def run_profile(system, adapter, statistics, optimizer, accelerator, records, config,
                 state, profile, plan, deadline):
     """Real decode/augmentation, frozen encoders, backward, clipping and Adam are timed."""
@@ -58,7 +129,9 @@ def run_profile(system, adapter, statistics, optimizer, accelerator, records, co
 
     cuda = accelerator.device.type == 'cuda'
     amp = (lambda: torch.autocast('cuda', dtype=torch.bfloat16)) if cuda else nullcontext
-    synchronize = torch.cuda.synchronize if cuda else lambda: None
+    # Synchronize only computation: a device-wide barrier would charge or hide
+    # unrelated future-window copies and defeat the intended overlap.
+    synchronize = (lambda: torch.cuda.current_stream(accelerator.device).synchronize()) if cuda else lambda: None
     cfg = deepcopy(config)
     cfg['data'].update(workers=profile['workers'], compact_transport=True)
     logical = cfg['train']['batch_size']
@@ -70,6 +143,8 @@ def run_profile(system, adapter, statistics, optimizer, accelerator, records, co
     stream = PreparedWindows(loader, accumulation, profile['compute_batch'], count,
                              pin=cuda, measure=True,
                              compact_grouping=profile.get('input_mode') != 'prepared_legacy')
+    if profile.get('input_mode') == 'gpu_prefetch':
+        stream = DeviceWindows(stream, accelerator.device, measure=True)
     steps, histogram = [], Counter()
     measured_started_at = measured_finished_at = None
     resident = profile.get('input_mode') == 'resident_gpu'
@@ -110,9 +185,11 @@ def run_profile(system, adapter, statistics, optimizer, accelerator, records, co
                 measured_started_at = time.time()
             start = time.perf_counter()
             optimizer.zero_grad(set_to_none=True)
+            before_fetch = mark()
             fetch_start = time.perf_counter()
             images = cached[index] if resident else next(stream)
             wait = time.perf_counter() - fetch_start
+            after_fetch = mark()
             preparation = stream.preparation_timings[index]
             assert sum(len(x) for x in images) == effective
             values, timings = [], []
@@ -149,6 +226,7 @@ def run_profile(system, adapter, statistics, optimizer, accelerator, records, co
             if index >= warmup:
                 gpu = {}
                 if cuda:
+                    gpu['data_ready_stream_ms'] = before_fetch.elapsed_time(after_fetch)
                     for i, key in enumerate(('h2d_ms', 'frozen_encoders_ms',
                                              'adapter_forward_ms', 'loss_backward_ms')):
                         gpu[key] = sum(events[i].elapsed_time(events[i + 1]) for events in timings)
@@ -157,6 +235,8 @@ def run_profile(system, adapter, statistics, optimizer, accelerator, records, co
                                   gradient_norm=norm_value, **preparation, **gpu))
             del images, values, timings, norm
     finally:
+        device_readiness = (list(stream.ready_before_consume)
+                            if isinstance(stream, DeviceWindows) else None)
         stream.close()
         del stream, loader
         gc.collect()
@@ -168,6 +248,7 @@ def run_profile(system, adapter, statistics, optimizer, accelerator, records, co
                 actual_compute_batches=dict(histogram),
                 mean_fetch_seconds=sum(s['fetch_seconds'] for s in steps) / len(steps),
                 resident_setup_seconds=cache_seconds, resident_input_bytes=cache_bytes,
+                device_ready_before_consume=device_readiness,
                 peak_allocated_gib=torch.cuda.max_memory_allocated() / 2**30 if cuda else 0,
                 peak_reserved_gib=torch.cuda.max_memory_reserved() / 2**30 if cuda else 0,
                 disposable_updates=count,
@@ -248,6 +329,9 @@ def main():
         if set(config['loss']) - set(FEATURE_LOSS_KEYS) or config['train']['precision'] != 'bf16':
             raise ValueError('Only the existing BF16 feature-only training path is supported')
         records = read_manifest_metadata(config['data']['train_manifest'])
+        if any(p.get('input_mode') == 'gpu_prefetch' for p in plan['profiles']):
+            report['device_pipeline_verification'] = verify_device_pipeline(
+                records, config, state, accelerator.device)
         report.update(plan=plan, config=config, source_step=state['step'], source_cursor=state['cursor'],
                       manifest_records=len(records), revisions=state['revisions'],
                       torch_version=torch.__version__, gpu=torch.cuda.get_device_name(),

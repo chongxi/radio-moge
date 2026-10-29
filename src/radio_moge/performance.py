@@ -28,6 +28,11 @@ def validate_performance(perf, config, *, constant_fork=False):
         raise ValueError('Unsupported data preparation pipeline')
     if type(perf.get('compact_transport', False)) is not bool:
         raise ValueError('Compact transport must be boolean')
+    if type(perf.get('gpu_prefetch', False)) is not bool:
+        raise ValueError('GPU prefetch must be boolean')
+    if perf.get('gpu_prefetch') and (perf.get('data_pipeline') != 'prepared'
+                                    or not perf.get('compact_transport')):
+        raise ValueError('GPU prefetch requires prepared compact transport')
     if perf.get('data_probe_filename', 'data-pipeline-benchmark.json') not in (
             'data-pipeline-benchmark.json', 'data-pipeline-benchmark-v2.json'):
         raise ValueError('Unexpected data pipeline proof filename')
@@ -35,7 +40,7 @@ def validate_performance(perf, config, *, constant_fork=False):
     for p in profiles:
         if p['workers'] not in range(5):
             raise ValueError('At most four data workers')
-        if (p['effective_batch'] not in (16, 32, 64) or p['compute_batch'] < logical
+        if (p['effective_batch'] not in (16, 32, 64, 128, 256) or p['compute_batch'] < logical
                 or p['compute_batch'] > p['effective_batch']
                 or p['compute_batch'] % logical or p['effective_batch'] % logical):
             raise ValueError('Unsupported reviewed batching profile')

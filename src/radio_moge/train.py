@@ -440,13 +440,26 @@ def train(
         loader_config['data']['compact_transport'] = performance.get('compact_transport', False)
     loader = make_loader(records, loader_config, cursor, max(0, total - step) * accumulation)
     prepared_windows = None
+    gpu_prefetch = bool(performance and performance.get('gpu_prefetch', False))
     if performance and performance.get('data_pipeline') == 'prepared':
-        from .prefetch import PreparedWindows
+        from .prefetch import DeviceWindows, PreparedWindows
+        if gpu_prefetch and accelerator.device.type != 'cuda':
+            raise ValueError('GPU prefetch requires CUDA')
         prepared_windows = PreparedWindows(loader, accumulation, performance['compute_batch'],
                                            max(0, total - step), pin=accelerator.device.type == 'cuda')
+        if gpu_prefetch:
+            prepared_windows = DeviceWindows(prepared_windows, accelerator.device)
         iterator = None
     else:
         iterator = iter(loader)
+
+    def synchronize_update():
+        if gpu_prefetch:
+            # Future H2D work on the copy stream need not finish with this update.
+            torch.cuda.current_stream(accelerator.device).synchronize()
+        else:
+            synchronize(accelerator.device)
+
     plane_enabled = any(config["loss"].get(k, 0)
                         for k in ("plane_flatness", "plane_normal", "plane_anchor"))
     plane_config = PlaneConfig(**config.get("planes", {})) if plane_enabled else None
@@ -533,7 +546,7 @@ def train(
         while step < total and not stop and not budget_exhausted():
             adapter.train()
             optimizer.zero_grad(set_to_none=True)
-            synchronize(accelerator.device)
+            synchronize_update()
             started = time.perf_counter()
             totals = {}
             if prepared_windows is not None:
@@ -596,7 +609,7 @@ def train(
             optimizer.step()
             scheduler.step()
             step += 1
-            synchronize(accelerator.device)
+            synchronize_update()
             elapsed = time.perf_counter() - started
             optimizer_seconds += elapsed
             row = {

@@ -1,7 +1,7 @@
-"""Bounded CPU preparation ahead of training, with no sampler or CUDA compute changes."""
+"""Bounded CPU preparation and optional CUDA prefetch with unchanged input samples."""
 
 from queue import Empty, Full, Queue
-from threading import Event, Thread
+from threading import Event, Semaphore, Thread
 import time
 
 import torch
@@ -135,6 +135,101 @@ class PreparedWindows:
         shutdown = getattr(self.iterator, '_shutdown_workers', None)
         if shutdown is not None:
             shutdown()
+
+
+class DeviceWindows:
+    """Keep one complete future window on a separate CUDA copy stream.
+
+    A semaphore reserves the queue slot *before* copying, bounding device staging
+    to the current window and one future window. CPU decoding remains bounded by
+    PreparedWindows. Consumers wait on a CUDA event, not a device-wide barrier.
+    """
+
+    def __init__(self, cpu_windows, device, measure=False):
+        self.device = torch.device(device)
+        if self.device.type != 'cuda':
+            raise ValueError('Device prefetch requires CUDA')
+        self.cpu_windows = cpu_windows
+        self.preparation_timings = cpu_windows.preparation_timings
+        self.count, self.consumed = cpu_windows.count, 0
+        self.queue, self.slot, self.stop = Queue(maxsize=1), Semaphore(1), Event()
+        self.copy_stream = torch.cuda.Stream(device=self.device)
+        self.ready_before_consume = [] if measure else None
+        self.closed = False
+
+        def put(item):
+            while not self.stop.is_set():
+                try:
+                    self.queue.put(item, timeout=.1)
+                    return
+                except Full:
+                    pass
+
+        def copy():
+            try:
+                for _ in range(self.count):
+                    while not self.stop.is_set():
+                        if self.slot.acquire(timeout=.1):
+                            break
+                    if self.stop.is_set():
+                        break
+                    source = next(self.cpu_windows)
+                    with torch.cuda.device(self.device), torch.cuda.stream(self.copy_stream):
+                        tensors = [t.to(self.device, non_blocking=True) for t in source]
+                        ready = torch.cuda.Event()
+                        ready.record(self.copy_stream)
+                    put((tensors, ready, None))
+                    del source, tensors
+            except BaseException as error:
+                put((None, None, error))
+
+        self.thread = Thread(target=copy, name='prefetch-device-windows', daemon=True)
+        self.thread.start()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.consumed >= self.count:
+            raise StopIteration
+        while True:
+            try:
+                tensors, ready, error = self.queue.get(timeout=.1)
+                break
+            except Empty:
+                if not self.thread.is_alive():
+                    raise RuntimeError('Device prefetch stopped before all windows arrived') from None
+        self.slot.release()
+        if error is not None:
+            self.close()
+            raise error
+        stream = torch.cuda.current_stream(self.device)
+        if self.ready_before_consume is not None:
+            self.ready_before_consume.append(ready.query())
+        stream.wait_event(ready)
+        for tensor in tensors:
+            # The allocator must not reuse storage while the compute stream reads it.
+            tensor.record_stream(stream)
+        self.consumed += 1
+        return tensors
+
+    def close(self):
+        if self.closed:
+            return
+        self.stop.set()
+        try:
+            self.cpu_windows.close()
+        finally:
+            while True:
+                try:
+                    self.queue.get_nowait()
+                except Empty:
+                    break
+            self.thread.join(timeout=10)
+            if self.thread.is_alive():
+                raise RuntimeError('Device prefetch is still active; do not start another loader')
+            self.copy_stream.synchronize()
+            self.closed = True
 
 
 def windows(loader, accumulation, compute_batch, count, prepared=False, pin=False):

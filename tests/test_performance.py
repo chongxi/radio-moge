@@ -104,6 +104,21 @@ def test_runtime_change_rejects_geometry_and_unreviewed_profiles(tmp_path):
         validate_performance(profile(0, 0), cfg)
 
 
+def test_gpu_prefetch_configuration_and_larger_batches(tmp_path):
+    from radio_moge.performance import validate_performance
+    cfg = feature_config(tmp_path)
+    for batch in (128, 256):
+        perf = dict(profile(0, 0, batch, 128), data_pipeline='prepared',
+                    compact_transport=True, gpu_prefetch=True)
+        validate_performance(perf, cfg)
+        with pytest.raises(ValueError, match='prepared compact'):
+            validate_performance(dict(perf, data_pipeline='legacy'), cfg)
+        with pytest.raises(ValueError, match='prepared compact'):
+            validate_performance(dict(perf, compact_transport=False), cfg)
+        with pytest.raises(ValueError, match='boolean'):
+            validate_performance(dict(perf, gpu_prefetch='yes'), cfg)
+
+
 def test_evaluation_cadence_follows_images_after_batch_change():
     from radio_moge.performance import interval_due
     perf = profile(2113, 8452, 64, 32)
