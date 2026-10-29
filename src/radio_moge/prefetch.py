@@ -31,16 +31,20 @@ class FloatIterator:
 
     def __next__(self):
         image = next(self.iterator)
-        if image.dtype != torch.uint8:
-            raise TypeError('Compact RGB transport requires uint8')
-        output = torch.empty(image.shape, dtype=torch.float32, pin_memory=image.is_pinned())
-        output.copy_(image)
-        return output.div_(255)
+        return normalize_uint8(image, pin=image.is_pinned())
 
     def _shutdown_workers(self):
         shutdown = getattr(self.iterator, '_shutdown_workers', None)
         if shutdown is not None:
             shutdown()
+
+
+def normalize_uint8(image, pin=False):
+    if image.dtype != torch.uint8:
+        raise TypeError('Compact RGB transport requires uint8')
+    output = torch.empty(image.shape, dtype=torch.float32, pin_memory=pin)
+    output.copy_(image)
+    return output.div_(255)
 
 
 class PreparedWindows:
@@ -52,10 +56,13 @@ class PreparedWindows:
     """
 
     def __init__(self, loader, accumulation, compute_batch, count, ahead=2, pin=False,
-                 measure=False):
+                 measure=False, compact_grouping=True):
         if ahead not in (1, 2) or count < 0:
             raise ValueError('Expected one or two bounded prepared windows')
-        self.iterator = iter(loader)  # Start DataLoader workers in the calling thread.
+        # Group compact logical batches before normalization. This avoids concatenating
+        # float32 tensors and then copying them again into page-locked allocations.
+        grouped_uint8 = compact_grouping and isinstance(loader, FloatLoader)
+        self.iterator = iter(loader.loader if grouped_uint8 else loader)
         self.queue = Queue(maxsize=ahead)
         self.stop = Event()
         self.count = count
@@ -79,7 +86,9 @@ class PreparedWindows:
                     if measure:
                         wall_start, cpu_start = time.perf_counter(), time.thread_time()
                     tensors = list(grouped_window(self.iterator, accumulation, compute_batch))
-                    if pin:
+                    if grouped_uint8:
+                        tensors = [normalize_uint8(t, pin=pin) for t in tensors]
+                    elif pin:
                         tensors = [t if t.is_pinned() else t.pin_memory() for t in tensors]
                     if measure:
                         self.preparation_timings.append(dict(

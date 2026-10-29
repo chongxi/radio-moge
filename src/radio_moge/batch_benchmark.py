@@ -37,7 +37,7 @@ def validate_plan(plan, logical):
             raise ValueError('Logical batches must divide effective and compute batches')
         if any(plan[key] % effective for key in ('warmup_images', 'measured_images')):
             raise ValueError('All profiles must consume identical warmup and measured image counts')
-        if p.get('input_mode', 'prepared') not in ('prepared', 'resident_gpu'):
+        if p.get('input_mode', 'prepared') not in ('prepared', 'prepared_legacy', 'resident_gpu'):
             raise ValueError('Unknown input timing mode')
         if p.get('input_mode') == 'resident_gpu' and plan['warmup_images'] + plan['measured_images'] > 1536:
             raise ValueError('Resident control caches at most 1536 actual images')
@@ -68,7 +68,8 @@ def run_profile(system, adapter, statistics, optimizer, accelerator, records, co
     count = warmup + plan['measured_images'] // effective
     loader = make_loader(records, cfg, state['cursor'], count * accumulation)
     stream = PreparedWindows(loader, accumulation, profile['compute_batch'], count,
-                             pin=cuda, measure=True)
+                             pin=cuda, measure=True,
+                             compact_grouping=profile.get('input_mode') != 'prepared_legacy')
     steps, histogram = [], Counter()
     resident = profile.get('input_mode') == 'resident_gpu'
     if resident and not cuda:

@@ -13,7 +13,9 @@ from test_training import tiny_system
 
 @pytest.mark.parametrize('workers', [0, 2])
 @pytest.mark.parametrize('compact', [False, True])
-def test_prepared_real_augmented_pixels_exact_with_resume_cursor(tmp_path, workers, compact):
+@pytest.mark.parametrize('compact_grouping', [False, True])
+def test_prepared_real_augmented_pixels_exact_with_resume_cursor(tmp_path, workers, compact,
+                                                               compact_grouping):
     cfg = feature_config(tmp_path)
     cfg['data'].update(workers=workers, buckets=[[32, 48], [48, 32]])
     records = read_manifest(cfg['data']['train_manifest'])
@@ -21,7 +23,8 @@ def test_prepared_real_augmented_pixels_exact_with_resume_cursor(tmp_path, worke
     iterator = iter(loader)
     expected = [list(grouped_window(iterator, 8, 16)) for _ in range(3)]
     cfg['data']['compact_transport'] = compact
-    prepared = PreparedWindows(make_loader(records, cfg, 19, 24), 8, 16, 3)
+    prepared = PreparedWindows(make_loader(records, cfg, 19, 24), 8, 16, 3,
+                               compact_grouping=compact_grouping)
     try:
         for reference, actual in zip(expected, prepared, strict=True):
             assert len(reference) == len(actual)
