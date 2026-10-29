@@ -62,6 +62,35 @@ def render(root, page):
     if (root/'train/performance.json').exists():
         perf = json.loads((root/'train/performance.json').read_text())
     batch = perf.get('effective_batch', 16)
+    throughput = read(root/'train/throughput-benchmark.json', {})
+    utilization = read(root/'performance-utilization-verification.json', {})
+    performance_panel = ''
+    if throughput.get('stage') == 'passed':
+        entries = []
+        for row in throughput['paired_rounds']:
+            selected = all(row[k] == perf.get(k) for k in ('workers','compute_batch','effective_batch'))
+            entries.append(f'<tr><td>{row["effective_batch"]}{" · 已采用" if selected else ""}</td>'
+                           f'<td>{row["compute_batch"]}</td><td>{row["workers"]}</td>'
+                           f'<td>{row["images_per_second"]:.2f}</td>'
+                           f'<td>{row["peak_memory_gib"]:.2f}</td></tr>')
+        actual = ''
+        if utilization.get('stage') == 'passed':
+            gpu = utilization['summary']
+            loop_speed = utilization['production_train_loop_images_per_second']
+            wall_speed = utilization['production_wall_images_per_second']
+            actual = (f'<p><strong>正式续训实测：GPU 平均利用率 {gpu["utilization.gpu"]["mean"]:.1f}%'
+                      f'，显存 {gpu["memory.used"]["mean"]/1024:.1f} GiB，平均功耗 '
+                      f'{gpu["power.draw"]["mean"]:.0f} W / 700 W。</strong></p>'
+                      f'<p>训练循环 {loop_speed:.2f} 图/秒（调整前约 25.35），'
+                      f'约 {loop_speed/25.35:.2f} 倍；日志区间含保存等开销的实际速度 '
+                      f'{wall_speed:.2f} 图/秒。GPU 连续采样 30 次，期间没有完成新的验证。</p>')
+        performance_panel = ('<section id="performance"><h2>H200 吞吐实测与 batch 选择</h2>' + actual +
+            '<div class="scroll"><table><thead><tr><th>有效 batch</th><th>计算 batch 上限</th>'
+            '<th>预取进程</th><th>短测图/秒 ↑</th><th>峰值分配显存 GiB</th></tr></thead><tbody>' +
+            ''.join(entries) + '</tbody></table></div>'
+            '<p class="muted">两轮相反顺序；每项 2 步预热、8 步计时。包括在线数据读取、两个冻结编码器、反向传播和 Adam。'
+            '不同宽高的图片分开计算，因此实际计算 batch 可低于上限。160 次测试更新全部丢弃，从第 2,735 步恢复权重、Adam、学习率和随机状态。'
+            '这是吞吐选型，不代表更大的 batch 已改善 cosine 或泛化。余下训练量与学习率按图片数衔接，原截止时间保持。</p></section>')
     performance_note = (f'性能优化后有效 batch {batch}，计算 batch 上限 {perf["compute_batch"]}，预取进程 {perf["workers"]}；学习率按图片数衔接，原预算不延长。' if perf else '初始有效 batch 16（计算 4 × 累积 4）。')
     if stage == 'training' and not train:
         stage = '正式训练初始化 · 尚未记录优化器更新'
@@ -91,6 +120,7 @@ def render(root, page):
 <p class="muted">RADIO → 冻结 MoGe · 24 小时首阶段</p><h1>4×2048 joint attention + QK norm</h1>
 <p><span class="pill">{escape(stage)}</span>　{link}</p><p class="muted">更新：{stamp} · 已记录更新步 {last.get('step',0):,} · 训练池 796,478 图 / 七来源 · 固定评估 1,268 图</p>
 {download_panel}
+{performance_panel}
 <section><h2>本次训练与之前的短筛选</h2><p>从头初始化 seed43；在线 RGB 与数据增强。{performance_note}四层、32头、2D RoPE、head gate、4个 register、SwiGLU、QK norm。预算为原始 86,400 秒截止时间或 1,920,000 次训练图片呈现，先到即停；batch 增大时剩余更新步数相应减少。</p>
 <p>四个 RADIO spatial tap 继续逐图清理。按用户新要求，两个原始 summary token 也分别做 8×中位数异常幅值置零，再投影。MoGe 教师目标不清理。summary 清理是新增实验项，之前短筛选的收益不能视为它的效果证据。</p>
 <p>目标 spatial / summary cosine 均超过 0.98；尚未达成。cosine、幅值比、真实深度和几何质量分别判断。</p></section>

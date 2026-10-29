@@ -19,7 +19,8 @@ def sync(root, remote_base):
            'startup-verification.json','startup-wandb-verification.json','monitor.json',
            'browser-startup-verification.json','experiment.md','completion-verification.json',
            'performance-plan.json','performance-code-deployment.json','performance-verification.json',
-           'performance-wandb-verification.json',
+           'performance-wandb-verification.json','performance-utilization-verification.json',
+           'throughput-benchmark-verification.json','performance-page-verification.json',
            'utilization-observation.json','batch-literature.md']
     paths=[root.parent/'handoff.json']+[root/n for n in names]
     paths+=list(root.glob('eval-*-verification.json'))
