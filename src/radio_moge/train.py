@@ -164,6 +164,7 @@ def train(
     execution_revision=None,
     fork_from=None,
     performance=None,
+    budget_started_at=None,
 ):
     """Single-device experiment runner. system_adapter allows small CPU integration tests."""
     invocation_started = time.monotonic()
@@ -173,6 +174,9 @@ def train(
         raise ValueError("Choose exactly one of resume, init or fork-from")
     if extension is not None and not resume:
         raise ValueError("Budget extension requires --resume")
+    if budget_started_at is not None and (not fork_from or not math.isfinite(budget_started_at)
+                                         or not 0 < budget_started_at <= time.time()):
+        raise ValueError('An original wall-clock start requires a constant-LR fork and a past timestamp')
     settings = config["train"]
     if performance is not None:
         from .performance import validate_performance
@@ -289,6 +293,7 @@ def train(
                                    for row in state['optimizer']['state'].values() if 'step' in row}),
             "optimizer_lr": optimizer.param_groups[0]["lr"],
             "lr_schedule": "constant", "runtime_limits": limits,
+            "budget_started_at": budget_started_at,
             "restored": ["adapter", "statistics", "optimizer_moments", "rng", "cursor"],
             "reset": ["lr_schedule", "wall_clock_budget", "best_selection", "tracking_run"],
         }
@@ -390,6 +395,8 @@ def train(
         measured = elapsed_before + time.monotonic() - invocation_started
         if performance is not None and not constant_fork:
             measured = max(measured, time.time() - performance['original_started_at'])
+        if fork_provenance and fork_provenance.get('budget_started_at') is not None:
+            measured = max(measured, time.time() - fork_provenance['budget_started_at'])
         return measured
 
     def budget_exhausted():
@@ -724,6 +731,8 @@ def main():
     )
     parser.add_argument("--performance-config", help="Reviewed runtime tuning and bounded benchmark")
     parser.add_argument("--execution-revision", help="Revision of this trainer invocation")
+    parser.add_argument('--budget-started-at', type=float,
+                        help='Original stage start; includes initialization failures and downtime')
     args = parser.parse_args()
     if (args.extend_seconds is None) != (args.extend_updates is None):
         parser.error("Both extension limits are required")
@@ -741,6 +750,7 @@ def main():
             fork_from=args.fork_from,
             performance=json.loads(Path(args.performance_config).read_text())
             if args.performance_config else None,
+            budget_started_at=args.budget_started_at,
         )
     )
 

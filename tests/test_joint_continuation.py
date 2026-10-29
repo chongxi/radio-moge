@@ -100,3 +100,47 @@ def test_continuation_plan_rejects_unbounded_or_wrong_stage():
         changed['train'][key] = value
         with pytest.raises(ValueError):
             module.validate_plan(plan, changed)
+
+
+def test_recovery_keeps_original_wall_deadline(tmp_path, monkeypatch):
+    cfg = feature_config(tmp_path)
+    cfg['data']['val_manifest'] = None
+    cfg['output_dir'] = str(tmp_path/'parent')
+    checkpoint = train(cfg,stop_after=2,system_adapter=tiny_system())
+    clock = [1000.]
+    monkeypatch.setattr('radio_moge.train.time.time',lambda:clock[0])
+    original = torch.optim.AdamW.step
+
+    def advance(optimizer,*args,**kwargs):
+        result = original(optimizer,*args,**kwargs)
+        clock[0] += 8
+        return result
+
+    monkeypatch.setattr(torch.optim.AdamW,'step',advance)
+    fork = deepcopy(cfg)
+    fork['output_dir'] = str(tmp_path/'fork')
+    fork['train'].update(lr=1.5e-5,lr_schedule='constant',steps=10,max_seconds=20)
+    path = train(fork,fork_from=checkpoint,system_adapter=tiny_system(),budget_started_at=990.)
+    state = torch.load(path,weights_only=True)
+    assert state['step'] == 4  # Ten seconds already spent before this invocation.
+    assert state['wall_clock_elapsed_seconds'] >= 26
+    assert state['fork_provenance']['budget_started_at'] == 990.
+    clock[0] += 1000
+    resumed = torch.load(train(fork,resume=path,system_adapter=tiny_system()),weights_only=True)
+    assert resumed['step'] == 4
+
+
+def test_initialization_recovery_refuses_any_training_artifact(tmp_path):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('continuation', Path(__file__).parents[1]/
+                                                'scripts/run_joint_full_continuation.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    (tmp_path/'status.json').write_text(json.dumps(dict(stage='needs_inspection',
+                                                      last_exit_code=1,child_pid=None)))
+    (tmp_path/'train').mkdir()
+    (tmp_path/'training-console.log').write_text('FileNotFoundError: Missing /code/vendor/MoGe.')
+    assert module.inspect_initialization_failure(tmp_path)['last_exit_code'] == 1
+    (tmp_path/'train/train.jsonl').write_text('{}\n')
+    with pytest.raises(ValueError,match='zero updates'):
+        module.inspect_initialization_failure(tmp_path)

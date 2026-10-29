@@ -33,7 +33,11 @@ def verify(root, wandb=False):
     parent = root.parent/'adapter-qknorm2048-full-s43-20261028'
     source = read(parent/'final-review/source-verification.json', {})['files'][0]
     assert config == saved and plan['authorized'] and plan['additional_updates'] == 30000
-    assert launch['launch_count'] == 1
+    assert launch['launch_count'] in (1, 2)
+    if launch['launch_count'] == 2:
+        recovery = read(root/'initialization-recovery.json', {})
+        assert recovery['stage'] == 'passed' and recovery['zero_optimizer_updates']
+        assert restored['budget_started_at'] == recovery['original_budget_started_at']
     assert restored['step'] == 61367 and restored['cursor'] == 479996
     assert restored['adam_steps'] == [61367] and restored['optimizer_lr'] == 1.5e-5
     assert restored['checkpoint'] == source['source']
