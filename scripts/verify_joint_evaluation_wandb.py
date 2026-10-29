@@ -17,7 +17,7 @@ import wandb
 run=wandb.Api(timeout=60).run(p['run_path'])
 assert run.state in ('running','finished') and run.config['experiment']==p['config']
 keys=['optimizer_step']+['validation/'+k for k in p['expected']]
-for row in run.scan_history(keys=keys,page_size=100):
+for row in run.scan_history(keys=keys,page_size=1000):
  if row.get('optimizer_step')!=p['step'] or any(row.get('validation/'+k) is None for k in p['expected']):continue
  errors={k:abs(row['validation/'+k]-v) for k,v in p['expected'].items()}
  assert max(errors.values())<1e-10
