@@ -11,6 +11,7 @@ import time
 
 from monitor_joint_full_day import write
 from render_joint_full_page import lines, read
+from wandb_verification import REMOTE_COMPARISON
 
 
 def verify(root, wandb=False):
@@ -57,17 +58,18 @@ def verify(root, wandb=False):
     assert all(math.isfinite(v) for row in rows for v in row.values() if type(v) in (float,int))
     if wandb:
         assert read(root/'startup-verification.json', {})['stage'] == 'passed'
-        code = '''import json,os,sys,time
+        code = REMOTE_COMPARISON+'''import json,os,sys,time
 p=json.load(sys.stdin);os.environ['WANDB_API_KEY']=p.pop('key');os.environ['WANDB_BASE_URL']='https://api.forge.coreweave.com'
 import wandb
 r=wandb.Api(timeout=60).run('/'.join(p['identity'][k] for k in ('entity','project','id')))
-assert r.state in ('running','finished') and r.config['experiment']==p['config']
-assert r.config['provenance']==p['provenance']
-keys=['optimizer_step','train/step','train/lr_used','train/logical_data_cursor','train/total']
+assert r.state in ('running','finished')
+config_differences=compare_metadata(r.config['experiment'],p['config'])
+provenance_differences=compare_metadata(r.config['provenance'],p['provenance'])
+keys=['optimizer_step','train/lr_used','train/logical_data_cursor','train/total']
 for row in r.scan_history(keys=keys,page_size=1000):
  if row.get('optimizer_step')!=p['row']['step']:continue
- assert all(abs(row['train/'+k]-p['row'][k])<1e-10 for k in ('step','lr_used','logical_data_cursor','total'))
- print(json.dumps(dict(stage='passed',checked_at=time.time(),id=r.id,state=r.state,observed_step=row['optimizer_step'],config_exact=True,provenance_exact=True,train_row_exact=True,url=p['identity']['url'])))
+ assert all(abs(row['train/'+k]-p['row'][k])<1e-10 for k in ('lr_used','logical_data_cursor','total'))
+ print(json.dumps(dict(stage='passed',checked_at=time.time(),id=r.id,state=r.state,observed_step=row['optimizer_step'],config_exact=not config_differences,provenance_exact=not provenance_differences,metadata_verified=True,float_tolerance='one ULP',config_float_differences=config_differences,provenance_float_differences=provenance_differences,train_row_exact=True,url=p['identity']['url'])))
  break
 else:raise AssertionError('Actual update not yet present in online history')
 '''

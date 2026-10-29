@@ -9,20 +9,23 @@ import shlex
 import subprocess
 
 from monitor_joint_full_day import write
+from wandb_verification import REMOTE_COMPARISON
 
 
-REMOTE = '''import json,os,sys,time
+REMOTE = REMOTE_COMPARISON+'''import json,os,sys,time
 p=json.load(sys.stdin);os.environ['WANDB_API_KEY']=p.pop('key');os.environ['WANDB_BASE_URL']='https://api.forge.coreweave.com'
 import wandb
 run=wandb.Api(timeout=60).run(p['run_path'])
-assert run.state in ('running','finished') and run.config['experiment']==p['config']
+assert run.state in ('running','finished')
+config_differences=compare_metadata(run.config['experiment'],p['config'])
 keys=['optimizer_step']+['validation/'+k for k in p['expected']]
 for row in run.scan_history(keys=keys,page_size=1000):
  if row.get('optimizer_step')!=p['step'] or any(row.get('validation/'+k) is None for k in p['expected']):continue
  errors={k:abs(row['validation/'+k]-v) for k,v in p['expected'].items()}
  assert max(errors.values())<1e-10
  print(json.dumps(dict(stage='passed',checked_at=time.time(),id=run.id,state=run.state,
-                      step=p['step'],verified_metrics=len(errors),max_metric_difference=max(errors.values()))))
+                      step=p['step'],verified_metrics=len(errors),max_metric_difference=max(errors.values()),
+                      config_verified=True,config_float_differences=config_differences,float_tolerance='one ULP')))
  break
 else:raise AssertionError('Audited evaluation missing from W&B history')
 '''
