@@ -49,6 +49,21 @@ def test_prefetch_shutdown_discards_unused_windows_and_forwards_errors():
     assert not prepared.thread.is_alive()
 
 
+def test_preparation_diagnostics_preserve_pixels_and_are_disabled_by_default():
+    images = [torch.full((4, 3, 8, 8), i) for i in range(8)]
+    ordinary = PreparedWindows(images, 4, 8, 2)
+    timed = PreparedWindows(images, 4, 8, 2, measure=True)
+    try:
+        for a, b in zip(ordinary, timed, strict=True):
+            assert all(torch.equal(x, y) for x, y in zip(a, b, strict=True))
+        assert ordinary.preparation_timings is None
+        assert len(timed.preparation_timings) == 2
+        assert all(t['images'] == 16 and t['prepare_wall_seconds'] >= 0
+                   and t['prepare_thread_cpu_seconds'] >= 0 for t in timed.preparation_timings)
+    finally:
+        ordinary.close()
+        timed.close()
+
 def test_pipeline_only_resume_preserves_exact_adam_weights_lr_and_cursor(tmp_path):
     cfg = feature_config(tmp_path)
     cfg['data']['buckets'] = [[32, 48], [48, 32]]

@@ -15,7 +15,7 @@ import torch
 
 from .checkpoint import atomic_json, restore_rng
 from .losses import FEATURE_LOSS_KEYS, FeatureStatistics, weighted_loss
-from .prefetch import windows
+from .prefetch import PreparedWindows
 
 
 def validate_plan(plan, logical):
@@ -62,8 +62,8 @@ def run_profile(system, adapter, statistics, optimizer, accelerator, records, co
     warmup = plan['warmup_images'] // effective
     count = warmup + plan['measured_images'] // effective
     loader = make_loader(records, cfg, state['cursor'], count * accumulation)
-    stream = windows(loader, accumulation, profile['compute_batch'], count,
-                     prepared=True, pin=cuda)
+    stream = PreparedWindows(loader, accumulation, profile['compute_batch'], count,
+                             pin=cuda, measure=True)
     steps, histogram = [], Counter()
     if cuda:
         torch.cuda.empty_cache()
@@ -87,6 +87,7 @@ def run_profile(system, adapter, statistics, optimizer, accelerator, records, co
             fetch_start = time.perf_counter()
             images = next(stream)
             wait = time.perf_counter() - fetch_start
+            preparation = stream.preparation_timings[index]
             assert sum(len(x) for x in images) == effective
             values, timings = [], []
             for cpu_image in images:
@@ -125,7 +126,7 @@ def run_profile(system, adapter, statistics, optimizer, accelerator, records, co
                         gpu[key] = sum(events[i].elapsed_time(events[i + 1]) for events in timings)
                     gpu['clip_check_adam_ms'] = clipped.elapsed_time(updated)
                 steps.append(dict(seconds=elapsed, fetch_seconds=wait, loss=loss_value,
-                                  gradient_norm=norm_value, **gpu))
+                                  gradient_norm=norm_value, **preparation, **gpu))
             del images, values, timings, norm
     finally:
         stream.close()
@@ -194,6 +195,10 @@ def main():
                   source_identity=identity(args.checkpoint), rows=[], production_optimizer_updates=0,
                   policy='Disposable benchmark only; no evaluation, W&B or checkpoint writes. '
                          'Changing effective batch changes optimization; timings do not establish accuracy.',
+                  timing_policy='Fetch is consumer queue wait; preparation wall time includes worker '
+                                'wait/normalization/grouping/pinning but excludes queue backpressure. '
+                                'Preparation thread CPU excludes DataLoader worker decode CPU. '
+                                'CUDA event stages include stream gaps and are not kernel-only traces.',
                   data_pipeline='prepared', compact_transport=True)
     path = args.output / 'benchmark.json'
     atomic_json(report, path)

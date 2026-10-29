@@ -53,6 +53,8 @@ def test_isolated_updates_reset_adam_rng_and_weights_without_writing_checkpoints
         assert row['end_cursor'] == 31 and row['measured_images'] == 64
         assert sum(int(key.split('x')[0]) * n for key, n in row['actual_compute_batches'].items()) == 64
         assert all(s['gradient_norm'] > 0 for s in row['steps'])
+        assert all(s['images'] == effective and s['prepare_wall_seconds'] >= 0
+                   and s['prepare_thread_cpu_seconds'] >= 0 for s in row['steps'])
     reset_state(adapter, stats, opt, state)
     for key, value in adapter.state_dict().items():
         assert torch.equal(value, state['adapter'][key])

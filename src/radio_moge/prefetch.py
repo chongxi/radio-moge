@@ -2,6 +2,7 @@
 
 from queue import Empty, Full, Queue
 from threading import Event, Thread
+import time
 
 import torch
 
@@ -50,7 +51,8 @@ class PreparedWindows:
     on hosts with a small /dev/shm. Prefetch never changes the checkpoint cursor.
     """
 
-    def __init__(self, loader, accumulation, compute_batch, count, ahead=2, pin=False):
+    def __init__(self, loader, accumulation, compute_batch, count, ahead=2, pin=False,
+                 measure=False):
         if ahead not in (1, 2) or count < 0:
             raise ValueError('Expected one or two bounded prepared windows')
         self.iterator = iter(loader)  # Start DataLoader workers in the calling thread.
@@ -58,6 +60,8 @@ class PreparedWindows:
         self.stop = Event()
         self.count = count
         self.consumed = 0
+        # Opt-in for bounded diagnostics; long training runs retain no timing list.
+        self.preparation_timings = [] if measure else None
 
         def put(item):
             while not self.stop.is_set():
@@ -72,9 +76,16 @@ class PreparedWindows:
                 for _ in range(count):
                     if self.stop.is_set():
                         break
+                    if measure:
+                        wall_start, cpu_start = time.perf_counter(), time.thread_time()
                     tensors = list(grouped_window(self.iterator, accumulation, compute_batch))
                     if pin:
                         tensors = [t if t.is_pinned() else t.pin_memory() for t in tensors]
+                    if measure:
+                        self.preparation_timings.append(dict(
+                            prepare_wall_seconds=time.perf_counter() - wall_start,
+                            prepare_thread_cpu_seconds=time.thread_time() - cpu_start,
+                            images=sum(len(t) for t in tensors)))
                     put((tensors, None))
             except BaseException as error:
                 put((None, error))
