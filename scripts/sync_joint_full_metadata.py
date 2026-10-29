@@ -29,6 +29,9 @@ def sync(root, remote_base):
            'data-pipeline-recovery-plan.json','compact-transport-code-deployment.json',
            'data-pipeline-failure-review.json']
     paths=[root.parent/'handoff.json']+[root/n for n in names]
+    paths += [root/'final-review'/name for name in
+              ('source-verification.json','plan.json','launch.json',
+               'prepared-dataset-backup-status.json','backup-verification.json')]
     paths+=list(root.glob('eval-*-verification.json'))
     download=root.parent/'scannetpp-download-20261028'
     paths += [download/name for name in ('plan.json','launch.json','status.json','monitor.json',
