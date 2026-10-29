@@ -153,6 +153,7 @@ def train(
     extension=None,
     execution_revision=None,
     fork_from=None,
+    performance=None,
 ):
     """Single-device experiment runner. system_adapter allows small CPU integration tests."""
     invocation_started = time.monotonic()
@@ -163,6 +164,11 @@ def train(
     if extension is not None and not resume:
         raise ValueError("Budget extension requires --resume")
     settings = config["train"]
+    if performance is not None:
+        from .performance import validate_performance
+        validate_performance(performance, config)
+        if not resume or extension or fork_from or init:
+            raise ValueError("Performance tuning requires an unextended exact-state resume")
     accelerator = Accelerator(
         cpu=settings.get("device") == "cpu", mixed_precision=settings["precision"]
     )
@@ -246,6 +252,10 @@ def train(
             elapsed_before = state.get("wall_clock_elapsed_seconds", 0.0)
             restore_rng(state["rng"])
     limits = continued_limits(settings, state if resume else None, extension)
+    performance = performance or (state or {}).get('performance')
+    if performance is not None:
+        from .performance import validate_performance
+        validate_performance(performance, config)
     optimizer_seconds = (state or {}).get('optimizer_elapsed_seconds', 0.0) if resume else 0.0
     fork_provenance = (state or {}).get("fork_provenance") if resume else None
     if fork_from:
@@ -289,6 +299,21 @@ def train(
                 yield target
 
         statistics.fit(calibration_features())
+    if performance is not None and performance.get('autotune'):
+        from .performance import autotune
+        performance = autotune(system, adapter, raw_adapter, statistics, optimizer, scheduler,
+                               accelerator, amp, records, config, state, performance, output)
+    if performance is not None:
+        from .performance import schedule_position, transition_limits
+        limits = transition_limits(limits, settings, performance)
+        scheduler.lr_lambdas = [lambda epoch: lr_factor(
+            schedule_position(epoch, performance), settings['steps'], settings['warmup'])]
+        atomic_json(performance, output / 'performance.json')
+        resumed = json.loads((output / 'resume-state.json').read_text())
+        resumed.update(performance=performance, runtime_limits=limits,
+                       original_absolute_deadline=performance['original_started_at'] + settings['max_seconds']
+                       if settings.get('max_seconds') is not None else None)
+        atomic_json(resumed, output / 'resume-state.json')
     revisions = dict(
         radio_source=RADIO_COMMIT,
         moge_source=MOGE_COMMIT,
@@ -309,6 +334,7 @@ def train(
         "execution_revision": execution_revision or (state or {}).get("execution_revision"),
         "runtime_limits": limits,
         "fork_provenance": fork_provenance,
+        "performance": performance,
     }
     atomic_json(provenance, output / "provenance.json")
     tracker = ExperimentTracker(config, output, resume=bool(resume), provenance=provenance)
@@ -331,7 +357,10 @@ def train(
     def elapsed_seconds():
         # Includes loading, validation and checkpoint I/O in each invocation.
         # Time between invocations does not consume the experiment budget.
-        return elapsed_before + time.monotonic() - invocation_started
+        measured = elapsed_before + time.monotonic() - invocation_started
+        if performance is not None:
+            measured = max(measured, time.time() - performance['original_started_at'])
+        return measured
 
     def budget_exhausted():
         limit = limits.get("max_seconds")
@@ -359,13 +388,18 @@ def train(
                 "runtime_limits": limits,
                 "execution_revision": provenance["execution_revision"],
                 "fork_provenance": fork_provenance,
+                "performance": performance,
             },
             output / filename,
         )
 
     total = min(limits["steps"], stop_after) if stop_after else limits["steps"]
-    accumulation = settings["accumulation"]
-    loader = make_loader(records, config, cursor, max(0, total - step) * accumulation)
+    accumulation = (performance['effective_batch'] // settings['batch_size']
+                    if performance else settings['accumulation'])
+    loader_config = deepcopy(config)
+    if performance:
+        loader_config['data']['workers'] = performance['workers']
+    loader = make_loader(records, loader_config, cursor, max(0, total - step) * accumulation)
     iterator = iter(loader)
     plane_enabled = any(config["loss"].get(k, 0)
                         for k in ("plane_flatness", "plane_normal", "plane_anchor"))
@@ -431,8 +465,14 @@ def train(
             synchronize(accelerator.device)
             started = time.perf_counter()
             totals = {}
-            for _ in range(accumulation):
-                image = next(iterator).to(accelerator.device, non_blocking=True)
+            if performance:
+                from .performance import grouped_window
+                batches = grouped_window(iterator, accumulation, performance['compute_batch'])
+            else:
+                batches = (next(iterator) for _ in range(accumulation))
+            for cpu_image in batches:
+                weight = len(cpu_image) / (settings['batch_size'] * accumulation)
+                image = cpu_image.to(accelerator.device, non_blocking=True)
                 with amp(), torch.no_grad():
                     features, target = system.encode(image, raw_adapter.indices)
                 with amp():
@@ -459,12 +499,19 @@ def train(
                         losses["plane_regions"] = student_points.new_tensor(
                             sum(map(len, patches)) / len(patches))
                 loss = weighted_loss(losses, config["loss"])
-                if not torch.isfinite(loss):
+                if not performance and not torch.isfinite(loss):
                     raise FloatingPointError(f"Nonfinite loss before optimizer step {step + 1}")
-                accelerator.backward(loss / accumulation)
+                accelerator.backward(loss * weight)
                 for key, value in {**losses, "total": loss}.items():
-                    totals[key] = totals.get(key, 0.0) + value.detach().item() / accumulation
-                cursor += 1
+                    detached = value.detach() if performance else value.detach().item()
+                    totals[key] = totals.get(key, 0.0) + detached * weight
+                cursor += len(cpu_image) // settings['batch_size']
+            if performance:
+                keys = list(totals)
+                values = torch.stack([totals[k] for k in keys]).float().cpu().tolist()
+                totals = dict(zip(keys, values, strict=True))
+                if not all(math.isfinite(v) for v in values):
+                    raise FloatingPointError("Nonfinite loss; optimizer update cancelled")
             norm = accelerator.clip_grad_norm_(adapter.parameters(), settings["clip_grad"])
             if not torch.isfinite(norm):
                 raise FloatingPointError("Nonfinite adapter gradients; optimizer update cancelled")
@@ -488,6 +535,11 @@ def train(
                 "gradient_norm": norm.item(),
                 **totals,
             }
+            if performance:
+                row.update(effective_batch=performance['effective_batch'],
+                           compute_batch_limit=performance['compute_batch'],
+                           logical_data_cursor=cursor,
+                           schedule_position=schedule_position(step, performance))
             if settings.get('record_cosine_speed', False):
                 row.update(optimizer_seconds=optimizer_seconds, elapsed_seconds=elapsed_seconds(),
                            spatial_cosine=1 - totals['cosine'],
@@ -597,6 +649,7 @@ def main():
         type=int,
         help="Explicit additional update ceiling; keeps original LR schedule",
     )
+    parser.add_argument("--performance-config", help="Reviewed runtime tuning and bounded benchmark")
     parser.add_argument("--execution-revision", help="Revision of this trainer invocation")
     args = parser.parse_args()
     if (args.extend_seconds is None) != (args.extend_updates is None):
@@ -613,6 +666,8 @@ def main():
             extension=extension,
             execution_revision=args.execution_revision,
             fork_from=args.fork_from,
+            performance=json.loads(Path(args.performance_config).read_text())
+            if args.performance_config else None,
         )
     )
 

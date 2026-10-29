@@ -105,3 +105,14 @@ CPU测试或预检通过本身不代表正式训练已经完成更新。
 预检结果：全部输入清理路径与原始特征/教师目标不变已由forward hooks验证；冻结主干无梯度。
 12个采样视图的两个summary token分别平均置零2.17/2.33个通道；移除平方幅值比例均值34.38%/12.05%。
 预检只检查数值和执行正确性，不证明清理有益；三次更新不计入正式训练。显存峰值9.71GiB。
+
+
+## H200 throughput transition (2026-10-29)
+
+The user requested full H200 utilization and questioned effective batch16. The initial micro4/accum4 run averaged47.53% GPU activity in30one-second samples with12287MiB of143771MiB used; steady-state throughput was about25.35images/s. Loader workers0 and scalar synchronization were identified as candidates for improvement.
+
+`performance-plan.json` defines an explicit, bounded runtime transition. Save the current update, preserve a hardlinked immutable checkpoint with Adam/statistics/RNG/cursor, then run two opposite-order rounds of disposable throughput tests (workers0/2/4, compute limits4/8/16/32/64, effective batches16/32/64;2warmup+8timed updates/profile). All benchmark updates are discarded before production continuation. Select end-to-end images/s; prefer smaller effective batch when within3%. This is a hardware-throughput probe, not evidence of better generalization.
+
+Logical sampler microbatches remain4 images. Same-resolution microbatches are grouped within each optimizer window without changing image identities or crop/flip seeds. A larger effective batch changes gradient grouping and is not numerically equivalent optimization. LR stays continuous at the transition and subsequently advances in units of16consumed images; reduce the remaining update ceiling to preserve the original image allowance. Keep the original absolute24-hour deadline including reload/benchmark downtime. All architecture, RADIO cleaning, teacher targets, loss, weight decay and clipping stay as recorded. Same W&B run is resumed and the new runtime profile is recorded separately from the immutable original configuration.
+
+Primary-source context: [MoGe](https://arxiv.org/html/2410.19115v2) batch256; [Depth Anything V2](https://arxiv.org/html/2406.09414v2) teacher64/student192; [UniDepth](https://avi.ethz.ch/publications/2024/UniDepth/UniDepth_CVPR2024.pdf)128views from64images; [Metric3Dv2](https://arxiv.org/html/2404.15506v2)192on48A100, with smaller16/32batches for fine-tuning. Training-wide batch must not be confused with per-GPU compute batch.

@@ -58,6 +58,11 @@ def render(root, page):
     history = root/'previous-results.html'
     doc = (root/'experiment.md').read_text() if (root/'experiment.md').exists() else ''
     stage = status.get('stage', '准备中，尚未启动')
+    perf = {}
+    if (root/'train/performance.json').exists():
+        perf = json.loads((root/'train/performance.json').read_text())
+    batch = perf.get('effective_batch', 16)
+    performance_note = (f'性能优化后有效 batch {batch}，计算 batch 上限 {perf["compute_batch"]}，预取进程 {perf["workers"]}；学习率按图片数衔接，原预算不延长。' if perf else '初始有效 batch 16（计算 4 × 累积 4）。')
     if stage == 'training' and not train:
         stage = '正式训练初始化 · 尚未记录优化器更新'
     started = status.get('started_at')
@@ -86,7 +91,7 @@ def render(root, page):
 <p class="muted">RADIO → 冻结 MoGe · 24 小时首阶段</p><h1>4×2048 joint attention + QK norm</h1>
 <p><span class="pill">{escape(stage)}</span>　{link}</p><p class="muted">更新：{stamp} · 已记录更新步 {last.get('step',0):,} · 训练池 796,478 图 / 七来源 · 固定评估 1,268 图</p>
 {download_panel}
-<section><h2>本次训练与之前的短筛选</h2><p>从头初始化 seed43；在线 RGB 与数据增强；有效 batch16。四层、32头、2D RoPE、head gate、4个 register、SwiGLU、QK norm。最晚 86,400 秒或 120,000 步结束，先到即停。</p>
+<section><h2>本次训练与之前的短筛选</h2><p>从头初始化 seed43；在线 RGB 与数据增强。{performance_note}四层、32头、2D RoPE、head gate、4个 register、SwiGLU、QK norm。最晚 86,400 秒或 120,000 步结束，先到即停。</p>
 <p>四个 RADIO spatial tap 继续逐图清理。按用户新要求，两个原始 summary token 也分别做 8×中位数异常幅值置零，再投影。MoGe 教师目标不清理。summary 清理是新增实验项，之前短筛选的收益不能视为它的效果证据。</p>
 <p>目标 spatial / summary cosine 均超过 0.98；尚未达成。cosine、幅值比、真实深度和几何质量分别判断。</p></section>
 <div class="grid">{chart(val,['macro/spatial/cosine','macro/summary/cosine'],'验证 cosine · 七来源宏平均')}{chart(val,['macro/spatial/norm_ratio','macro/summary/norm_ratio'],'验证幅值比 · 七来源宏平均')}</div>

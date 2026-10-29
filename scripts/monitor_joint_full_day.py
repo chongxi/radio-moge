@@ -26,7 +26,7 @@ def monitor(root, remote):
 from pathlib import Path
 payload=json.load(sys.stdin);r=Path(payload['root']);known=payload['known']
 state=json.loads((r/'status.json').read_text()) if (r/'status.json').exists() else {}
-names=['status.json','dataset-verification.json','preflight.json','preflight-console.log','training-console.log','train/config.json','train/provenance.json','train/wandb-run.json','train/train.jsonl','train/validation.jsonl','train/stop-report.json']
+names=['status.json','dataset-verification.json','preflight.json','preflight-console.log','training-console.log','train/config.json','train/provenance.json','train/wandb-run.json','train/train.jsonl','train/validation.jsonl','train/stop-report.json','train/resume-state.json','train/performance.json','train/throughput-benchmark.json','performance-transition/status.json','performance-transition/resume-console.log','performance-transition/launch.json']
 names += [str(p.relative_to(r)) for p in (r/'train').glob('eval-*/*.json')]
 files={}
 for name in names:
@@ -71,8 +71,10 @@ print(json.dumps(dict(checked_at=time.time(),files=files,processes=processes,gpu
                 return (s+1)/t['warmup']
             p=min(1,max(0,(s-t['warmup'])/(t['steps']-t['warmup'])))
             return .05+.95*(1+math.cos(math.pi*p))/2
-        assert math.isclose(row['lr_used'],t['lr']*factor(step-1),rel_tol=1e-10)
-        assert math.isclose(row['lr'],t['lr']*factor(step),rel_tol=1e-10)
+        schedule = row.get('schedule_position', step)
+        ratio = row.get('effective_batch', t['batch_size']*t['accumulation']) / (t['batch_size']*t['accumulation'])
+        assert math.isclose(row['lr_used'],t['lr']*factor(schedule-ratio),rel_tol=1e-10)
+        assert math.isclose(row['lr'],t['lr']*factor(schedule),rel_tol=1e-10)
         assert row['gradient_norm']>0
         if 'update_norm' in row:
             assert row['update_norm']>0
