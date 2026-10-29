@@ -71,6 +71,7 @@ def run_profile(system, adapter, statistics, optimizer, accelerator, records, co
                              pin=cuda, measure=True,
                              compact_grouping=profile.get('input_mode') != 'prepared_legacy')
     steps, histogram = [], Counter()
+    measured_started_at = measured_finished_at = None
     resident = profile.get('input_mode') == 'resident_gpu'
     if resident and not cuda:
         stream.close()
@@ -105,6 +106,8 @@ def run_profile(system, adapter, statistics, optimizer, accelerator, records, co
             if time.monotonic() >= deadline:
                 raise TimeoutError('Batch benchmark deadline reached')
             synchronize()
+            if index == warmup:
+                measured_started_at = time.time()
             start = time.perf_counter()
             optimizer.zero_grad(set_to_none=True)
             fetch_start = time.perf_counter()
@@ -141,6 +144,8 @@ def run_profile(system, adapter, statistics, optimizer, accelerator, records, co
             updated = mark()
             synchronize()
             elapsed = time.perf_counter() - start
+            if index == count - 1:
+                measured_finished_at = time.time()
             if index >= warmup:
                 gpu = {}
                 if cuda:
@@ -157,6 +162,7 @@ def run_profile(system, adapter, statistics, optimizer, accelerator, records, co
         gc.collect()
     seconds = sum(s['seconds'] for s in steps)
     return dict(stage='passed', **profile, steps=steps,
+                measured_started_at=measured_started_at, measured_finished_at=measured_finished_at,
                 measured_images=plan['measured_images'], warmup_images=plan['warmup_images'],
                 images_per_second=plan['measured_images'] / seconds,
                 actual_compute_batches=dict(histogram),
