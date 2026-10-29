@@ -110,3 +110,42 @@ def test_evaluation_cadence_follows_images_after_batch_change():
     assert not interval_due(2584, 2000, perf)
     assert interval_due(2585, 2000, perf)  # virtual position4001 crosses4000
     assert not interval_due(2586, 2000, perf)
+
+
+def test_disposable_probe_restores_weights_adam_scheduler_and_rng(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from radio_moge.performance import autotune
+    from radio_moge.losses import FeatureStatistics
+    from radio_moge.checkpoint import rng_state
+    cfg = feature_config(tmp_path)
+    cfg['output_dir'] = str(tmp_path / 'parent')
+    checkpoint = train(cfg, stop_after=2, system_adapter=tiny_system())
+    state = torch.load(checkpoint, weights_only=True)
+    system, adapter = tiny_system()
+    stats = FeatureStatistics(6, 6)
+    optimizer = torch.optim.AdamW(adapter.parameters(), lr=cfg['train']['lr'])
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.)
+    scheduler.load_state_dict(deepcopy(state['scheduler']))
+    device = SimpleNamespace(device=torch.device('cpu'), backward=lambda x:x.backward(),
+                             clip_grad_norm_=torch.nn.utils.clip_grad_norm_)
+    for name in ('synchronize', 'empty_cache', 'reset_peak_memory_stats'):
+        monkeypatch.setattr(torch.cuda, name, lambda:None)
+    monkeypatch.setattr(torch.cuda, 'max_memory_allocated', lambda:100)
+    request = dict(original_started_at=0., warmup_steps=1, measured_steps=4, max_probe_seconds=120,
+                   profiles=[dict(workers=0, compute_batch=m, effective_batch=b)
+                             for m,b in [(4,16),(8,32)]])
+    output = tmp_path / 'probe'
+    output.mkdir()
+    autotune(system, adapter, adapter, stats, optimizer, scheduler, device, nullcontext,
+             read_manifest(cfg['data']['train_manifest']), cfg, state, request, output)
+    report = json.loads((output / 'throughput-benchmark.json').read_text())
+    assert report['stage'] == 'passed' and report['disposable_updates'] == 20
+    assert report['production_optimizer_updates'] == 0 and len(report['rows']) == 4
+    for k,v in adapter.state_dict().items():
+        torch.testing.assert_close(v, state['adapter'][k], rtol=0, atol=0)
+    for i, row in optimizer.state_dict()['state'].items():
+        for key,value in row.items():
+            torch.testing.assert_close(value, state['optimizer']['state'][i][key], rtol=0, atol=0)
+    assert scheduler.state_dict() == state['scheduler']
+    torch.testing.assert_close(rng_state()['torch'], state['rng']['torch'], rtol=0, atol=0)

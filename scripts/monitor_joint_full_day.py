@@ -26,7 +26,7 @@ def monitor(root, remote):
 from pathlib import Path
 payload=json.load(sys.stdin);r=Path(payload['root']);known=payload['known']
 state=json.loads((r/'status.json').read_text()) if (r/'status.json').exists() else {}
-names=['status.json','dataset-verification.json','preflight.json','preflight-console.log','training-console.log','train/config.json','train/provenance.json','train/wandb-run.json','train/train.jsonl','train/validation.jsonl','train/stop-report.json','train/resume-state.json','train/performance.json','train/throughput-benchmark.json','performance-transition/status.json','performance-transition/resume-console.log','performance-transition/launch.json']
+names=['status.json','dataset-verification.json','preflight.json','preflight-console.log','training-console.log','train/config.json','train/provenance.json','train/wandb-run.json','train/train.jsonl','train/validation.jsonl','train/stop-report.json','train/resume-state.json','train/performance.json','train/throughput-benchmark.json','performance-transition/status.json','performance-transition/resume-console.log','performance-transition/launch.json','performance-transition/controller-launch.json','performance-transition/controller-console.log','performance-transition/checkpoint-verification.json','performance-transition/request.json']
 names += [str(p.relative_to(r)) for p in (r/'train').glob('eval-*/*.json')]
 files={}
 for name in names:
