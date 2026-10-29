@@ -20,6 +20,10 @@ def sync(root, remote_base):
            'browser-startup-verification.json','experiment.md','completion-verification.json']
     paths=[root.parent/'handoff.json']+[root/n for n in names]
     paths+=list(root.glob('eval-*-verification.json'))
+    download=root.parent/'scannetpp-download-20261028'
+    paths += [download/name for name in ('plan.json','launch.json','status.json','monitor.json',
+              'continuation.json','deployment-verification.json','monitor-copy-verification.json',
+              'page-verification.json')]
     files={}
     for p in paths:
         if p.exists():
