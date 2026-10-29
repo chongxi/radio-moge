@@ -26,6 +26,11 @@ def test_plan_requires_equal_image_budgets_and_bounded_resources():
     bad['profiles'][1]['workers'] = 8
     with pytest.raises(ValueError):
         validate_plan(bad, 4)
+    resident = deepcopy(plan)
+    resident['profiles'][0]['input_mode'] = 'resident_gpu'
+    validate_plan(resident, 4)
+    with pytest.raises(ValueError, match='1536'):
+        validate_plan(dict(resident, measured_images=4096), 4)
 
 
 def test_isolated_updates_reset_adam_rng_and_weights_without_writing_checkpoints(tmp_path):

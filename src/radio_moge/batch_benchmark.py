@@ -26,7 +26,8 @@ def validate_plan(plan, logical):
         raise ValueError('Benchmark must have a deadline of at most 1200 seconds')
     if not 0 < plan['warmup_images'] <= 512 or not 256 <= plan['measured_images'] <= 4096:
         raise ValueError('Unbounded image budget')
-    if len({(p['effective_batch'], p['compute_batch'], p['workers']) for p in profiles}) != len(profiles):
+    if len({(p['effective_batch'], p['compute_batch'], p['workers'], p.get('input_mode', 'prepared'))
+            for p in profiles}) != len(profiles):
         raise ValueError('Duplicate profiles')
     for p in profiles:
         effective, compute = p['effective_batch'], p['compute_batch']
@@ -36,6 +37,10 @@ def validate_plan(plan, logical):
             raise ValueError('Logical batches must divide effective and compute batches')
         if any(plan[key] % effective for key in ('warmup_images', 'measured_images')):
             raise ValueError('All profiles must consume identical warmup and measured image counts')
+        if p.get('input_mode', 'prepared') not in ('prepared', 'resident_gpu'):
+            raise ValueError('Unknown input timing mode')
+        if p.get('input_mode') == 'resident_gpu' and plan['warmup_images'] + plan['measured_images'] > 1536:
+            raise ValueError('Resident control caches at most 1536 actual images')
 
 
 def reset_state(adapter, statistics, optimizer, state):
@@ -65,6 +70,11 @@ def run_profile(system, adapter, statistics, optimizer, accelerator, records, co
     stream = PreparedWindows(loader, accumulation, profile['compute_batch'], count,
                              pin=cuda, measure=True)
     steps, histogram = [], Counter()
+    resident = profile.get('input_mode') == 'resident_gpu'
+    if resident and not cuda:
+        stream.close()
+        raise ValueError('Resident GPU control requires CUDA')
+    cached, cache_seconds, cache_bytes = [], 0.0, 0
     if cuda:
         torch.cuda.empty_cache()
         torch.cuda.reset_peak_memory_stats()
@@ -78,6 +88,18 @@ def run_profile(system, adapter, statistics, optimizer, accelerator, records, co
         return None
 
     try:
+        if resident:
+            cache_start = time.perf_counter()
+            for _ in range(count):
+                if time.monotonic() >= deadline:
+                    raise TimeoutError('Resident input preparation deadline reached')
+                tensors = [image.to(accelerator.device, non_blocking=True) for image in next(stream)]
+                cache_bytes += sum(t.numel() * t.element_size() for t in tensors)
+                cached.append(tensors)
+            synchronize()
+            cache_seconds = time.perf_counter() - cache_start
+            stream.close()
+            torch.cuda.reset_peak_memory_stats()
         for index in range(count):
             if time.monotonic() >= deadline:
                 raise TimeoutError('Batch benchmark deadline reached')
@@ -85,7 +107,7 @@ def run_profile(system, adapter, statistics, optimizer, accelerator, records, co
             start = time.perf_counter()
             optimizer.zero_grad(set_to_none=True)
             fetch_start = time.perf_counter()
-            images = next(stream)
+            images = cached[index] if resident else next(stream)
             wait = time.perf_counter() - fetch_start
             preparation = stream.preparation_timings[index]
             assert sum(len(x) for x in images) == effective
@@ -138,6 +160,7 @@ def run_profile(system, adapter, statistics, optimizer, accelerator, records, co
                 images_per_second=plan['measured_images'] / seconds,
                 actual_compute_batches=dict(histogram),
                 mean_fetch_seconds=sum(s['fetch_seconds'] for s in steps) / len(steps),
+                resident_setup_seconds=cache_seconds, resident_input_bytes=cache_bytes,
                 peak_allocated_gib=torch.cuda.max_memory_allocated() / 2**30 if cuda else 0,
                 peak_reserved_gib=torch.cuda.max_memory_reserved() / 2**30 if cuda else 0,
                 disposable_updates=count,
@@ -239,7 +262,8 @@ def main():
         for round_number in range(2):
             profiles = plan['profiles'] if round_number == 0 else list(reversed(plan['profiles']))
             for profile in profiles:
-                key = tuple(profile[k] for k in ('effective_batch', 'compute_batch', 'workers'))
+                key = (*[profile[k] for k in ('effective_batch', 'compute_batch', 'workers')],
+                       profile.get('input_mode', 'prepared'))
                 if key in failed:
                     continue
                 reset_state(adapter, statistics, optimizer, state)
