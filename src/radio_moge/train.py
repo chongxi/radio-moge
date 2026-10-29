@@ -3,6 +3,7 @@ from copy import deepcopy
 from contextlib import nullcontext
 import json
 import math
+import os
 from pathlib import Path
 import signal
 import time
@@ -35,6 +36,7 @@ from .losses import FeatureStatistics, feature_loss_total, geometry_losses, weig
 from .planes import FLATNESS_MODES, PlaneConfig, detect_planes, plane_losses
 from .system import build_system
 from .tracking import ExperimentTracker, preserve_rng
+from .selection import validate_selections, selection_winners
 
 
 def make_loader(records, config, start, count, calibration=False):
@@ -75,6 +77,7 @@ def lr_factor(step, total, warmup):
 
 
 def validate_config(config):
+    validate_selections(config.get('evaluation', {}).get('checkpoint_metrics', {}))
     train, data = config["train"], config["data"]
     if train["precision"] not in {"no", "bf16"}:
         raise ValueError("Supported precision modes: no, bf16")
@@ -139,8 +142,10 @@ def check_lr_fork(config, state, digests):
     for candidate in (previous, current):
         for key in ("output_dir", "tracking"):
             candidate.pop(key, None)
-        for key in ("lr", "lr_schedule", "steps", "max_seconds", "update_norm_every"):
+        for key in ("lr", "lr_schedule", "steps", "max_seconds", "update_norm_every",
+                    "save_every", "eval_every"):
             candidate["train"].pop(key, None)
+        candidate.get('evaluation', {}).pop('checkpoint_metrics', None)
     if previous != current or state["data_digests"] != digests:
         raise ValueError("LR fork requires identical model, data, loss and optimizer settings")
     if config["train"].get("lr_schedule") != "constant":
@@ -258,9 +263,20 @@ def train(
             restore_rng(state["rng"])
     limits = continued_limits(settings, state if resume else None, extension)
     performance = performance or (state or {}).get('performance')
+    constant_fork = bool(fork_from or (resume and (state or {}).get('fork_provenance')))
     if performance is not None:
         from .performance import validate_performance
-        validate_performance(performance, config)
+        validate_performance(performance, config, constant_fork=constant_fork)
+    selections = config.get('evaluation', {}).get('checkpoint_metrics', {})
+    best_metrics = deepcopy((state or {}).get('best_metrics', {})) if resume else {
+        name: dict(value=spec['baseline'], step=step, metric=spec['metric'], mode=spec['mode'])
+        for name, spec in selections.items() if 'baseline' in spec
+    }
+    if fork_from:
+        primary = config['evaluation'].get('selection_metric', 'teacher_depth/abs_rel')
+        for spec in selections.values():
+            if spec['metric'] == primary and spec['mode'] == 'min' and 'baseline' in spec:
+                best = spec['baseline']
     optimizer_seconds = (state or {}).get('optimizer_elapsed_seconds', 0.0) if resume else 0.0
     fork_provenance = (state or {}).get("fork_provenance") if resume else None
     if fork_from:
@@ -268,6 +284,9 @@ def train(
             "checkpoint": str(Path(fork_from).resolve()),
             "step": step, "cursor": cursor,
             "parent_lr": state["optimizer"]["param_groups"][0]["lr"],
+            "adam_steps": sorted({int(row['step'].item()) if torch.is_tensor(row['step'])
+                                   else int(row['step'])
+                                   for row in state['optimizer']['state'].values() if 'step' in row}),
             "optimizer_lr": optimizer.param_groups[0]["lr"],
             "lr_schedule": "constant", "runtime_limits": limits,
             "restored": ["adapter", "statistics", "optimizer_moments", "rng", "cursor"],
@@ -314,15 +333,17 @@ def train(
                             accelerator, amp, records, config, state, performance, output)
     if performance is not None:
         from .performance import schedule_position, transition_limits, interval_due
-        limits = transition_limits(limits, settings, performance)
-        scheduler.lr_lambdas = [lambda epoch: lr_factor(
-            schedule_position(epoch, performance), settings['steps'], settings['warmup'])]
+        if not constant_fork:
+            limits = transition_limits(limits, settings, performance)
+            scheduler.lr_lambdas = [lambda epoch: lr_factor(
+                schedule_position(epoch, performance), settings['steps'], settings['warmup'])]
         atomic_json(performance, output / 'performance.json')
-        resumed = json.loads((output / 'resume-state.json').read_text())
+        state_file = output / ('fork-state.json' if fork_from else 'resume-state.json')
+        resumed = json.loads(state_file.read_text())
         resumed.update(performance=performance, runtime_limits=limits,
                        original_absolute_deadline=performance['original_started_at'] + settings['max_seconds']
-                       if settings.get('max_seconds') is not None else None)
-        atomic_json(resumed, output / 'resume-state.json')
+                       if settings.get('max_seconds') is not None and not constant_fork else None)
+        atomic_json(resumed, state_file)
     revisions = dict(
         radio_source=RADIO_COMMIT,
         moge_source=MOGE_COMMIT,
@@ -367,7 +388,7 @@ def train(
         # Includes loading, validation and checkpoint I/O in each invocation.
         # Time between invocations does not consume the experiment budget.
         measured = elapsed_before + time.monotonic() - invocation_started
-        if performance is not None:
+        if performance is not None and not constant_fork:
             measured = max(measured, time.time() - performance['original_started_at'])
         return measured
 
@@ -382,6 +403,7 @@ def train(
                 "step": step,
                 "cursor": cursor,
                 "best": best,
+                "best_metrics": best_metrics,
                 "adapter": accelerator.unwrap_model(adapter).state_dict(),
                 "adapter_config": raw_adapter.config,
                 "statistics": statistics.state_dict(),
@@ -427,6 +449,11 @@ def train(
     success = False
     last_validation_step = None
 
+    def link_selection(source, name):
+        temporary = output / (name + '.incoming')
+        os.link(output / source, temporary)
+        temporary.replace(output / name)
+
     def validate():
         nonlocal best, last_validation_step
         destination = output / f"eval-{step:07d}"
@@ -454,10 +481,21 @@ def train(
         tracker.log("validation", metrics, step, image_dir=destination)
         last_validation_step = step
         score = metrics.get(config["evaluation"].get("selection_metric", "teacher_depth/abs_rel"))
+        winners = selection_winners(selections, best_metrics, metrics, step)
+        primary_improved = False
         if score is not None and metrics.get("postprocess_failed", 1) == 0:
             if best is None or score < best:
                 best = score
-                save("best.pt")
+                primary_improved = True
+        if winners or primary_improved:
+            # Write one complete checkpoint, even if several metrics improve together.
+            save('selection.pt')
+            for name in winners:
+                link_selection('selection.pt', f'best-{name}.pt')
+            if primary_improved:
+                link_selection('selection.pt', 'best.pt')
+            (output / 'selection.pt').unlink()
+            atomic_json(best_metrics, output / 'checkpoint-selection.json')
         if train_probe:
             # Diagnostics never affect best selection, gradients, or training randomness.
             destination = output / f'train-probe-{step:07d}'
@@ -477,6 +515,12 @@ def train(
         if not resume:
             # Preserve the actual stage-start weights for decoded before/after comparisons.
             save("initial.pt")
+            for name in best_metrics:
+                link_selection('initial.pt', f'best-{name}.pt')
+            if best is not None:
+                link_selection('initial.pt', 'best.pt')
+            if best_metrics:
+                atomic_json(best_metrics, output / 'checkpoint-selection.json')
         if validation and not resume and not fork_from and settings.get("eval_at_start", False):
             validate()
         while step < total and not stop and not budget_exhausted():
@@ -585,10 +629,11 @@ def train(
                     for key, value in row.items():
                         writer.add_scalar(f"train/{key}", value, step)
                 tracker.log("train", row, step)
-            save_due = (interval_due(step, settings['save_every'], performance) if performance
-                        else step % settings['save_every'] == 0)
-            eval_due = (interval_due(step, settings['eval_every'], performance) if performance
-                        else step % settings['eval_every'] == 0)
+            cadence_step = step - fork_provenance['step'] if constant_fork else step
+            save_due = (interval_due(step, settings['save_every'], performance) if performance and not constant_fork
+                        else cadence_step % settings['save_every'] == 0)
+            eval_due = (interval_due(step, settings['eval_every'], performance) if performance and not constant_fork
+                        else cadence_step % settings['eval_every'] == 0)
             if save_due:
                 save("latest.pt")
             if (

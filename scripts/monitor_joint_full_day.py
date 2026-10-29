@@ -30,6 +30,7 @@ names=['status.json','dataset-verification.json','preflight.json','preflight-con
 names += ['train/data-pipeline-benchmark.json']
 names += ['data-pipeline-transition/'+n for n in ['status.json','resume-console.log','launch.json','controller-launch.json','controller-console.log','checkpoint-verification.json','request.json']]
 names += ['train/data-pipeline-benchmark-v2.json','preflight-compact-transport.json']
+names += ['train/fork-state.json','train/checkpoint-selection.json']
 names += ['data-pipeline-recovery/'+n for n in ['status.json','resume-console.log','launch.json','controller-launch.json','controller-console.log','recovery-verification.json','request.json']]
 names += [str(p.relative_to(r)) for p in (r/'train').glob('eval-*/*.json')]
 files={}
@@ -77,8 +78,9 @@ print(json.dumps(dict(checked_at=time.time(),files=files,processes=processes,gpu
             return .05+.95*(1+math.cos(math.pi*p))/2
         schedule = row.get('schedule_position', step)
         ratio = row.get('effective_batch', t['batch_size']*t['accumulation']) / (t['batch_size']*t['accumulation'])
-        assert math.isclose(row['lr_used'],t['lr']*factor(schedule-ratio),rel_tol=1e-10)
-        assert math.isclose(row['lr'],t['lr']*factor(schedule),rel_tol=1e-10)
+        constant = t.get('lr_schedule') == 'constant'
+        assert math.isclose(row['lr_used'],t['lr']*(1 if constant else factor(schedule-ratio)),rel_tol=1e-10)
+        assert math.isclose(row['lr'],t['lr']*(1 if constant else factor(schedule)),rel_tol=1e-10)
         assert row['gradient_norm']>0
         if 'update_norm' in row:
             assert row['update_norm']>0
@@ -88,13 +90,16 @@ print(json.dumps(dict(checked_at=time.time(),files=files,processes=processes,gpu
     write(root/'monitor.json',result)
     handoff_path=root.parent/'handoff.json'
     handoff=json.loads(handoff_path.read_text())
-    handoff['active_joint_full_training']=dict(root=str(root),remote_root=remote,
+    continuation = config['train'].get('lr_schedule') == 'constant'
+    key = 'active_joint_continuation' if continuation else 'active_joint_full_training'
+    handoff[key]=dict(root=str(root),remote_root=remote,
         stage=result['state'].get('stage','preparing'),last_step=result['last_step'],
         checked_at=result['checked_at'],summary_cleaning='per-token-zero-channel',
-        remaining=['monitor bounded 24h training','audit completed intermediate evaluations',
+        remaining=['monitor bounded continuation' if continuation else 'monitor bounded 24h training','audit completed intermediate evaluations',
                    'final evaluation and verified serial checkpoint backup'])
     write(handoff_path,handoff)
-    render(root,Path('.kanna/visualizations/teacher-plane-pilot.html'))
+    page_root = root.parent / 'adapter-qknorm2048-full-s43-20261028' if continuation else root
+    render(page_root,Path('.kanna/visualizations/teacher-plane-pilot.html'))
     print(json.dumps({k:v for k,v in result.items() if k not in ('copies','state')},ensure_ascii=False))
 
 

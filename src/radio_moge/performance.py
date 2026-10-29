@@ -11,10 +11,13 @@ from .checkpoint import atomic_json, restore_rng
 from .losses import weighted_loss
 
 
-def validate_performance(perf, config):
+def validate_performance(perf, config, *, constant_fork=False):
     if perf.get('authorized') is not True or not math.isfinite(perf['original_started_at']):
         raise ValueError('Reviewed performance authorization and original start are required')
-    if config['train'].get('lr_schedule', 'cosine') != 'cosine':
+    if config['train'].get('lr_schedule', 'cosine') != 'cosine' and not (
+        constant_fork and config['train'].get('lr_schedule') == 'constant'
+        and not perf.get('autotune') and not perf.get('data_autotune')
+    ):
         raise ValueError('Performance transition currently supports cosine only')
     if set(config['loss']) - {'spatial', 'summary', 'cosine', 'summary_cosine'}:
         raise ValueError('Performance grouping is restricted to feature-only objectives')

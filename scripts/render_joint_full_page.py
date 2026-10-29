@@ -49,6 +49,33 @@ def chart(rows, keys, title):
 
 
 def render(root, page):
+    continuation_panel = ''
+    active = read(root.parent/'handoff.json', {}).get('active_joint_continuation', {})
+    if active.get('root'):
+        current = Path(active['root'])
+        cstatus = read(current/'status.json', {})
+        ctrain = lines(current/'train/train.jsonl')
+        cval = lines(current/'train/validation.jsonl')
+        cstop = read(current/'train/stop-report.json', {})
+        cidentity = read(current/'train/wandb-run.json', {})
+        cstep = cstop.get('step', ctrain[-1]['step'] if ctrain else 61367)
+        clabel = ('训练中' if ctrain else '初始化中，等待首次优化器更新')
+        if cstop.get('final_evaluation') == 'complete':
+            clabel = '训练结束，等待收尾核验'
+        if cstatus.get('stage') == 'needs_inspection':
+            clabel = '需检查'
+        clink = (f'<a href="{escape(cidentity["url"])}">打开续训 W&B</a>'
+                 if cidentity.get('url') else 'W&B 初始化中')
+        baseline = read(current/'baseline.json', {})
+        curve = ([dict(step=61367, **baseline)] if baseline else []) + cval
+        continuation_panel = (f'<section id="continuation"><h2>追加 30,000 步 · {clabel}</h2>'
+            f'<p><strong>{cstep:,} / 91,367 步</strong> · 本阶段已推进 {cstep-61367:,} 步 · {clink}</p>'
+            '<p>从 61,367 步恢复权重、Adam、随机状态和数据位置。恒定学习率 1.5×10⁻⁵，'
+            '有效 batch 32，每 1,000 步完整评估、500 步保存。30,000 步或本阶段 8 小时先到停止。</p>'
+            '<p>spatial、summary、teacher depth 与 NYU 深度各自保留最佳权重；'
+            '下方首阶段结果与备份继续保留。新下载的数据尚未加入训练。</p></section>'
+            + chart(curve, ['macro/spatial/cosine','macro/summary/cosine'], '续训验证 cosine（含起点）')
+            + chart(curve, ['gt_student/abs_rel','gt_student/rmse'], '续训 NYU 真实深度误差（越低越好）'))
     monitor = read(root/'monitor.json', {})
     status = read(root/'status.json', {})
     identity = read(root/'train/wandb-run.json', {})
@@ -160,6 +187,7 @@ def render(root, page):
     body = f'''<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>4×2048 QK norm · 全量训练</title><style>
 *{{box-sizing:border-box}}body{{margin:0;background:#101723;color:#e6edf7;font:16px/1.65 system-ui,sans-serif}}main{{max-width:1200px;margin:auto;padding:28px 20px}}h1{{font-size:32px;line-height:1.3}}h2{{font-size:23px}}h3{{font-size:17px}}a{{color:#75d0ff}}section,details{{background:#182232;border:1px solid #304057;border-radius:12px;padding:20px;margin:14px 0}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}.grid section{{margin:0;min-width:0}}svg{{width:100%;color:#bbc7d8}}svg text{{fill:currentColor;font-size:12px}}.muted{{color:#acbbcf}}.pill{{display:inline-block;padding:4px 12px;background:#26405a;border-radius:20px}}table{{border-collapse:collapse;width:100%;font-size:14px}}td,th{{padding:9px;text-align:left;border-bottom:1px solid #354359}}.scroll{{overflow-x:auto}}pre{{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.7 system-ui}}iframe{{border:0;width:100%;height:960px;background:white}}@media(max-width:700px){{.grid{{grid-template-columns:1fr}}h1{{font-size:25px}}main{{padding:18px 12px}}section,details{{padding:15px}}}}</style><main>
+{continuation_panel}
 <p class="muted">RADIO → 冻结 MoGe · 24 小时首阶段</p><h1>4×2048 joint attention + QK norm</h1>
 <p><span class="pill">{escape(stage)}</span>　{link}</p><p class="muted">更新：{stamp} · {progress} · 训练池 796,478 图 / 七来源 · 固定评估 1,268 图</p>
 {download_panel}
