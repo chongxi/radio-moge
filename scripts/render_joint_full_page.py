@@ -58,6 +58,22 @@ def render(root, page):
     history = root/'previous-results.html'
     doc = (root/'experiment.md').read_text() if (root/'experiment.md').exists() else ''
     stage = status.get('stage', '准备中，尚未启动')
+    stop = read(root/'train/stop-report.json', {})
+    complete = read(root/'completion-verification.json', {})
+    backup = read(root/'final-review/backup-verification.json', {})
+    stopped = (status.get('last_exit_code') == 0 and
+               stop.get('final_evaluation') == 'complete' and
+               status.get('child_pid') is None)
+    progress = f"已记录更新步 {last.get('step',0):,}"
+    if stopped:
+        progress = f"实际停止于 {stop['step']:,} 步 · 最终验证已完成"
+        stage = '训练完成 · 收尾核验中'
+        if (root/'final-review/launch.json').exists():
+            stage = '训练完成 · 串行备份中'
+        if backup.get('stage') == 'passed':
+            stage = '训练完成 · 备份已校验'
+        if complete.get('stage') == 'passed':
+            stage = '训练、最终验证与备份全部完成'
     perf = {}
     if (root/'train/performance.json').exists():
         perf = json.loads((root/'train/performance.json').read_text())
@@ -145,7 +161,7 @@ def render(root, page):
 <title>4×2048 QK norm · 全量训练</title><style>
 *{{box-sizing:border-box}}body{{margin:0;background:#101723;color:#e6edf7;font:16px/1.65 system-ui,sans-serif}}main{{max-width:1200px;margin:auto;padding:28px 20px}}h1{{font-size:32px;line-height:1.3}}h2{{font-size:23px}}h3{{font-size:17px}}a{{color:#75d0ff}}section,details{{background:#182232;border:1px solid #304057;border-radius:12px;padding:20px;margin:14px 0}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}.grid section{{margin:0;min-width:0}}svg{{width:100%;color:#bbc7d8}}svg text{{fill:currentColor;font-size:12px}}.muted{{color:#acbbcf}}.pill{{display:inline-block;padding:4px 12px;background:#26405a;border-radius:20px}}table{{border-collapse:collapse;width:100%;font-size:14px}}td,th{{padding:9px;text-align:left;border-bottom:1px solid #354359}}.scroll{{overflow-x:auto}}pre{{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.7 system-ui}}iframe{{border:0;width:100%;height:960px;background:white}}@media(max-width:700px){{.grid{{grid-template-columns:1fr}}h1{{font-size:25px}}main{{padding:18px 12px}}section,details{{padding:15px}}}}</style><main>
 <p class="muted">RADIO → 冻结 MoGe · 24 小时首阶段</p><h1>4×2048 joint attention + QK norm</h1>
-<p><span class="pill">{escape(stage)}</span>　{link}</p><p class="muted">更新：{stamp} · 已记录更新步 {last.get('step',0):,} · 训练池 796,478 图 / 七来源 · 固定评估 1,268 图</p>
+<p><span class="pill">{escape(stage)}</span>　{link}</p><p class="muted">更新：{stamp} · {progress} · 训练池 796,478 图 / 七来源 · 固定评估 1,268 图</p>
 {download_panel}
 {pipeline_panel}
 {performance_panel}
