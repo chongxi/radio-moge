@@ -64,6 +64,26 @@ def render(root, page):
             clabel = '训练结束，等待收尾核验'
         if cstatus.get('stage') == 'needs_inspection':
             clabel = '需检查'
+        ccomplete = read(current/'completion-verification.json', {})
+        cbackup = read(current/'final-review/backup-verification.json', {})
+        completion_details = ''
+        if ccomplete.get('stage') == 'passed':
+            clabel = ('训练与验证备份完成' if cbackup.get('stage') == 'passed'
+                      else '训练已完成并通过核验，备份待完成')
+            final = cval[-1]
+            selections = read(current/'train/checkpoint-selection.json', {})
+            selection_rows = ''.join(
+                f'<tr><td>{escape(name)}</td><td>{item["step"]:,}</td>'
+                f'<td>{item["value"]:.8f}</td></tr>' for name, item in selections.items())
+            completion_details = (
+                f'<p>最终 spatial <strong>{final["macro/spatial/cosine"]:.8f}</strong> · '
+                f'summary <strong>{final["macro/summary/cosine"]:.8f}</strong> · '
+                f'NYU AbsRel {final["gt_student/abs_rel"]:.8f} · '
+                f'RMSE {final["gt_student/rmse"]:.8f} · δ₁ {final["gt_student/delta1"]:.8f}。</p>'
+                '<p>已完成全部 30,000 次更新、30 次完整验证和最终 W&B 核验，正常退出。'
+                '因达到计划步数而结束；特征一致性提升，真实深度指标仍有波动，不能据此判定收敛。</p>'
+                '<table><thead><tr><th>独立最佳指标</th><th>步数</th><th>数值</th></tr></thead>'
+                f'<tbody>{selection_rows}</tbody></table>')
         clink = (f'<a href="{escape(cidentity["url"])}">打开续训 W&B</a>'
                  if cidentity.get('url') else 'W&B 初始化中')
         baseline = read(current/'baseline.json', {})
@@ -73,7 +93,8 @@ def render(root, page):
             '<p>从 61,367 步恢复权重、Adam、随机状态和数据位置。恒定学习率 1.5×10⁻⁵，'
             '有效 batch 32，每 1,000 步完整评估、500 步保存。30,000 步或本阶段 8 小时先到停止。</p>'
             '<p>spatial、summary、teacher depth 与 NYU 深度各自保留最佳权重；'
-            '下方首阶段结果与备份继续保留。新下载的数据尚未加入训练。</p></section>'
+            '下方首阶段结果与备份继续保留。新下载的数据尚未加入训练。</p>'
+            + completion_details + '</section>'
             + chart(curve, ['macro/spatial/cosine','macro/summary/cosine'], '续训验证 cosine（含起点）')
             + chart(curve, ['gt_student/abs_rel','gt_student/rmse'], '续训 NYU 真实深度误差（越低越好）'))
     monitor = read(root/'monitor.json', {})
