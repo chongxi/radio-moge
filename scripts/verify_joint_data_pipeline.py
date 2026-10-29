@@ -3,7 +3,10 @@
 import argparse
 import json
 import math
+import netrc
 from pathlib import Path
+import shlex
+import subprocess
 import time
 
 from monitor_joint_full_day import write
@@ -80,7 +83,52 @@ def verify(root):
     print(json.dumps(proof))
 
 
+def verify_wandb(root):
+    local_path = root / 'data-pipeline-verification.json'
+    if not local_path.exists():
+        print(json.dumps(dict(stage='pending', reason='Local production verification not completed')))
+        return
+    proof = json.loads(local_path.read_text())
+    assert proof['stage'] == 'passed'
+    output = root / 'data-pipeline-wandb-verification.json'
+    if output.exists():
+        assert json.loads(output.read_text())['stage'] == 'passed'
+        print(json.dumps(dict(stage='already_verified')))
+        return
+    config = json.loads((root / 'config.json').read_text())
+    provenance = json.loads((root / 'train/provenance.json').read_text())
+    rows = [r for r in lines(root / 'train/train.jsonl') if r['step'] > proof['resume_step']]
+    code = '''import json,os,sys,time
+p=json.load(sys.stdin);os.environ['WANDB_API_KEY']=p.pop('key');os.environ['WANDB_BASE_URL']='https://api.forge.coreweave.com'
+import wandb
+run=wandb.Api(timeout=60).run('brainsim/radio-moge/eadda6e3')
+assert run.state=='running' and run.config['experiment']==p['config']
+assert run.config['provenance']==p['provenance']
+expected={r['step']:r for r in p['rows']}
+keys=['optimizer_step','train/lr_used','train/effective_batch','train/logical_data_cursor']
+for row in run.scan_history(keys=keys,page_size=100):
+ if row.get('optimizer_step') not in expected or any(row.get(k) is None for k in keys):continue
+ e=expected[row['optimizer_step']]
+ assert all(row['train/'+k]==e[k] for k in ['lr_used','effective_batch','logical_data_cursor'])
+ print(json.dumps(dict(stage='passed',checked_at=time.time(),id=run.id,state=run.state,matched_production_step=e['step'],runtime_provenance_exact=True)));break
+else:raise AssertionError('No resumed production history row matched')
+'''
+    secret = netrc.netrc(str(Path.home() / '.netrc')).authenticators('api.wandb.ai')[2]
+    result = subprocess.run(['ssh', '-F', '/home/hub/.ssh/radio-moge-config', 'radio-moge-gpu',
+                             shlex.join(['/home/buildhub/radio-moge/.venv/bin/python', '-c', code])],
+                            input=json.dumps(dict(key=secret, config=config, provenance=provenance,
+                                                  rows=rows)), text=True, capture_output=True)
+    del secret
+    if result.returncode:
+        raise RuntimeError('W&B resume verification failed; credential-bearing output withheld')
+    value = json.loads(result.stdout)
+    write(output, value)
+    print(json.dumps(value))
+
+
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('root', type=Path)
-    verify(p.parse_args().root)
+    p.add_argument('--wandb', action='store_true')
+    a = p.parse_args()
+    (verify_wandb if a.wandb else verify)(a.root)
