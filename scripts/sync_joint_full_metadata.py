@@ -21,7 +21,9 @@ def sync(root, remote_base):
            'performance-plan.json','performance-code-deployment.json','performance-verification.json',
            'performance-wandb-verification.json','performance-utilization-verification.json',
            'throughput-benchmark-verification.json','performance-page-verification.json',
-           'utilization-observation.json','batch-literature.md']
+           'utilization-observation.json','batch-literature.md',
+           'data-pipeline-plan.json','data-pipeline-code-deployment.json',
+           'data-pipeline-verification.json','batch-fetch-analysis.json']
     paths=[root.parent/'handoff.json']+[root/n for n in names]
     paths+=list(root.glob('eval-*-verification.json'))
     download=root.parent/'scannetpp-download-20261028'

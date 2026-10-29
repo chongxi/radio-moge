@@ -303,6 +303,10 @@ def train(
         from .performance import autotune
         performance = autotune(system, adapter, raw_adapter, statistics, optimizer, scheduler,
                                accelerator, amp, records, config, state, performance, output)
+    if performance is not None and performance.get('data_autotune'):
+        from .data_pipeline_probe import probe
+        performance = probe(system, adapter, raw_adapter, statistics, optimizer, scheduler,
+                            accelerator, amp, records, config, state, performance, output)
     if performance is not None:
         from .performance import schedule_position, transition_limits, interval_due
         limits = transition_limits(limits, settings, performance)
@@ -400,7 +404,14 @@ def train(
     if performance:
         loader_config['data']['workers'] = performance['workers']
     loader = make_loader(records, loader_config, cursor, max(0, total - step) * accumulation)
-    iterator = iter(loader)
+    prepared_windows = None
+    if performance and performance.get('data_pipeline') == 'prepared':
+        from .prefetch import PreparedWindows
+        prepared_windows = PreparedWindows(loader, accumulation, performance['compute_batch'],
+                                           max(0, total - step), pin=accelerator.device.type == 'cuda')
+        iterator = None
+    else:
+        iterator = iter(loader)
     plane_enabled = any(config["loss"].get(k, 0)
                         for k in ("plane_flatness", "plane_normal", "plane_anchor"))
     plane_config = PlaneConfig(**config.get("planes", {})) if plane_enabled else None
@@ -468,7 +479,9 @@ def train(
             synchronize(accelerator.device)
             started = time.perf_counter()
             totals = {}
-            if performance:
+            if prepared_windows is not None:
+                batches = next(prepared_windows)
+            elif performance:
                 from .performance import grouped_window
                 batches = grouped_window(iterator, accumulation, performance['compute_batch'])
             else:
@@ -627,6 +640,8 @@ def train(
         success = True
         return output / "latest.pt"
     finally:
+        if prepared_windows is not None:
+            prepared_windows.close()
         for sig, handler in old_handlers.items():
             signal.signal(sig, handler)
         if writer:

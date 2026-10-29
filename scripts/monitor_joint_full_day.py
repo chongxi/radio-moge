@@ -27,6 +27,8 @@ from pathlib import Path
 payload=json.load(sys.stdin);r=Path(payload['root']);known=payload['known']
 state=json.loads((r/'status.json').read_text()) if (r/'status.json').exists() else {}
 names=['status.json','dataset-verification.json','preflight.json','preflight-console.log','training-console.log','train/config.json','train/provenance.json','train/wandb-run.json','train/train.jsonl','train/validation.jsonl','train/stop-report.json','train/resume-state.json','train/performance.json','train/throughput-benchmark.json','performance-transition/status.json','performance-transition/resume-console.log','performance-transition/launch.json','performance-transition/controller-launch.json','performance-transition/controller-console.log','performance-transition/checkpoint-verification.json','performance-transition/request.json']
+names += ['train/data-pipeline-benchmark.json']
+names += ['data-pipeline-transition/'+n for n in ['status.json','resume-console.log','launch.json','controller-launch.json','controller-console.log','checkpoint-verification.json','request.json']]
 names += [str(p.relative_to(r)) for p in (r/'train').glob('eval-*/*.json')]
 files={}
 for name in names:

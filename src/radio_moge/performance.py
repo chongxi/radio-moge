@@ -21,6 +21,8 @@ def validate_performance(perf, config):
     profiles = perf.get('profiles', []) if perf.get('autotune') else [perf]
     if not profiles or len(profiles) > 10:
         raise ValueError('Expected 1–10 bounded throughput profiles')
+    if perf.get('data_pipeline', 'legacy') not in ('legacy', 'prepared'):
+        raise ValueError('Unsupported data preparation pipeline')
     logical = config['train']['batch_size']
     for p in profiles:
         if p['workers'] not in range(5):
