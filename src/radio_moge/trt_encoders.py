@@ -262,6 +262,10 @@ def compile_encoder(module, shape, cache_directory, min_batch=4, opt_batch=64, m
     settings = CompilationSettings(
         use_explicit_typing=True, disable_tf32=True,
         use_python_runtime=precision_policy == 'torch_sensitive',
+        # Torch-TensorRT 2.8 silently skips engine caching for immutable
+        # engines. Refit-capable engines let repeated transformer subgraphs
+        # reuse a build with each subgraph's own frozen parameter values.
+        immutable_weights=precision_policy != 'torch_sensitive',
         min_block_size=1 if precision_policy == 'torch_sensitive' else 5, optimization_level=1,
         workspace_size=16 * 1024**3, max_aux_streams=0,
         cache_built_engines=True, reuse_cached_engines=True,
@@ -300,6 +304,7 @@ def compile_encoder(module, shape, cache_directory, min_batch=4, opt_batch=64, m
     compiled.retained_shape_input_bindings = retained_bindings
     compiled.runtime_backend = 'python' if settings.use_python_runtime else 'cpp'
     compiled.cache_reuse = cache_stats
+    compiled.refittable_engines = not settings.immutable_weights
     compiled.explicit_output_casts = casts
     compiled.explicit_reduction_dtypes = reductions
     compiled.lowered_feature_gate = lowered_comparison

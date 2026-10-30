@@ -41,6 +41,47 @@ def real_inputs(config, cursor, images_per_bucket=64):
     return {k: torch.cat(v)[:images_per_bucket].cuda() for k, v in collected.items()}
 
 
+class RuntimeSmokeEncoder(torch.nn.Module):
+    """Small frozen graph exercising shape I/O across native attention breaks."""
+
+    def __init__(self):
+        super().__init__()
+        self.input = torch.nn.Linear(3, 16)
+        self.norm = torch.nn.LayerNorm(16)
+        self.qkv = torch.nn.Linear(16, 48)
+        self.output = torch.nn.Linear(16, 16)
+        self.requires_grad_(False)
+
+    def forward(self, image):
+        with torch.autocast('cuda', dtype=torch.bfloat16):
+            x = self.norm(self.input(image.flatten(2).transpose(1, 2)))
+            q, k, v = self.qkv(x).reshape(x.shape[0], 8, 3, 2, 8).permute(2, 0, 3, 1, 4).unbind(0)
+            value = torch.nn.functional.scaled_dot_product_attention(q, k, v)
+            value = value.transpose(1, 2).reshape(x.shape[0], 8, 16)
+            value = torch.nn.functional.gelu(self.output(value))
+            return value.transpose(1, 2).unsqueeze(2).float(), value.mean(1).float()
+
+
+@torch.no_grad()
+def check_shape_runtime(root):
+    model = RuntimeSmokeEncoder().cuda().eval()
+    image = torch.randn(64, 3, 2, 4, device='cuda')
+    names = ['spatial', 'summary']
+    cache = root / 'runtime-smoke-engines'
+    cache.mkdir(parents=True, exist_ok=True)
+    compiled = compile_encoder(model, (3, 2, 4), cache, precision_policy='torch_sensitive',
+                               example_input=image[:4], output_names=names)
+    if not compiled.retained_shape_input_bindings:
+        raise RuntimeError('Runtime smoke graph did not exercise cross-engine shape inputs')
+    comparisons = [dict(batch=b, **compare_outputs(model(image[:b]), compiled(image[:b]), names))
+                   for b in (4, 16, 64, 4)]
+    torch.cuda.synchronize()
+    return dict(passed=all(c['passed'] for c in comparisons), comparisons=comparisons,
+                runtime_backend=compiled.runtime_backend,
+                retained_shape_input_bindings=compiled.retained_shape_input_bindings,
+                cache_reuse=compiled.cache_reuse, scope='Synthetic correctness preflight; not timed')
+
+
 @torch.no_grad()
 def measure(module, image, deadline, repeats=6):
     for _ in range(2):
@@ -100,6 +141,15 @@ def main():
         torch.set_num_threads(1)
         torch.cuda.set_per_process_memory_fraction(.85)
         torch.backends.cuda.matmul.allow_tf32 = False
+        if args.precision_policy == 'torch_sensitive':
+            report['stage'] = 'checking_shape_runtime'
+            atomic_json(report, report_path)
+            report['runtime_smoke'] = check_shape_runtime(args.root)
+            atomic_json(report, report_path)
+            if not report['runtime_smoke']['passed']:
+                raise RuntimeError('Shape runtime correctness preflight failed')
+            gc.collect()
+            torch.cuda.empty_cache()
         radio = load_radio(config['models'], 'cuda')
         moge, _ = load_moge(config['models'], 'cuda')
         encoder = moge.encoder
@@ -151,6 +201,7 @@ def main():
                     row['runtime_backend'] = compiled.runtime_backend
                     row['retained_shape_input_bindings'] = compiled.retained_shape_input_bindings
                     row['cache_reuse'] = compiled.cache_reuse
+                    row['refittable_engines'] = compiled.refittable_engines
                     row['compiled_modules'] = [dict(name=n, type=type(m).__name__)
                                                for n, m in compiled.named_modules()]
                     row['tensor_rt_partitions'] = sum('tensorrt' in type(m).__module__.lower()
