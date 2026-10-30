@@ -103,6 +103,8 @@ class AtomicRetriever:
         resume=False,
     ):
         self.root, self.control, self.record = data_root.resolve(), control, record
+        if not math.isfinite(bytes_per_second) or bytes_per_second < 0:
+            raise ValueError("Transfer limit must be finite and nonnegative; zero means uncapped")
         self.rate = bytes_per_second
         self.completed = 0
         self.verified_bytes = 0
@@ -188,6 +190,7 @@ class AtomicRetriever:
                         sha.update(chunk)
             received = offset
             started, last = time.monotonic(), time.monotonic()
+            throttle_seconds = 0.0
             with part.open("ab" if offset else "wb") as stream:
                 while chunk := response.read(1024**2):
                     stream.write(chunk)
@@ -195,12 +198,25 @@ class AtomicRetriever:
                     received += len(chunk)
                     if received > total:
                         raise ValueError("Transfer exceeded declared size")
-                    delay = (received - offset) / self.rate - (time.monotonic() - started)
+                    delay = (
+                        (received - offset) / self.rate - (time.monotonic() - started)
+                        if self.rate
+                        else 0.0
+                    )
                     if delay > 0:
                         time.sleep(delay)
+                        throttle_seconds += delay
                     if time.monotonic() - last > 15:
                         stream.flush()
-                        self.record(current=relative, current_bytes=received, current_total=total)
+                        elapsed = time.monotonic() - started
+                        self.record(
+                            current=relative,
+                            current_bytes=received,
+                            current_total=total,
+                            current_transfer_seconds=elapsed,
+                            current_transfer_mib_s=(received - offset) / elapsed / 1024**2,
+                            current_throttle_seconds=throttle_seconds,
+                        )
                         last = time.monotonic()
                 stream.flush()
                 os.fsync(stream.fileno())
@@ -218,6 +234,11 @@ class AtomicRetriever:
                     sha256=sha.hexdigest(),
                     identity=current,
                     completed_at=time.time(),
+                    resumed_from_bytes=offset,
+                    transferred_this_attempt_bytes=received - offset,
+                    transfer_seconds=time.monotonic() - started,
+                    rate_limit_mib_s=self.rate / 1024**2,
+                    throttle_seconds=throttle_seconds,
                     checksum_kind="local streamed SHA256; no publisher hash supplied",
                 ),
             )
@@ -229,6 +250,9 @@ class AtomicRetriever:
                 verified_download_bytes=self.verified_bytes,
                 current_bytes=total,
                 current_total=total,
+                last_transfer_seconds=time.monotonic() - started,
+                last_transfer_mib_s=(received - offset) / (time.monotonic() - started) / 1024**2,
+                last_throttle_seconds=throttle_seconds,
             )
             return str(path), response.headers
 
@@ -424,7 +448,11 @@ def run(args):
     import yaml
 
     os.umask(0o077)
-    os.nice(15)
+    nice = getattr(args, "nice", 15)
+    rate_limit = getattr(args, "rate_limit_mib_s", 20)
+    if not 0 <= nice <= 19 or not math.isfinite(rate_limit) or rate_limit < 0:
+        raise ValueError("Invalid download priority or rate limit")
+    os.nice(nice)
     socket.setdefaulttimeout(60)
     control = args.control.resolve()
     control.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -460,7 +488,9 @@ def run(args):
         started_at=time.time(),
         data_root=str(root),
         training_root=str(args.training),
-        rate_limit_mib_s=20,
+        rate_limit_mib_s=rate_limit,
+        bandwidth_uncapped=rate_limit == 0,
+        nice=nice,
         processes=1,
         completed_files=0,
         verified_download_bytes=0,
@@ -538,7 +568,12 @@ def run(args):
                     inventory_frozen=True,
                 )
             module.urlretrieve = AtomicRetriever(
-                root, control, record, before_asset=freeze_inventory, resume=resume
+                root,
+                control,
+                record,
+                before_asset=freeze_inventory,
+                resume=resume,
+                bytes_per_second=rate_limit * 1024**2,
             )
             if resume:
                 module.urlretrieve.completed = previous["completed_files"]
@@ -618,4 +653,11 @@ if __name__ == "__main__":
     p.add_argument("--training", type=Path, required=True)
     p.add_argument("--resume", action="store_true")
     p.add_argument("--resume-id")
+    p.add_argument(
+        "--rate-limit-mib-s",
+        type=float,
+        default=20,
+        help="Transfer cap in MiB/s; zero disables all bandwidth sleeps",
+    )
+    p.add_argument("--nice", type=int, default=15, choices=range(20))
     run(p.parse_args())

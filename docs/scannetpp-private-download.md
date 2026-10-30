@@ -91,3 +91,19 @@ assets plus 12 metadata files, with 12,387 CRC-checked extractions. The total of
 partial was preserved. File-count progress must distinguish asset and metadata
 receipts; neither is a byte-based completion percentage. Each new recovery still
 requires an explicit request; the wrapper does not automatically restart itself.
+
+## Uncapped download requested after training, 2026-10-30
+
+The user explicitly requested maximum download speed after all training finished.
+The 20 MiB/s cap was local throttling, not a measured publisher/network limit.
+`--rate-limit-mib-s 0 --nice 0` removes bandwidth sleeps and restores normal CPU
+priority for the downloader. Content-Length, source validators, streamed SHA,
+ZIP CRC, staging and receipt-preserving recovery remain enabled. The only active
+controller is replaced once at an incomplete network transfer, with the partial
+preserved and its receipt/identity checks repeated before continuation. It is not
+interrupted during ZIP extraction or publication.
+
+New transfer receipts record offset, transferred bytes, elapsed time and intentional
+sleep time. Report actual sustained throughput, including extraction gaps when
+estimating total completion; an unlimited setting does not prove unlimited network
+capacity. No training jobs are started and no private official file is modified.

@@ -308,3 +308,36 @@ def main(args):
     assert proof["completed_assets"] == proof["expected_assets"] == 3
     with pytest.raises(ValueError, match="inspected, stopped"):
         download.run(args)
+
+
+def test_uncapped_transfer_never_sleeps_and_records_measured_bytes(tmp_path, monkeypatch):
+    body = b"payload" * 200000
+    monkeypatch.setattr(
+        download.urllib.request,
+        "urlopen",
+        lambda *a, **kw: Response(body, 200, {"Content-Length": str(len(body)), "ETag": "stable"}),
+    )
+
+    def forbidden_sleep(seconds):
+        pytest.fail("Uncapped transfer attempted to sleep")
+
+    monkeypatch.setattr(download.time, "sleep", forbidden_sleep)
+    states = []
+    retriever = download.AtomicRetriever(
+        tmp_path, tmp_path / "state", lambda **kw: states.append(kw), bytes_per_second=0
+    )
+    retriever("https://scannetpp.mlsg.cit.tum.de/fixture", tmp_path / "asset")
+    receipt = json.loads(next((tmp_path / "state/receipts").glob("*.json")).read_text())
+    assert (tmp_path / "asset").read_bytes() == body
+    assert receipt["rate_limit_mib_s"] == receipt["throttle_seconds"] == 0
+    assert receipt["transferred_this_attempt_bytes"] == len(body)
+    assert receipt["resumed_from_bytes"] == 0 and receipt["transfer_seconds"] > 0
+    assert states[-1]["last_transfer_mib_s"] > 0
+
+
+@pytest.mark.parametrize("rate", [-1, float("nan"), float("inf")])
+def test_invalid_transfer_rate_rejected(tmp_path, rate):
+    with pytest.raises(ValueError, match="limit"):
+        download.AtomicRetriever(
+            tmp_path, tmp_path / "state", lambda **kw: None, bytes_per_second=rate
+        )
