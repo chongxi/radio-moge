@@ -341,3 +341,186 @@ def test_invalid_transfer_rate_rejected(tmp_path, rate):
         download.AtomicRetriever(
             tmp_path, tmp_path / "state", lambda **kw: None, bytes_per_second=rate
         )
+
+
+def test_parallel_ranges_are_ordered_bounded_and_validate_resumed_offsets(monkeypatch):
+    import threading
+    import time
+
+    body = bytes(range(256)) * 512
+    offset, chunk = 111, 4096
+    active = maximum = 0
+    lock = threading.Lock()
+    calls = []
+
+    def response(request, timeout):
+        nonlocal active, maximum
+        start, end = map(int, request.get_header("Range").removeprefix("bytes=").split("-"))
+        with lock:
+            active += 1
+            maximum = max(maximum, active)
+            calls.append((start, end))
+        # Complete ranges out of order to check assembly ordering.
+        time.sleep(0.002 if (start // chunk) % 2 else 0.006)
+        with lock:
+            active -= 1
+        assert request.get_header("If-range") == "stable"
+        return Response(
+            body[start : end + 1],
+            206,
+            {
+                "Content-Length": str(end - start + 1),
+                "Content-Range": f"bytes {start}-{end}/{len(body)}",
+                "ETag": "stable",
+            },
+        )
+
+    monkeypatch.setattr(download.urllib.request, "urlopen", response)
+    original = Response(body[offset:], 206, {})
+    records = []
+    result = b"".join(
+        download.transfer_chunks(
+            original,
+            "https://example.test/asset",
+            None,
+            offset,
+            len(body),
+            {"etag": "stable"},
+            4,
+            lambda **kw: records.append(kw),
+            chunk,
+        )
+    )
+    assert result == body[offset:]
+    assert 1 < maximum <= 4
+    assert original.closed
+    assert calls[0][0] == offset and sum(b - a + 1 for a, b in calls) == len(body) - offset
+    assert records[-1]["active_range_workers"] == 4
+
+
+@pytest.mark.parametrize("bad", ["identity", "range", "length", "truncated", "oversized"])
+def test_parallel_range_rejects_mismatched_or_truncated_source(monkeypatch, bad):
+    body = b"x" * 32
+
+    def response(request, timeout):
+        start, end = map(int, request.get_header("Range").removeprefix("bytes=").split("-"))
+        headers = {
+            "ETag": "stable",
+            "Content-Length": str(end - start + 1),
+            "Content-Range": f"bytes {start}-{end}/32",
+        }
+        part = body[start : end + 1]
+        if bad == "identity":
+            headers["ETag"] = "changed"
+        if bad == "range":
+            headers["Content-Range"] = "bytes 1-8/32"
+        if bad == "length":
+            headers["Content-Length"] = "999"
+        if bad == "truncated":
+            part = part[:-1]
+        if bad == "oversized":
+            part += b"extra"
+        return Response(part, 206, headers)
+
+    monkeypatch.setattr(download.urllib.request, "urlopen", response)
+    with pytest.raises(ValueError):
+        b"".join(
+            download.transfer_chunks(
+                Response(body, 200, {}),
+                "https://example.test/a",
+                None,
+                0,
+                len(body),
+                {"etag": "stable"},
+                4,
+                lambda **kw: None,
+                8,
+            )
+        )
+
+
+def test_ignored_parallel_range_falls_back_without_duplicate_data(monkeypatch):
+    body = b"abcdefghijklmnopqrstuvwxyz"
+    monkeypatch.setattr(
+        download.urllib.request,
+        "urlopen",
+        lambda *a, **kw: Response(body, 200, {"ETag": "stable", "Content-Length": str(len(body))}),
+    )
+    records = []
+    result = b"".join(
+        download.transfer_chunks(
+            Response(body, 200, {}),
+            "https://example.test/a",
+            None,
+            0,
+            len(body),
+            {"etag": "stable"},
+            4,
+            lambda **kw: records.append(kw),
+            8,
+        )
+    )
+    assert result == body
+    assert records[-1]["active_range_workers"] == 1
+
+
+def test_invalid_live_range_worker_setting_is_rejected(tmp_path):
+    control = tmp_path / "performance.json"
+    control.write_text('{"range_workers": 4}')
+    retriever = download.AtomicRetriever(
+        tmp_path,
+        tmp_path / "state",
+        lambda **kw: None,
+        bytes_per_second=0,
+        performance_file=control,
+    )
+    assert retriever.selected_range_workers() == 4
+    control.write_text('{"range_workers": 8}')
+    assert retriever.selected_range_workers() == 8
+    control.write_text('{"range_workers": 100}')
+    with pytest.raises(ValueError):
+        retriever.selected_range_workers()
+
+
+def test_parallel_retriever_resume_keeps_streamed_full_file_checksum(tmp_path, monkeypatch):
+    body = bytes(range(256)) * 16
+    target = tmp_path / "asset.bin"
+    (tmp_path / "asset.bin.part").write_bytes(body[:123])
+    download.atomic_json(
+        tmp_path / "asset.bin.part.identity.json", dict(etag="stable", total=len(body))
+    )
+    original_chunks = download.transfer_chunks
+    monkeypatch.setattr(
+        download, "transfer_chunks", lambda *a, **kw: original_chunks(*a, **kw, chunk_bytes=512)
+    )
+
+    def response(request, timeout):
+        raw = request.get_header("Range").removeprefix("bytes=").split("-")
+        start = int(raw[0])
+        end = int(raw[1]) if raw[1] else len(body) - 1
+        return Response(
+            body[start : end + 1],
+            206,
+            {
+                "ETag": "stable",
+                "Content-Length": str(end - start + 1),
+                "Content-Range": f"bytes {start}-{end}/{len(body)}",
+            },
+        )
+
+    monkeypatch.setattr(download.urllib.request, "urlopen", response)
+    retriever = download.AtomicRetriever(
+        tmp_path,
+        tmp_path / "state",
+        lambda **kw: None,
+        bytes_per_second=0,
+        resume=True,
+        range_workers=4,
+    )
+    retriever("https://scannetpp.mlsg.cit.tum.de/fixture", target)
+    receipt = json.loads(next((tmp_path / "state/receipts").glob("*.json")).read_text())
+    assert target.read_bytes() == body
+    assert receipt["sha256"] == hashlib.sha256(body).hexdigest()
+    assert receipt["resumed_from_bytes"] == 123
+    assert receipt["transferred_this_attempt_bytes"] == len(body) - 123
+    assert receipt["active_range_workers"] == 4 and receipt["throttle_seconds"] == 0

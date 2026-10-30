@@ -107,3 +107,18 @@ New transfer receipts record offset, transferred bytes, elapsed time and intenti
 sleep time. Report actual sustained throughput, including extraction gaps when
 estimating total completion; an unlimited setting does not prove unlimited network
 capacity. No training jobs are started and no private official file is modified.
+
+Uncapped single-connection transfer of the interrupted 334,547,892-byte video
+measured 324,062,132 new bytes in 19.2455 seconds (about16.06MiB/s), with zero
+intentional sleep. Large uncapped transfers can therefore use `--range-workers 4`
+(up to8). Each16MiB range requires exact Content-Range/Length and unchanged server
+validators. Completed ranges are assembled in byte order into the existing partial
+and full-file SHA. Memory and concurrent requests are bounded; small files use one
+connection. If the first range is ignored, the untouched original response is used
+serially. Later range errors stop and preserve the valid prefix.
+
+An optional public `--performance-file` containing only `range_workers` allows
+changing between1and8 at the next asset without another restart. It contains no
+URLs or credentials. Higher concurrency is evaluated with real remaining assets;
+no additional full-dataset reads or training are involved. New receipts distinguish
+requested and actual range workers.

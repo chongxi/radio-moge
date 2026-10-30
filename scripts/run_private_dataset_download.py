@@ -6,6 +6,9 @@ contains neither. It leaves the official split/asset selection logic intact.
 
 import argparse
 import builtins
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 import fcntl
 import hashlib
 import importlib.util
@@ -92,6 +95,88 @@ def has_updates(training):
     return False
 
 
+def transfer_chunks(
+    response, url, data, offset, total, identity, workers, record, chunk_bytes=16 * 1024**2
+):
+    """Bounded HTTP ranges, assembled in order before the existing streamed SHA.
+
+    The first range proves support before parallel requests start. Every range is
+    checked against the original length and validator. A server ignoring Range
+    falls back to the still-unconsumed original response, never concatenation.
+    """
+    validator = identity.get("etag") or identity.get("last_modified")
+    parallel = workers > 1 and validator and data is None and total - offset >= 2 * chunk_bytes
+    if parallel:
+
+        def fetch(start, end):
+            request = urllib.request.Request(
+                url,
+                headers={
+                    "Accept-Encoding": "identity",
+                    "Range": f"bytes={start}-{end}",
+                    "If-Range": validator,
+                },
+            )
+            with urllib.request.urlopen(request, timeout=60) as part:
+                for key, header in [("etag", "ETag"), ("last_modified", "Last-Modified")]:
+                    if identity.get(key) and part.headers.get(header) != identity[key]:
+                        raise ValueError("Source identity changed during parallel transfer")
+                if part.status == 200:
+                    return None
+                expected = end - start + 1
+                if (
+                    part.status != 206
+                    or part.headers.get("Content-Range") != f"bytes {start}-{end}/{total}"
+                    or int(part.headers.get("Content-Length", "-1")) != expected
+                ):
+                    raise ValueError("Incorrect parallel Content-Range or length")
+                # Never let an incorrect server response allocate unbounded memory.
+                body = part.read(expected + 1)
+                if len(body) != expected:
+                    raise ValueError("Truncated or oversized parallel range")
+                return body
+
+        end = min(total - 1, offset + chunk_bytes - 1)
+        first = fetch(offset, end)
+        if first is not None:
+            response.close()
+            record(
+                active_range_workers=workers,
+                range_chunk_bytes=chunk_bytes,
+                parallel_range_verified=True,
+            )
+            position = end + 1
+            pending = deque()
+            with ThreadPoolExecutor(
+                max_workers=workers, thread_name_prefix="dataset-range"
+            ) as pool:
+
+                def fill():
+                    nonlocal position
+                    while position < total and len(pending) < workers:
+                        last = min(total - 1, position + chunk_bytes - 1)
+                        pending.append(pool.submit(fetch, position, last))
+                        position = last + 1
+
+                fill()
+                try:
+                    yield first
+                    del first
+                    while pending:
+                        body = pending.popleft().result()
+                        if body is None:
+                            raise ValueError("Server stopped honoring verified ranges")
+                        fill()
+                        yield body
+                finally:
+                    for future in pending:
+                        future.cancel()
+            return
+    record(active_range_workers=1, parallel_range_verified=False)
+    while chunk := response.read(1024**2):
+        yield chunk
+
+
 class AtomicRetriever:
     def __init__(
         self,
@@ -101,6 +186,8 @@ class AtomicRetriever:
         bytes_per_second=20 * 1024**2,
         before_asset=None,
         resume=False,
+        range_workers=1,
+        performance_file=None,
     ):
         self.root, self.control, self.record = data_root.resolve(), control, record
         if not math.isfinite(bytes_per_second) or bytes_per_second < 0:
@@ -110,6 +197,16 @@ class AtomicRetriever:
         self.verified_bytes = 0
         self.before_asset = before_asset
         self.resume = resume
+        self.range_workers = range_workers
+        self.performance_file = performance_file
+
+    def selected_range_workers(self):
+        workers = self.range_workers
+        if self.performance_file and Path(self.performance_file).exists():
+            workers = json.loads(Path(self.performance_file).read_text())["range_workers"]
+        if type(workers) is not int or not 1 <= workers <= 8:
+            raise ValueError("Range worker count must be an integer from1to8")
+        return workers
 
     def __call__(self, url, filename, reporthook=None, data=None):
         path = Path(filename).resolve()
@@ -191,8 +288,25 @@ class AtomicRetriever:
             received = offset
             started, last = time.monotonic(), time.monotonic()
             throttle_seconds = 0.0
-            with part.open("ab" if offset else "wb") as stream:
-                while chunk := response.read(1024**2):
+            workers = self.selected_range_workers()
+            transfer_info = {}
+
+            def transfer_record(**changes):
+                transfer_info.update(changes)
+                self.record(**changes)
+
+            chunks = transfer_chunks(
+                response,
+                url,
+                data,
+                offset,
+                total,
+                current,
+                workers=workers if not self.rate else 1,
+                record=transfer_record,
+            )
+            with closing(chunks), part.open("ab" if offset else "wb") as stream:
+                for chunk in chunks:
                     stream.write(chunk)
                     sha.update(chunk)
                     received += len(chunk)
@@ -239,6 +353,8 @@ class AtomicRetriever:
                     transfer_seconds=time.monotonic() - started,
                     rate_limit_mib_s=self.rate / 1024**2,
                     throttle_seconds=throttle_seconds,
+                    requested_range_workers=workers,
+                    active_range_workers=transfer_info.get("active_range_workers", 1),
                     checksum_kind="local streamed SHA256; no publisher hash supplied",
                 ),
             )
@@ -491,6 +607,7 @@ def run(args):
         rate_limit_mib_s=rate_limit,
         bandwidth_uncapped=rate_limit == 0,
         nice=nice,
+        requested_range_workers=getattr(args, "range_workers", 1),
         processes=1,
         completed_files=0,
         verified_download_bytes=0,
@@ -574,6 +691,8 @@ def run(args):
                 before_asset=freeze_inventory,
                 resume=resume,
                 bytes_per_second=rate_limit * 1024**2,
+                range_workers=getattr(args, "range_workers", 1),
+                performance_file=getattr(args, "performance_file", None),
             )
             if resume:
                 module.urlretrieve.completed = previous["completed_files"]
@@ -660,4 +779,10 @@ if __name__ == "__main__":
         help="Transfer cap in MiB/s; zero disables all bandwidth sleeps",
     )
     p.add_argument("--nice", type=int, default=15, choices=range(20))
+    p.add_argument("--range-workers", type=int, default=1, choices=range(1, 9))
+    p.add_argument(
+        "--performance-file",
+        type=Path,
+        help="Optional public JSON with range_workers; reread once per transfer",
+    )
     run(p.parse_args())
