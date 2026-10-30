@@ -168,7 +168,7 @@ def transfer_items(source, review):
     return items
 
 
-def start(root, remote):
+def start(root, remote, *, remote_verifier=None, expected_step=91367, purpose=None):
     review = root / 'final-review'
     review.mkdir(exist_ok=True)
     with (review / '.backup-start.lock').open('a+') as lock:
@@ -178,7 +178,8 @@ def start(root, remote):
         assert json.loads((root / 'completion-verification.json').read_text())['stage'] == 'passed'
         source = review / 'source-verification.json'
         if not source.exists():
-            code = inspect.getsource(selections_at) + '\n' + REMOTE
+            code = (inspect.getsource(selections_at) + '\n' + REMOTE
+                    if remote_verifier is None else remote_verifier)
             command = ['ssh', '-F', '/home/hub/.ssh/radio-moge-config', 'radio-moge-gpu',
                        'CUDA_VISIBLE_DEVICES= OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 '
                        + shlex.join(['/home/buildhub/radio-moge/.venv/bin/python', '-c', code])]
@@ -188,13 +189,13 @@ def start(root, remote):
                 raise RuntimeError(response.stderr)
             atomic(source, json.loads(response.stdout))
         verified = json.loads(source.read_text())
-        assert verified['stage'] == 'passed' and verified['actual_step'] == 91367
+        assert verified['stage'] == 'passed' and verified['actual_step'] == expected_step
         items = transfer_items(verified, review)
         total = sum(item['bytes'] for item in items)
         assert shutil.disk_usage(review).free > total + 1024**3
         staging = review / 'transfer-staging'
         staging.mkdir(exist_ok=True)
-        plan = dict(purpose='Completed 30000-update continuation: final, initial and all six independent best checkpoints, with audited evidence.',
+        plan = dict(purpose=purpose or 'Completed 30000-update continuation: final, initial and all six independent best checkpoints, with audited evidence.',
                     staging=str(staging), datasets=[], bwlimit_kib=20480,
                     ssh_command='ssh -F /home/hub/.ssh/radio-moge-config', ssh_host='radio-moge-gpu',
                     source_root=remote, checkpoints_first=items)
