@@ -8,6 +8,7 @@ from radio_moge.trt_encoders import (
     MoGeTensorOutputs, RadioTensorOutputs, compare_outputs, explicit_output_casts,
 )
 from radio_moge.upstream import radio_input
+from radio_moge.trt_precision_probe import fp32_attention_decompositions
 from test_training import tiny_system
 
 
@@ -86,3 +87,20 @@ def test_strong_output_types_use_cast_and_restore_interpreter_on_failure(monkeyp
             assert casts == [dict(name='feature', source='bfloat16', target='float')]
             raise RuntimeError('simulated build failure')
     assert Interpreter.output is original
+
+
+def test_attention_diagnostic_preserves_values_scale_and_output_type():
+    def decomposed(query, key, value, *, scale):
+        return (query @ key.transpose(-2, -1) * scale).softmax(-1) @ value
+
+    torch.manual_seed(12)
+    q, k, v = [torch.randn(2, 3, 5, 8).bfloat16() for _ in range(3)]
+    def other(x):
+        return x
+    operations = dict(scaled_dot_product_attention=decomposed, unrelated=other)
+    changed = fp32_attention_decompositions(operations)
+    actual = changed['scaled_dot_product_attention'](q, k, v, scale=.2)
+    expected = decomposed(q.float(), k.float(), v.float(), scale=.2).bfloat16()
+    assert actual.dtype == q.dtype and torch.equal(actual, expected)
+    assert operations['scaled_dot_product_attention'] is decomposed
+    assert changed['unrelated'] is other

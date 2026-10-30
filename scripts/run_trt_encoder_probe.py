@@ -15,6 +15,7 @@ def main():
     for name in ('root', 'repo', 'python', 'deps', 'reference_report'):
         parser.add_argument('--' + name.replace('_', '-'), type=Path, required=True)
     parser.add_argument('--max-seconds', type=int, default=2400)
+    parser.add_argument('--precision-diagnostic', action='store_true')
     args = parser.parse_args()
     if not 0 < args.max_seconds <= 3600:
         raise ValueError('Probe must remain bounded')
@@ -30,8 +31,9 @@ def main():
                OMP_NUM_THREADS='1', MKL_NUM_THREADS='1', OPENBLAS_NUM_THREADS='1',
                NUMEXPR_NUM_THREADS='1', HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1',
                WANDB_MODE='disabled', TOKENIZERS_PARALLELISM='false', CUDA_VISIBLE_DEVICES='0')
+    module = 'radio_moge.trt_precision_probe' if args.precision_diagnostic else 'radio_moge.trt_encoder_probe'
     command = ['timeout', '--signal=TERM', '--kill-after=30', str(args.max_seconds + 30),
-               str(args.python), '-u', '-m', 'radio_moge.trt_encoder_probe',
+               str(args.python), '-u', '-m', module,
                '--root', str(args.root), '--reference-report', str(args.reference_report),
                '--max-seconds', str(args.max_seconds)]
     with (args.root / 'console.log').open('x') as log:
