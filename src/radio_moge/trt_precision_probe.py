@@ -15,26 +15,10 @@ import torch
 
 from .checkpoint import atomic_json
 from .trt_encoder_probe import real_inputs
-from .trt_encoders import MoGeTensorOutputs, RadioTensorOutputs, compare_outputs
+from .trt_encoders import (
+    MoGeTensorOutputs, RadioTensorOutputs, compare_outputs, fp32_attention_decompositions,
+)
 from .upstream import load_moge, load_radio, radio_input
-
-
-def fp32_attention_decompositions(decompositions):
-    """Keep low-precision Q/K/V values, but do attention's internal math in FP32."""
-    result = dict(decompositions)
-
-    def promote(function):
-        def attention(query, key, value, *args, **kwargs):
-            output = function(query.float(), key.float(), value.float(), *args, **kwargs)
-            if isinstance(output, tuple):
-                return (output[0].to(query.dtype), *output[1:])
-            return output.to(query.dtype)
-        return attention
-
-    for op, function in decompositions.items():
-        if 'scaled_dot_product' in str(op):
-            result[op] = promote(function)
-    return result
 
 
 @torch.no_grad()

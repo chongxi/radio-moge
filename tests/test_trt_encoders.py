@@ -6,9 +6,9 @@ import torch
 
 from radio_moge.trt_encoders import (
     MoGeTensorOutputs, RadioTensorOutputs, compare_outputs, explicit_output_casts,
+    fp32_attention_decompositions, materialize_reduction_dtypes,
 )
 from radio_moge.upstream import radio_input
-from radio_moge.trt_precision_probe import fp32_attention_decompositions
 from test_training import tiny_system
 
 
@@ -104,3 +104,21 @@ def test_attention_diagnostic_preserves_values_scale_and_output_type():
     assert actual.dtype == q.dtype and torch.equal(actual, expected)
     assert operations['scaled_dot_product_attention'] is decomposed
     assert changed['unrelated'] is other
+
+
+@pytest.mark.parametrize('dim', [None, 1])
+def test_sum_dtype_is_preserved_before_reduction(dim):
+    class Sum(torch.nn.Module):
+        def forward(self, value):
+            return torch.sum(value, dim=dim, dtype=torch.float32)
+
+    value = torch.randn(4, 257).bfloat16()
+    exported = torch.export.export(Sum(), (value,)).run_decompositions({}).module()
+    expected = exported(value)
+    changes = materialize_reduction_dtypes(exported)
+    assert len(changes) == 1
+    assert changes[0]['input_dtype'] == 'torch.bfloat16'
+    assert changes[0]['reduction_dtype'] == 'torch.float32'
+    assert torch.equal(exported(value), expected)
+    assert all('dtype' not in n.kwargs for n in exported.graph.nodes
+               if n.target in (torch.ops.aten.sum.default, torch.ops.aten.sum.dim_IntList))
