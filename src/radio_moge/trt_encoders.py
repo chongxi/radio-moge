@@ -4,7 +4,7 @@ TensorRT is imported only when explicitly compiling. The ordinary trainer and
 its precision/preprocessing policy are unchanged.
 """
 
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 
 import torch
 from torch import nn
@@ -76,25 +76,70 @@ def compare_outputs(reference, candidate, names, relative_l2_limit=.01, cosine_l
                 thresholds=dict(relative_l2=relative_l2_limit, mean_cosine=cosine_limit))
 
 
+@contextmanager
+def explicit_output_casts():
+    """Work around the 2.8 output setter's invalid strongly typed dtype override.
+
+    Torch-TensorRT 2.8's TRTInterpreter.output assigns ITensor.dtype even when
+    the inferred type differs in a strongly typed network. TensorRT requires
+    an actual Cast layer instead. Keep the exported output contract, record
+    every inserted cast, and restore the interpreter after this serial probe.
+    No installed dependency files are changed.
+    """
+    import tensorrt as trt
+    import torch_tensorrt
+    from torch_tensorrt.dynamo.conversion._TRTInterpreter import TRTInterpreter
+
+    if torch_tensorrt.__version__.split('+')[0] != '2.8.0':
+        raise RuntimeError('Recheck the explicit output cast workaround for this Torch-TensorRT version')
+    original = TRTInterpreter.output
+    casts = []
+
+    def output(interpreter, target, args, kwargs):
+        if interpreter.output_dtypes is not None:
+            values = args[0]
+            values = list(values) if isinstance(values, (list, tuple)) else [values]
+            if len(values) != len(interpreter.output_dtypes):
+                raise RuntimeError('TensorRT output dtype count differs from the exported graph')
+            for i, (value, desired) in enumerate(zip(values, interpreter.output_dtypes, strict=True)):
+                wanted = desired.to(trt.DataType, use_default=True)
+                if isinstance(value, trt.ITensor) and value.dtype != wanted:
+                    casts.append(dict(name=value.name, source=str(value.dtype), target=str(wanted)))
+                    values[i] = interpreter.ctx.net.add_cast(value, wanted).get_output(0)
+            args = (tuple(values),)
+        return original(interpreter, target, args, kwargs)
+
+    TRTInterpreter.output = output
+    try:
+        yield casts
+    finally:
+        TRTInterpreter.output = original
+
+
 def compile_encoder(module, shape, cache_directory, min_batch=4, opt_batch=64, max_batch=128):
     """Fixed spatial bucket, dynamic batch; preserve mixed precision explicitly."""
     import torch_tensorrt
 
     if len(shape) != 3 or not 1 <= min_batch <= opt_batch <= max_batch:
         raise ValueError('Invalid NCHW shape/profile')
-    return torch_tensorrt.compile(
-        module.eval(), ir='dynamo',
-        inputs=[torch_tensorrt.Input(min_shape=(min_batch, *shape),
-                                    opt_shape=(opt_batch, *shape),
-                                    max_shape=(max_batch, *shape), dtype=torch.float32)],
-        # Explicit typing follows the exported autocast nodes. Torch-TensorRT 2.8
-        # forbids enabled_precisions together with this option.
-        use_explicit_typing=True,
-        disable_tf32=True, min_block_size=5, optimization_level=1,
-        workspace_size=4 * 1024**3, max_aux_streams=0,
-        cache_built_engines=True, reuse_cached_engines=True,
-        engine_cache_dir=str(cache_directory), engine_cache_size=16 * 1024**3,
-        timing_cache_path=str(cache_directory / 'timing.bin'),
-        # The teacher's antialiased resize must not silently become plain bilinear.
-        torch_executed_ops={torch.ops.aten._upsample_bilinear2d_aa.default},
-    )
+    with explicit_output_casts() as casts:
+        compiled = torch_tensorrt.compile(
+            module.eval(), ir='dynamo',
+            inputs=[torch_tensorrt.Input(min_shape=(min_batch, *shape),
+                                        opt_shape=(opt_batch, *shape),
+                                        max_shape=(max_batch, *shape), dtype=torch.float32)],
+            # Explicit typing follows the exported autocast nodes. Torch-TensorRT 2.8
+            # forbids enabled_precisions together with this option.
+            use_explicit_typing=True,
+            disable_tf32=True, min_block_size=5, optimization_level=1,
+            # The recorded dynamic-batch tactics require 5.3-5.6 GiB. A 4 GiB
+            # workspace rejects them before any inference can be measured.
+            workspace_size=16 * 1024**3, max_aux_streams=0,
+            cache_built_engines=True, reuse_cached_engines=True,
+            engine_cache_dir=str(cache_directory), engine_cache_size=16 * 1024**3,
+            timing_cache_path=str(cache_directory / 'timing.bin'),
+            # The teacher's antialiased resize must not silently become plain bilinear.
+            torch_executed_ops={torch.ops.aten._upsample_bilinear2d_aa.default},
+        )
+    compiled.explicit_output_casts = casts
+    return compiled

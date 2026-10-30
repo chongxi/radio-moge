@@ -127,12 +127,16 @@ def main():
                         compiled = compile_encoder(eager, tuple(value.shape[1:]), cache)
                     torch.cuda.synchronize()
                     row['compile_seconds'] = time.perf_counter() - start
+                    row['workspace_limit_bytes'] = 16 * 1024**3
+                    row['explicit_output_casts'] = compiled.explicit_output_casts
                     row['compiled_modules'] = [dict(name=n, type=type(m).__name__)
                                                for n, m in compiled.named_modules()]
                     row['tensor_rt_partitions'] = sum('tensorrt' in type(m).__module__.lower()
                                                     and hasattr(m, 'engine')
                                                     for m in compiled.modules())
                     row['compiled_graph'] = str(compiled.graph)
+                    if not row['tensor_rt_partitions']:
+                        raise RuntimeError('No TensorRT engine partitions found; refusing to label fallback as TRT')
                     # A hybrid graph is reported as hybrid, never as full TRT conversion.
                     row['stage'] = 'checking_outputs'
                     atomic_json(report, report_path)

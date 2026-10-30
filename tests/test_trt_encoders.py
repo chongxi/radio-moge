@@ -1,7 +1,12 @@
+import sys
+from types import ModuleType, SimpleNamespace
+
 import pytest
 import torch
 
-from radio_moge.trt_encoders import MoGeTensorOutputs, RadioTensorOutputs, compare_outputs
+from radio_moge.trt_encoders import (
+    MoGeTensorOutputs, RadioTensorOutputs, compare_outputs, explicit_output_casts,
+)
 from radio_moge.upstream import radio_input
 from test_training import tiny_system
 
@@ -47,3 +52,37 @@ def test_trainable_encoder_is_rejected():
     system.radio.requires_grad_(True)
     with pytest.raises(ValueError, match='frozen'):
         RadioTensorOutputs(system.radio, (0, 1, 2, 3))
+
+
+def test_strong_output_types_use_cast_and_restore_interpreter_on_failure(monkeypatch):
+    class Tensor:
+        def __init__(self, dtype):
+            self.dtype, self.name = dtype, 'feature'
+
+    class Interpreter:
+        output_dtypes = [SimpleNamespace(to=lambda *a, **kw: 'float')]
+        ctx = SimpleNamespace(net=SimpleNamespace(
+            add_cast=lambda value, dtype: SimpleNamespace(get_output=lambda i: Tensor(dtype))))
+
+        def output(self, target, args, kwargs):
+            # Simulate a strongly typed network refusing metadata-only overrides.
+            assert args[0][0].dtype == 'float'
+            return args[0]
+
+    for name, attributes in {
+        'tensorrt': dict(ITensor=Tensor, DataType=object),
+        'torch_tensorrt': dict(__version__='2.8.0'),
+        'torch_tensorrt.dynamo.conversion._TRTInterpreter': dict(TRTInterpreter=Interpreter),
+    }.items():
+        module = ModuleType(name)
+        module.__dict__.update(attributes)
+        monkeypatch.setitem(sys.modules, name, module)
+    original = Interpreter.output
+    source = Tensor('bfloat16')
+    with pytest.raises(RuntimeError, match='simulated build failure'):
+        with explicit_output_casts() as casts:
+            result = Interpreter().output(None, ((source,),), {})
+            assert result[0].dtype == 'float' and source.dtype == 'bfloat16'
+            assert casts == [dict(name='feature', source='bfloat16', target='float')]
+            raise RuntimeError('simulated build failure')
+    assert Interpreter.output is original
