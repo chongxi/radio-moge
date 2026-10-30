@@ -66,3 +66,28 @@ private status and preserved partial files first. The token expires at
 The active browser page is https://buildhub-nano-test--p7869.pub.astera.work/.
 The existing server is reused. No additional GPU work or dataset copy to the local
 workspace is part of this download.
+
+## Authorized recovery, 2026-10-30
+
+The original downloader stopped with `BrokenPipeError`; the user subsequently
+requested continuation. The wrapper now accepts `--resume --resume-id ID` while
+holding the original exclusive lock. It requires the stopped state and a new
+recovery ID, preserves the previous status/logs and all existing receipts, verifies
+frozen metadata/selection, receipt totals, retained raw-file sizes, published asset
+paths and ZIP CRC/extraction receipts, and validates the interrupted partial's
+source validator before resuming. This does not rehash the retained dataset.
+
+A completed ZIP is normally removed by the official script after extraction; its
+transfer and extraction receipts remain authoritative for the prior download.
+Completed metadata/raw transfers are never downloaded or counted again. Unverified
+existing files, missing extracted assets, changed metadata and invalid partial
+identities cause a stop, not a replacement. The original official script still
+chooses the remaining assets, and final completion also requires full receipt
+coverage. New error records contain sanitized stack locations without source lines.
+
+The read-only recovery preflight found 14,307 transfer receipts: 14,295 dataset
+assets plus 12 metadata files, with 12,387 CRC-checked extractions. The total of
+943,459,341,973 transferred bytes includes metadata. A 94,224,067-byte interrupted
+partial was preserved. File-count progress must distinguish asset and metadata
+receipts; neither is a byte-based completion percentage. Each new recovery still
+requires an explicit request; the wrapper does not automatically restart itself.

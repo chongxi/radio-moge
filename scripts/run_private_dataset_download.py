@@ -21,6 +21,7 @@ import stat
 import sys
 import tempfile
 import time
+import traceback
 from types import SimpleNamespace
 import urllib.error
 import urllib.request
@@ -93,19 +94,39 @@ def has_updates(training):
 
 class AtomicRetriever:
     def __init__(
-        self, data_root, control, record, bytes_per_second=20 * 1024**2, before_asset=None
+        self,
+        data_root,
+        control,
+        record,
+        bytes_per_second=20 * 1024**2,
+        before_asset=None,
+        resume=False,
     ):
         self.root, self.control, self.record = data_root.resolve(), control, record
         self.rate = bytes_per_second
         self.completed = 0
         self.verified_bytes = 0
         self.before_asset = before_asset
+        self.resume = resume
 
     def __call__(self, url, filename, reporthook=None, data=None):
         path = Path(filename).resolve()
         relative = str(path.relative_to(self.root))
         if self.before_asset and Path(relative).parts[0] == "data":
             self.before_asset()
+        receipt_path = (
+            self.control / "receipts" / f"{hashlib.sha256(relative.encode()).hexdigest()}.json"
+        )
+        if self.resume and receipt_path.exists():
+            receipt = json.loads(receipt_path.read_text())
+            if receipt["path"] != relative or not path.is_file():
+                raise ValueError("Previously completed transfer requested again without its file")
+            if path.stat().st_size != receipt["bytes"]:
+                raise ValueError("Previously completed file size changed")
+            # Frozen metadata and retained raw files are never overwritten or counted twice.
+            return str(path), {"Content-Length": str(receipt["bytes"])}
+        if self.resume and path.exists():
+            raise FileExistsError("Existing file without receipt; refusing replacement")
         parsed = urlsplit(url)
         if parsed.scheme != "https" or parsed.hostname != "scannetpp.mlsg.cit.tum.de":
             raise ValueError("Unexpected dataset download origin")
@@ -117,6 +138,8 @@ class AtomicRetriever:
         # Resume only with a server validator. Otherwise safely start over.
         validator = previous.get("etag") or previous.get("last_modified")
         if offset and not validator:
+            if self.resume:
+                raise ValueError("Partial lacks source validator; preserve for inspection")
             offset = 0
         headers = {"Accept-Encoding": "identity"}
         if offset:
@@ -294,6 +317,109 @@ def inventory(module, cfg, root):
     )
 
 
+def verify_resume_state(root, control, previous, record=lambda **kw: None):
+    """Validate retained receipts and published paths without rehashing the dataset.
+
+    ZIP bytes are deliberately removed by the official downloader after extraction.
+    Their retained transfer SHA and CRC/extraction receipt establish prior completion;
+    this is a recovery check, not a new full-content audit of extracted data.
+    """
+    root, control = Path(root).resolve(), Path(control)
+    frozen = json.loads((control / "inventory.json").read_text())
+    receipts = {}
+    last = time.monotonic()
+    for receipt_path in (control / "receipts").glob("*.json"):
+        value = json.loads(receipt_path.read_text())
+        relative = value["path"]
+        target = (root / relative).resolve()
+        if str(target.relative_to(root)) != relative:
+            raise ValueError("Invalid receipt destination")
+        key = hashlib.sha256(relative.encode()).hexdigest()
+        if receipt_path.stem != key or relative in receipts:
+            raise ValueError("Invalid or duplicate receipt identity")
+        if not re.fullmatch(r"[0-9a-f]{64}", value["sha256"]):
+            raise ValueError("Missing transfer checksum")
+        if type(value["bytes"]) is not int or value["bytes"] < 0:
+            raise ValueError("Invalid receipt length")
+        receipts[relative] = value
+        if time.monotonic() - last > 10:
+            record(recovery_receipts_checked=len(receipts))
+            last = time.monotonic()
+    if (
+        len(receipts) != previous["completed_files"]
+        or sum(r["bytes"] for r in receipts.values()) != previous["verified_download_bytes"]
+    ):
+        raise ValueError("Receipt totals differ from stopped status")
+    metadata = set(frozen["metadata_sha256"])
+    for name, digest in frozen["metadata_sha256"].items():
+        path = root / name
+        if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+            raise ValueError("Frozen metadata changed")
+        if name not in receipts or receipts[name]["sha256"] != digest:
+            raise ValueError("Metadata transfer receipt absent or inconsistent")
+    seen, used, completed, extractions = set(), set(metadata), 0, 0
+    for i, item in enumerate(frozen["assets"]):
+        relative = item["path"]
+        path = (root / relative).resolve()
+        if str(path.relative_to(root)) != relative or relative in seen:
+            raise ValueError("Invalid or duplicate inventory destination")
+        seen.add(relative)
+        archive_relative = str(Path(relative).with_suffix(".zip"))
+        direct, archive = receipts.get(relative), receipts.get(archive_relative)
+        if direct and archive and relative != archive_relative:
+            raise ValueError("Ambiguous transfer receipts for asset")
+        if not direct and not archive:
+            if path.exists():
+                raise ValueError("Published asset without transfer receipt")
+            continue
+        if not path.exists():
+            raise ValueError("Completed transfer has no published asset")
+        if archive and not direct:
+            key = hashlib.sha256(str(root / archive_relative).encode()).hexdigest()
+            extraction = json.loads((control / "extractions" / f"{key}.json").read_text())
+            if extraction.get("stage") != "passed" or extraction.get("crc_checked") is not True:
+                raise ValueError("ZIP extraction proof absent or failed")
+            if extraction["archive"] != Path(archive_relative).name:
+                raise ValueError("ZIP extraction proof names another archive")
+            used.add(archive_relative)
+            extractions += 1
+        else:
+            if not path.is_file() or path.stat().st_size != direct["bytes"]:
+                raise ValueError("Published raw asset size differs from receipt")
+            used.add(relative)
+        completed += 1
+        if time.monotonic() - last > 10:
+            record(recovery_assets_checked=i + 1, recovery_completed_assets=completed)
+            last = time.monotonic()
+    if set(receipts) != used:
+        raise ValueError("Receipts outside frozen inventory")
+    current = previous.get("current")
+    partial_bytes = 0
+    if current and current not in receipts:
+        path = (root / current).resolve()
+        path.relative_to(root)
+        partial = path.with_name(path.name + ".part")
+        if partial.exists():
+            identity = json.loads(partial.with_name(partial.name + ".identity.json").read_text())
+            partial_bytes = partial.stat().st_size
+            if not (identity.get("etag") or identity.get("last_modified")):
+                raise ValueError("Partial lacks a validator")
+            if not 0 <= partial_bytes <= identity["total"]:
+                raise ValueError("Partial exceeds source length")
+    return dict(
+        stage="passed",
+        checked_at=time.time(),
+        completed_files=len(receipts),
+        verified_download_bytes=sum(r["bytes"] for r in receipts.values()),
+        completed_assets=completed,
+        expected_assets=len(frozen["assets"]),
+        metadata_receipts=len(metadata),
+        crc_extraction_receipts=extractions,
+        partial_bytes=partial_bytes,
+        retained_files_rehashed=False,
+    )
+
+
 def run(args):
     import yaml
 
@@ -304,14 +430,30 @@ def run(args):
     control.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock = (control / ".download.lock").open("a+")
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    if (control / "status.json").exists():
+    resume = getattr(args, "resume", False)
+    status_path = control / "status.json"
+    previous = json.loads(status_path.read_text()) if status_path.exists() else None
+    if resume:
+        if not previous or previous.get("stage") != "needs_inspection":
+            raise ValueError("Resume requires an inspected, stopped download")
+        # The lock, not a potentially recycled PID from a previous machine boot, excludes peers.
+        resume_name = getattr(args, "resume_id", None)
+        if not resume_name or not re.fullmatch(r"[a-zA-Z0-9_-]+", resume_name):
+            raise ValueError("A unique resume ID is required")
+        history = control / "recoveries" / resume_name
+        history.mkdir(parents=True, exist_ok=False)
+        atomic_json(history / "prior-status.json", previous)
+    elif previous:
         raise FileExistsError("Existing controller state: inspect before any relaunch")
     cfg = yaml.safe_load(args.config.read_text())
     secret = cfg["token"]
     assert secret and "TOKEN_HERE" not in secret
     root = Path(cfg["data_root"]).resolve()
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
-    assert not any(root.iterdir()), "Initial launch requires new dataset destination"
+    if not resume:
+        assert not any(root.iterdir()), "Initial launch requires new dataset destination"
+    elif str(root) != previous["data_root"]:
+        raise ValueError("Resume dataset destination differs from the stopped download")
     state = dict(
         stage="waiting_for_training_updates",
         pid=os.getpid(),
@@ -328,13 +470,25 @@ def run(args):
         state.update(changes, updated_at=time.time())
         atomic_json(control / "status.json", state)
 
+    if resume:
+        state.update(
+            started_at=previous["started_at"],
+            resumed_at=time.time(),
+            resume_id=resume_name,
+            previous_pid=previous["pid"],
+            stage="checking_resume_receipts",
+            completed_files=previous["completed_files"],
+            verified_download_bytes=previous["verified_download_bytes"],
+            training_updates_observed=True,
+        )
     record()
-    with (control / "console.log").open("x") as sink:
+    log_path = history / "console.log" if resume else control / "console.log"
+    with log_path.open("x") as sink:
         sanitized = RedactedWriter(sink, secret)
         old_out, old_err = sys.stdout, sys.stderr
         sys.stdout = sys.stderr = sanitized
         try:
-            while not has_updates(args.training):
+            while not resume and not has_updates(args.training):
                 status_path = args.training / "status.json"
                 status = json.loads(status_path.read_text()) if status_path.exists() else {}
                 if status.get("stage") in (
@@ -369,9 +523,26 @@ def run(args):
                         inventory_frozen=True,
                     )
 
+            if resume:
+                proof = verify_resume_state(root, control, previous, record)
+                frozen = json.loads((control / "inventory.json").read_text())
+                if inventory(module, cfg, root) != frozen:
+                    raise ValueError("Official selection or frozen metadata changed")
+                atomic_json(history / "preflight.json", proof)
+                record(
+                    stage="resuming_download",
+                    resume_preflight_passed=True,
+                    completed_assets=proof["completed_assets"],
+                    expected_assets=proof["expected_assets"],
+                    scenes=frozen["scenes"],
+                    inventory_frozen=True,
+                )
             module.urlretrieve = AtomicRetriever(
-                root, control, record, before_asset=freeze_inventory
+                root, control, record, before_asset=freeze_inventory, resume=resume
             )
+            if resume:
+                module.urlretrieve.completed = previous["completed_files"]
+                module.urlretrieve.verified_bytes = previous["verified_download_bytes"]
             original_zip = zipfile.ZipFile
 
             class CheckedZip(original_zip):
@@ -394,6 +565,7 @@ def run(args):
                 module.main(SimpleNamespace(config_file=str(args.config)))
             finally:
                 builtins.input = original_input
+                module.zipfile.ZipFile = original_zip
             freeze_inventory()
             frozen = json.loads((control / "inventory.json").read_text())
             assert inventory(module, cfg, root) == frozen, (
@@ -413,6 +585,10 @@ def run(args):
             )
             if missing:
                 raise RuntimeError(f"Official script returned with {len(missing)} assets missing")
+            proof = verify_resume_state(root, control, state, record)
+            if proof["completed_assets"] != proof["expected_assets"]:
+                raise RuntimeError("Asset receipt coverage incomplete")
+            atomic_json(control / "completion-receipts.json", proof)
             record(
                 stage="complete",
                 finished_at=time.time(),
@@ -421,7 +597,12 @@ def run(args):
             )
         except BaseException as error:
             record(
-                stage="needs_inspection", error=sanitized.clean(f"{type(error).__name__}: {error}")
+                stage="needs_inspection",
+                error=sanitized.clean(f"{type(error).__name__}: {error}"),
+                error_frames=[
+                    dict(file=Path(f.filename).name, line=f.lineno, function=f.name)
+                    for f in traceback.extract_tb(error.__traceback__)
+                ],
             )
             raise RuntimeError("Private download stopped; inspect sanitized status/log") from None
         finally:
@@ -435,4 +616,6 @@ if __name__ == "__main__":
     p.add_argument("--config", type=Path, required=True)
     p.add_argument("--control", type=Path, required=True)
     p.add_argument("--training", type=Path, required=True)
+    p.add_argument("--resume", action="store_true")
+    p.add_argument("--resume-id")
     run(p.parse_args())

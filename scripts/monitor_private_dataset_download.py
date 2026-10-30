@@ -18,11 +18,15 @@ p=json.load(sys.stdin);r=Path(p['private_script_directory']);c=Path(p['private_c
 secret=yaml.safe_load((r/'runtime-private.yml').read_text())['token']
 status_path=c/'status.json';raw=status_path.read_bytes();state=json.loads(raw)
 logs=[r/'launch-console.log',c/'console.log']
+if state.get('resume_id'):
+ import re
+ assert re.fullmatch(r'[a-zA-Z0-9_-]+',state['resume_id'])
+ logs.append(c/'recoveries'/state['resume_id']/'console.log')
 assert all(secret not in f.read_text() for f in logs if f.exists()), 'Private log redaction check failed'
 out=dict(state=state,checked_at=time.time(),log_secret_absent=True,
          status_source_sha256=hashlib.sha256(raw).hexdigest(),
          process=subprocess.run(['ps','-p',str(state['pid']),'-o','pid,ppid,stat,etime,time'],capture_output=True,text=True).stdout)
-for name in ['inventory.json','inventory-verification.json']:
+for name in ['inventory.json','inventory-verification.json','completion-receipts.json']:
  f=c/name
  if f.exists():
   value=json.loads(f.read_text())
@@ -43,8 +47,10 @@ print(json.dumps(out,allow_nan=False))
         input=json.dumps(plan),
         text=True,
         capture_output=True,
-        check=True,
+        check=False,
     )
+    if result.returncode:
+        raise RuntimeError(f"Sanitized download monitor unavailable: SSH exit {result.returncode}")
     value = json.loads(result.stdout)
     atomic_json(root / "monitor.json", value)
     atomic_json(root / "status.json", value["state"])
@@ -62,7 +68,8 @@ print(json.dumps(out,allow_nan=False))
     )
     handoff_path = root.parent / "handoff.json"
     handoff = json.loads(handoff_path.read_text())
-    handoff["active_scannetpp_download"] = dict(
+    active = handoff.setdefault("active_scannetpp_download", {})
+    active.update(
         root=str(root),
         dataset_root=plan["dataset_root"],
         private_control=plan["private_control"],

@@ -126,3 +126,185 @@ def test_corrupt_archive_never_publishes(tmp_path):
     with zipfile.ZipFile(archive) as z, pytest.raises(zipfile.BadZipFile):
         download.verified_extract(z, tmp_path, lambda **kw: None, tmp_path / "state")
     assert not (tmp_path / "rgb").exists()
+
+
+def recovery_fixture(tmp_path):
+    root, state = tmp_path / "dataset", tmp_path / "state"
+    root.mkdir()
+    meta = root / "splits/train.txt"
+    meta.parent.mkdir()
+    meta.write_text("fixture\n")
+    raw = root / "data/scene/rgb.mkv"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"raw-video")
+    extracted = raw.parent / "depth.bin"
+    extracted.write_bytes(b"expanded-depth")
+    records = [(str(p.relative_to(root)), p.read_bytes()) for p in [meta, raw]]
+    records.append(("data/scene/depth.zip", b"prior-zip"))
+    for name, body in records:
+        key = hashlib.sha256(name.encode()).hexdigest()
+        download.atomic_json(
+            state / "receipts" / f"{key}.json",
+            dict(path=name, bytes=len(body), sha256=hashlib.sha256(body).hexdigest()),
+        )
+    key = hashlib.sha256(str(root / "data/scene/depth.zip").encode()).hexdigest()
+    download.atomic_json(
+        state / "extractions" / f"{key}.json",
+        dict(stage="passed", archive="depth.zip", crc_checked=True, files=1, expanded_bytes=14),
+    )
+    download.atomic_json(
+        state / "inventory.json",
+        dict(
+            metadata_sha256={"splits/train.txt": hashlib.sha256(meta.read_bytes()).hexdigest()},
+            assets=[
+                dict(path="data/scene/" + name) for name in ["rgb.mkv", "depth.bin", "pending.bin"]
+            ],
+        ),
+    )
+    previous = dict(completed_files=3, verified_download_bytes=sum(len(b) for _, b in records))
+    return root, state, previous
+
+
+def test_resume_accepts_deleted_zip_with_crc_receipt_and_keeps_all_bytes(tmp_path):
+    root, state, previous = recovery_fixture(tmp_path)
+    files = [p for folder in [root, state] for p in folder.rglob("*") if p.is_file()]
+    before = {str(p): (p.stat().st_ino, p.stat().st_mtime_ns, p.read_bytes()) for p in files}
+    proof = download.verify_resume_state(root, state, previous)
+    assert proof["completed_assets"] == 2 and proof["expected_assets"] == 3
+    assert proof["crc_extraction_receipts"] == 1
+    assert before == {
+        str(p): (p.stat().st_ino, p.stat().st_mtime_ns, p.read_bytes()) for p in files
+    }
+
+
+@pytest.mark.parametrize("damage", ["metadata", "raw_size", "crc", "unreceipted", "missing"])
+def test_resume_rejects_inconsistent_retained_state(tmp_path, damage):
+    root, state, previous = recovery_fixture(tmp_path)
+    if damage == "metadata":
+        (root / "splits/train.txt").write_text("changed")
+    elif damage == "raw_size":
+        (root / "data/scene/rgb.mkv").write_bytes(b"x")
+    elif damage == "crc":
+        p = next((state / "extractions").glob("*.json"))
+        v = json.loads(p.read_text())
+        v["crc_checked"] = False
+        download.atomic_json(p, v)
+    elif damage == "unreceipted":
+        (root / "data/scene/pending.bin").write_bytes(b"unknown")
+    else:
+        (root / "data/scene/depth.bin").unlink()
+    with pytest.raises(ValueError):
+        download.verify_resume_state(root, state, previous)
+
+
+def test_resume_partial_validator_and_counter_preservation(tmp_path, monkeypatch):
+    root, state, previous = recovery_fixture(tmp_path)
+    target = root / "data/scene/pending.zip"
+    target.with_name("pending.zip.part").write_bytes(b"abc")
+    download.atomic_json(
+        target.with_name("pending.zip.part.identity.json"), dict(etag="stable", total=6)
+    )
+    previous["current"] = "data/scene/pending.zip"
+    assert download.verify_resume_state(root, state, previous)["partial_bytes"] == 3
+    requests = []
+
+    def open_mock(request, timeout):
+        requests.append(request)
+        return Response(
+            b"def", 206, {"Content-Length": "3", "ETag": "stable", "Content-Range": "bytes 3-5/6"}
+        )
+
+    monkeypatch.setattr(download.urllib.request, "urlopen", open_mock)
+    retriever = download.AtomicRetriever(
+        root, state, lambda **kw: None, bytes_per_second=10**9, resume=True
+    )
+    retriever.completed = previous["completed_files"]
+    retriever.verified_bytes = previous["verified_download_bytes"]
+    metadata = root / "splits/train.txt"
+    before = metadata.stat().st_mtime_ns
+    retriever("https://scannetpp.mlsg.cit.tum.de/metadata", metadata)
+    assert not requests and metadata.stat().st_mtime_ns == before
+    retriever("https://scannetpp.mlsg.cit.tum.de/pending", target)
+    assert requests[0].get_header("Range") == "bytes=3-"
+    assert target.read_bytes() == b"abcdef"
+    assert retriever.completed == previous["completed_files"] + 1
+    assert retriever.verified_bytes == previous["verified_download_bytes"] + 6
+
+
+def test_resume_never_truncates_unvalidated_partial(tmp_path):
+    target = tmp_path / "asset"
+    part = tmp_path / "asset.part"
+    part.write_bytes(b"preserved")
+    retriever = download.AtomicRetriever(
+        tmp_path, tmp_path / "state", lambda **kw: None, resume=True
+    )
+    with pytest.raises(ValueError, match="validator"):
+        retriever("https://scannetpp.mlsg.cit.tum.de/fixture", target)
+    assert part.read_bytes() == b"preserved"
+
+
+def test_full_resume_preserves_history_and_completes_only_missing_asset(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    import yaml
+
+    root, state, previous = recovery_fixture(tmp_path)
+    previous.update(
+        stage="needs_inspection",
+        data_root=str(root),
+        pid=987654,
+        started_at=123.0,
+        training_updates_observed=True,
+    )
+    download.atomic_json(state / "status.json", previous)
+    old_log = state / "console.log"
+    old_log.write_text("previous interruption\n")
+    cfg = tmp_path / "private.yml"
+    cfg.write_text(yaml.safe_dump(dict(token="fixture-only-token", data_root=str(root))))
+    official = tmp_path / "fixture.py"
+    official.write_text("""import zipfile, yaml
+from pathlib import Path
+from urllib.request import urlretrieve
+def main(args):
+    root = Path(yaml.safe_load(Path(args.config_file).read_text())["data_root"])
+    urlretrieve("https://scannetpp.mlsg.cit.tum.de/meta", root / "splits/train.txt")
+    for name in ["rgb.mkv", "depth.bin", "pending.bin"]:
+        path = root / "data/scene" / name
+        if not path.exists():
+            urlretrieve("https://scannetpp.mlsg.cit.tum.de/new", path)
+""")
+    frozen = json.loads((state / "inventory.json").read_text())
+    frozen.update(scenes=1, splits={"fixture": 1})
+    download.atomic_json(state / "inventory.json", frozen)
+    monkeypatch.setattr(download, "inventory", lambda *a: frozen)
+    monkeypatch.setattr(download.os, "nice", lambda *a: None)
+    monkeypatch.setattr(download.os, "umask", lambda *a: None)
+    monkeypatch.setattr(download.shutil, "disk_usage", lambda *a: SimpleNamespace(free=5 * 1024**4))
+    calls = []
+
+    def response(request, timeout):
+        calls.append(request)
+        return Response(b"new-data", 200, {"Content-Length": "8", "ETag": "stable"})
+
+    monkeypatch.setattr(download.urllib.request, "urlopen", response)
+    args = SimpleNamespace(
+        control=state,
+        config=cfg,
+        script=official,
+        training=tmp_path / "training",
+        resume=True,
+        resume_id="fixture-recovery",
+    )
+    download.run(args)
+    result = json.loads((state / "status.json").read_text())
+    assert result["stage"] == "complete" and result["completed_files"] == 4
+    assert result["verified_download_bytes"] == previous["verified_download_bytes"] + 8
+    assert len(calls) == 1
+    assert old_log.read_text() == "previous interruption\n"
+    assert (
+        json.loads((state / "recoveries/fixture-recovery/prior-status.json").read_text())
+        == previous
+    )
+    proof = json.loads((state / "completion-receipts.json").read_text())
+    assert proof["completed_assets"] == proof["expected_assets"] == 3
+    with pytest.raises(ValueError, match="inspected, stopped"):
+        download.run(args)
