@@ -16,6 +16,8 @@ def main():
         parser.add_argument('--' + name.replace('_', '-'), type=Path, required=True)
     parser.add_argument('--max-seconds', type=int, default=2400)
     parser.add_argument('--precision-diagnostic', action='store_true')
+    parser.add_argument('--precision-policy', choices=('fp32_attention', 'torch_sensitive'),
+                        default='fp32_attention')
     args = parser.parse_args()
     if not 0 < args.max_seconds <= 3600:
         raise ValueError('Probe must remain bounded')
@@ -36,6 +38,8 @@ def main():
                str(args.python), '-u', '-m', module,
                '--root', str(args.root), '--reference-report', str(args.reference_report),
                '--max-seconds', str(args.max_seconds)]
+    if not args.precision_diagnostic:
+        command.extend(['--precision-policy', args.precision_policy])
     with (args.root / 'console.log').open('x') as log:
         child = subprocess.Popen(command, cwd=args.repo, env=env, stdin=subprocess.DEVNULL,
                                  stdout=log, stderr=subprocess.STDOUT)

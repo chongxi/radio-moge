@@ -65,6 +65,8 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--reference-report', type=Path, required=True)
     parser.add_argument('--max-seconds', type=int, default=2400)
+    parser.add_argument('--precision-policy', choices=('fp32_attention', 'torch_sensitive'),
+                        default='fp32_attention')
     args = parser.parse_args()
     if not 1 <= args.max_seconds <= 3600:
         raise ValueError('Probe must remain bounded')
@@ -83,7 +85,7 @@ def main():
                             ('torch', 'torch-tensorrt', 'tensorrt')},
                   input_profiles=dict(min_batch=4, opt_batch=64, max_batch=128,
                                       buckets=config['data']['buckets']),
-                  cold_compilation_excluded_from_timings=True)
+                  cold_compilation_excluded_from_timings=True, precision_policy=args.precision_policy)
     atomic_json(report, report_path)
     deadline = time.monotonic() + args.max_seconds
     try:
@@ -124,13 +126,17 @@ def main():
                 try:
                     start = time.perf_counter()
                     with torch.no_grad():
-                        compiled = compile_encoder(eager, tuple(value.shape[1:]), cache)
+                        compiled = compile_encoder(eager, tuple(value.shape[1:]), cache,
+                                                   precision_policy=args.precision_policy,
+                                                   example_input=value[:4], output_names=names)
                     torch.cuda.synchronize()
                     row['compile_seconds'] = time.perf_counter() - start
                     row['workspace_limit_bytes'] = 16 * 1024**3
                     row['explicit_output_casts'] = compiled.explicit_output_casts
                     row['explicit_reduction_dtypes'] = compiled.explicit_reduction_dtypes
-                    row['attention_intermediates'] = 'FP32; Q/K/V values and output remain original dtype'
+                    row['precision_policy'] = args.precision_policy
+                    row['lowered_feature_gate'] = compiled.lowered_feature_gate
+                    row['preserved_torch_ops'] = compiled.preserved_torch_ops
                     row['compiled_modules'] = [dict(name=n, type=type(m).__name__)
                                                for n, m in compiled.named_modules()]
                     row['tensor_rt_partitions'] = sum('tensorrt' in type(m).__module__.lower()

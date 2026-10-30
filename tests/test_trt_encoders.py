@@ -7,6 +7,7 @@ import torch
 from radio_moge.trt_encoders import (
     MoGeTensorOutputs, RadioTensorOutputs, compare_outputs, explicit_output_casts,
     fp32_attention_decompositions, materialize_reduction_dtypes,
+    preserve_sensitive_decompositions,
 )
 from radio_moge.upstream import radio_input
 from test_training import tiny_system
@@ -122,3 +123,18 @@ def test_sum_dtype_is_preserved_before_reduction(dim):
     assert torch.equal(exported(value), expected)
     assert all('dtype' not in n.kwargs for n in exported.graph.nodes
                if n.target in (torch.ops.aten.sum.default, torch.ops.aten.sum.dim_IntList))
+
+
+def test_hybrid_lowering_keeps_native_attention_and_exact_output():
+    class Attention(torch.nn.Module):
+        def forward(self, q, k, v):
+            return torch.nn.functional.scaled_dot_product_attention(q, k, v, scale=.2)
+
+    inputs = tuple(torch.randn(2, 3, 5, 8) for _ in range(3))
+    model = Attention()
+    program = torch.export.export(model, inputs)
+    table = preserve_sensitive_decompositions(torch.export.default_decompositions())
+    lowered = program.run_decompositions(table).module()
+    assert any(n.target == torch.ops.aten.scaled_dot_product_attention.default
+               for n in lowered.graph.nodes)
+    assert torch.equal(model(*inputs), lowered(*inputs))

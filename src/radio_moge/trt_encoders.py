@@ -94,6 +94,12 @@ def fp32_attention_decompositions(decompositions):
     return result
 
 
+def preserve_sensitive_decompositions(decompositions):
+    """Keep native attention, normalization and activation ops for PyTorch."""
+    return {op: fn for op, fn in decompositions.items()
+            if not any(name in str(op) for name in ('scaled_dot_product', 'layer_norm', 'gelu'))}
+
+
 def materialize_reduction_dtypes(module):
     """Make sum(dtype=...) explicit before reduction, not after low-precision sum.
 
@@ -165,7 +171,8 @@ def explicit_output_casts():
         TRTInterpreter.output = original
 
 
-def compile_encoder(module, shape, cache_directory, min_batch=4, opt_batch=64, max_batch=128):
+def compile_encoder(module, shape, cache_directory, min_batch=4, opt_batch=64, max_batch=128,
+                    precision_policy='fp32_attention', example_input=None, output_names=None):
     """Fixed spatial bucket, dynamic batch; preserve mixed precision explicitly."""
     import torch_tensorrt
     from torch_tensorrt.dynamo._compiler import (
@@ -177,25 +184,51 @@ def compile_encoder(module, shape, cache_directory, min_batch=4, opt_batch=64, m
         raise ValueError('Invalid NCHW shape/profile')
     if torch_tensorrt.__version__.split('+')[0] != '2.8.0':
         raise RuntimeError('Recheck the precision lowering for this Torch-TensorRT version')
+    if precision_policy not in ('fp32_attention', 'torch_sensitive'):
+        raise ValueError('Unknown prototype precision policy')
     inputs = [torch_tensorrt.Input(min_shape=(min_batch, *shape), opt_shape=(opt_batch, *shape),
                                   max_shape=(max_batch, *shape), dtype=torch.float32)]
+    fallback = {torch.ops.aten._upsample_bilinear2d_aa.default}
+    decompositions = get_decompositions(False)
+    if precision_policy == 'torch_sensitive':
+        decompositions = preserve_sensitive_decompositions(decompositions)
+        fallback.update({torch.ops.aten.scaled_dot_product_attention.default,
+                         torch.ops.aten._scaled_dot_product_flash_attention.default,
+                         torch.ops.aten._scaled_dot_product_efficient_attention.default,
+                         torch.ops.aten._scaled_dot_product_cudnn_attention.default,
+                         torch.ops.aten.layer_norm.default, torch.ops.aten.native_layer_norm.default,
+                         torch.ops.aten.gelu.default})
+    else:
+        decompositions = fp32_attention_decompositions(decompositions)
     settings = CompilationSettings(
-        use_explicit_typing=True, disable_tf32=True, min_block_size=5, optimization_level=1,
+        use_explicit_typing=True, disable_tf32=True,
+        min_block_size=1 if precision_policy == 'torch_sensitive' else 5, optimization_level=1,
         workspace_size=16 * 1024**3, max_aux_streams=0,
         cache_built_engines=True, reuse_cached_engines=True,
         timing_cache_path=str(cache_directory / 'timing.bin'),
-        torch_executed_ops={torch.ops.aten._upsample_bilinear2d_aa.default},
+        torch_executed_ops=fallback,
     )
     # Match the 2.8 Dynamo compile pipeline, changing only the attention
     # decomposition and making reduction dtype semantics explicit.
     program = torch_tensorrt.dynamo.trace(module.eval(), inputs=inputs)
     program = pre_export_lowering(program, settings)
-    program = program.run_decompositions(fp32_attention_decompositions(get_decompositions(False)))
+    program = program.run_decompositions(decompositions)
     lowered = post_lowering(program.module(), settings)
     reductions = materialize_reduction_dtypes(lowered)
+    preserved = [str(n.target) for n in lowered.graph.nodes if n.op == 'call_function'
+                 and n.target in fallback]
+    if precision_policy == 'torch_sensitive' and not any('scaled_dot_product' in x for x in preserved):
+        raise RuntimeError('Hybrid candidate lost native attention before partitioning')
+    lowered_comparison = None
+    if example_input is not None:
+        lowered_comparison = compare_outputs(module(example_input), lowered(example_input), output_names)
+        if not lowered_comparison['passed']:
+            raise RuntimeError(f'Lowered PyTorch graph failed feature gate: {lowered_comparison}')
     cache = DiskEngineCache(str(cache_directory), 16 * 1024**3)
     with explicit_output_casts() as casts:
         compiled = compile_module(lowered, inputs, {}, settings, cache)
     compiled.explicit_output_casts = casts
     compiled.explicit_reduction_dtypes = reductions
+    compiled.lowered_feature_gate = lowered_comparison
+    compiled.preserved_torch_ops = preserved
     return compiled
