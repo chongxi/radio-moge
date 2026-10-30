@@ -171,6 +171,43 @@ def explicit_output_casts():
         TRTInterpreter.output = original
 
 
+def retain_shape_tensor_storage(module):
+    """Keep Python-runtime shape buffers alive beyond setup_input_tensors.
+
+    Torch-TensorRT 2.8 stores their addresses in TensorRT but owns the buffers
+    only in setup's local variables. infer_shapes runs after setup returns.
+    This instance-only workaround leaves the installed runtime unchanged.
+    """
+    bindings = [(i, name) for i, name in enumerate(module.input_names)
+                if module.engine.is_shape_inference_io(name)]
+    if not bindings:
+        return []
+    if hasattr(module, '_retained_shape_input_storage'):
+        raise RuntimeError('Shape input lifetime workaround already installed')
+    original = module.setup_input_tensors
+    module._retained_shape_input_storage = {}
+
+    def setup(inputs, cudagraphs_enabled, need_cudagraphs_record):
+        if cudagraphs_enabled or need_cudagraphs_record:
+            raise RuntimeError('Shape input lifetime prototype does not support CUDA graphs')
+        original(inputs, cudagraphs_enabled, need_cudagraphs_record)
+        buffers = {}
+        for index, name in bindings:
+            value = inputs[index]
+            if value.dtype not in (torch.int32, torch.int64):
+                raise TypeError('Shape inputs must be int32 or int64')
+            # Preserve the validated engine input dtype and own independent
+            # storage, including when the source tensor already lives on CPU.
+            buffers[name] = value.detach().cpu().contiguous().numpy().copy()
+        module._retained_shape_input_storage = buffers
+        for name, buffer in buffers.items():
+            if not module.context.set_tensor_address(name, buffer.ctypes.data):
+                raise RuntimeError(f'Failed to bind retained shape input {name}')
+
+    module.setup_input_tensors = setup
+    return [name for _, name in bindings]
+
+
 def compile_encoder(module, shape, cache_directory, min_batch=4, opt_batch=64, max_batch=128,
                     precision_policy='fp32_attention', example_input=None, output_names=None):
     """Fixed spatial bucket, dynamic batch; preserve mixed precision explicitly."""
@@ -202,6 +239,7 @@ def compile_encoder(module, shape, cache_directory, min_batch=4, opt_batch=64, m
         decompositions = fp32_attention_decompositions(decompositions)
     settings = CompilationSettings(
         use_explicit_typing=True, disable_tf32=True,
+        use_python_runtime=precision_policy == 'torch_sensitive',
         min_block_size=1 if precision_policy == 'torch_sensitive' else 5, optimization_level=1,
         workspace_size=16 * 1024**3, max_aux_streams=0,
         cache_built_engines=True, reuse_cached_engines=True,
@@ -227,6 +265,17 @@ def compile_encoder(module, shape, cache_directory, min_batch=4, opt_batch=64, m
     cache = DiskEngineCache(str(cache_directory), 16 * 1024**3)
     with explicit_output_casts() as casts:
         compiled = compile_module(lowered, inputs, {}, settings, cache)
+    retained_bindings = {}
+    if precision_policy == 'torch_sensitive':
+        from torch_tensorrt.dynamo.runtime._PythonTorchTensorRTModule import PythonTorchTensorRTModule
+
+        for name, child in compiled.named_modules():
+            if isinstance(child, PythonTorchTensorRTModule):
+                bindings = retain_shape_tensor_storage(child)
+                if bindings:
+                    retained_bindings[name] = bindings
+    compiled.retained_shape_input_bindings = retained_bindings
+    compiled.runtime_backend = 'python' if settings.use_python_runtime else 'cpp'
     compiled.explicit_output_casts = casts
     compiled.explicit_reduction_dtypes = reductions
     compiled.lowered_feature_gate = lowered_comparison

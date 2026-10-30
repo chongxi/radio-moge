@@ -8,6 +8,7 @@ from radio_moge.trt_encoders import (
     MoGeTensorOutputs, RadioTensorOutputs, compare_outputs, explicit_output_casts,
     fp32_attention_decompositions, materialize_reduction_dtypes,
     preserve_sensitive_decompositions,
+    retain_shape_tensor_storage,
 )
 from radio_moge.upstream import radio_input
 from test_training import tiny_system
@@ -138,3 +139,41 @@ def test_hybrid_lowering_keeps_native_attention_and_exact_output():
     assert any(n.target == torch.ops.aten.scaled_dot_product_attention.default
                for n in lowered.graph.nodes)
     assert torch.equal(model(*inputs), lowered(*inputs))
+
+
+def test_shape_input_buffers_survive_setup_and_preserve_multiple_binding_types():
+    import ctypes
+    import gc
+    import numpy as np
+
+    pointers = {}
+    def bind(name, address):
+        pointers[name] = address
+        return True
+    runtime = SimpleNamespace(
+        input_names=['data', 'batch', 'size'],
+        engine=SimpleNamespace(is_shape_inference_io=lambda name: name != 'data'),
+        context=SimpleNamespace(set_tensor_address=bind),
+        setup_input_tensors=lambda inputs, *flags: bind('data', inputs[0].data_ptr()),
+    )
+    inputs = [torch.ones(4, 3), torch.tensor([4], dtype=torch.int64),
+              torch.tensor([3, 16, 80], dtype=torch.int32)]
+    assert retain_shape_tensor_storage(runtime) == ['batch', 'size']
+    for batch in (4, 16, 64, 4):
+        inputs[1].fill_(batch)
+        runtime.setup_input_tensors(inputs, False, False)
+        inputs[1].zero_()  # Shape storage must not alias a caller's CPU tensor.
+        gc.collect()
+        churn = [np.full(3, -1, dtype=np.int64) for _ in range(100)]
+        assert ctypes.c_int64.from_address(pointers['batch']).value == batch
+        assert list((ctypes.c_int32 * 3).from_address(pointers['size'])) == [3, 16, 80]
+        assert pointers['data'] == inputs[0].data_ptr()
+        assert len(runtime._retained_shape_input_storage) == 2
+        del churn
+    with pytest.raises(RuntimeError, match='already installed'):
+        retain_shape_tensor_storage(runtime)
+    with pytest.raises(RuntimeError, match='CUDA graphs'):
+        runtime.setup_input_tensors(inputs, True, True)
+    runtime.context.set_tensor_address = lambda *args: False
+    with pytest.raises(RuntimeError, match='Failed to bind'):
+        runtime.setup_input_tensors(inputs, False, False)

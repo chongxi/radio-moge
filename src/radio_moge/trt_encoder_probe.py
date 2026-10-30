@@ -137,6 +137,8 @@ def main():
                     row['precision_policy'] = args.precision_policy
                     row['lowered_feature_gate'] = compiled.lowered_feature_gate
                     row['preserved_torch_ops'] = compiled.preserved_torch_ops
+                    row['runtime_backend'] = compiled.runtime_backend
+                    row['retained_shape_input_bindings'] = compiled.retained_shape_input_bindings
                     row['compiled_modules'] = [dict(name=n, type=type(m).__name__)
                                                for n, m in compiled.named_modules()]
                     row['tensor_rt_partitions'] = sum('tensorrt' in type(m).__module__.lower()
