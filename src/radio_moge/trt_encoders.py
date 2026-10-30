@@ -87,7 +87,9 @@ def compile_encoder(module, shape, cache_directory, min_batch=4, opt_batch=64, m
         inputs=[torch_tensorrt.Input(min_shape=(min_batch, *shape),
                                     opt_shape=(opt_batch, *shape),
                                     max_shape=(max_batch, *shape), dtype=torch.float32)],
-        enabled_precisions={torch.float32, torch.bfloat16}, use_explicit_typing=True,
+        # Explicit typing follows the exported autocast nodes. Torch-TensorRT 2.8
+        # forbids enabled_precisions together with this option.
+        use_explicit_typing=True,
         disable_tf32=True, min_block_size=5, optimization_level=1,
         workspace_size=4 * 1024**3, max_aux_streams=0,
         cache_built_engines=True, reuse_cached_engines=True,
