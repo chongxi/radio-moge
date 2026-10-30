@@ -3,6 +3,7 @@
 import argparse
 import base64
 import gzip
+import html
 import json
 from pathlib import Path
 import struct
@@ -34,6 +35,15 @@ def build(root, output):
     display = {k: report[k] for k in ["labels", "names", "samples", "summary", "checkpoint_step",
                                     "selection_metric", "selection_value"]}
     page = (repo / "web/cosine-clouds.html").read_text()
+    if report.get("view"):
+        view = report["view"]
+        page = page.replace("Cosine 最佳权重 × MoGe-2", html.escape(view["title"]))
+        page = page.replace("同一输入图像 · 同步三维视角 · 各自预测的几何与尺度", html.escape(view["subtitle"]))
+        page = page.replace("最佳验证 spatial cosine", html.escape(view["badge_label"]))
+        old_protocol = page[page.index("<p>两侧使用相同 RGB、"):page.index("<p>展示点云")]
+        page = page.replace(old_protocol, "<p>" + html.escape(view["protocol"]) + "</p>")
+        page = page.replace("以上为这 20 张图的平均值；下表为当前图像。AbsRel 和 RMSE 越低越好。",
+                            html.escape(view["caveat"]) + " 下表为当前图像；AbsRel 和 RMSE 越低越好。")
     page = page.replace("__DATA__", json.dumps(display, separators=(",", ":")).replace("</", "<\\/"))
     page = page.replace("__BUNDLE__", bundle.read_text().replace("</script", "<\\/script"))
     for destination in [root / "index.html", output]:
