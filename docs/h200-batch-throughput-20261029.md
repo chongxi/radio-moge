@@ -187,3 +187,91 @@ Plans, reports, telemetry and code bundles are under
 
 Changing effective batch changes the optimization trajectory. These benchmarks
 establish throughput and finite updates, not convergence or generalization.
+
+## Frozen-encoder TensorRT prototype, 2026-10-30
+
+The tested PyTorch/TensorRT hybrid is **not suitable for adoption**: RADIO passed
+the feature checks but ran slower, while MoGe failed the original feature-error
+threshold. This result concerns this implementation and precision policy; it
+does not establish a TensorRT or H200 performance ceiling.
+
+This separate, bounded experiment loaded only the frozen encoders. It did not
+load the trained adapter or Adam state, run training updates, or change any
+completed model, evaluation or backup. Implementation revision:
+`50810bb5db308804178565a81c677bd9e42ed681`. Torch-TensorRT 2.8.0 and TensorRT
+10.12.0.36 were isolated from the existing PyTorch 2.8.0+cu128 environment.
+
+The probe preserved RADIO spatial and summary features plus layers 7, 15, 23
+and 31, and MoGe spatial and summary features, including its original antialias
+operation. It used the original BF16 autocast policy, explicit typing, disabled
+TF32, no INT8/FP8, 16 GiB builder workspace, and batch profiles 4/64/128 for each
+fixed image orientation. Attention, LayerNorm and GELU stayed in native PyTorch;
+other supported operations used TensorRT. MoGe antialiasing also stayed in
+PyTorch. This is a hybrid backend.
+
+Earlier decomposed variants failed the feature gates. Direct exported PyTorch
+graphs were exact in the diagnostic, while attention decomposition introduced
+error before TensorRT compilation. Keeping sensitive operations native avoided
+that lowering error, but split the encoders into many engine boundaries.
+The hybrid also exposed a dynamic-shape host-buffer lifetime issue in the 2.8
+runtime. A scoped Python-runtime wrapper retains each shape input's CPU storage
+through inference; installed dependency files were not modified. A synthetic
+GPU check exercised batches 4→16→64→4 with two real cross-engine shape bindings
+before full encoder compilation. That check passed and was not used for timing.
+
+For each full component, every requested output at batches 4, 16 and 64 had to
+be finite, match shape and dtype, have relative L2 error ≤1%, and have mean
+per-token cosine ≥0.999 before timing. Inputs were actual augmented images
+already resident on the GPU. Timing used two warmups, six synchronized wall-time
+samples in each of two reversed execution orders, giving 12 measured samples
+per backend and batch. Compilation and input preparation were excluded.
+
+### Completed 640×480 results
+
+RADIO's 18 feature comparisons (three batches × six outputs) were exactly equal
+to the PyTorch reference. The compiled hybrid contained 130 TensorRT partitions,
+129 PyTorch fallback partitions and 69 partitions with retained shape inputs.
+Cold compilation took 1,057.51 seconds.
+
+| RADIO batch | PyTorch mean | Hybrid mean | Hybrid latency increase |
+|---:|---:|---:|---:|
+| 16 | 74.039 ms | 82.083 ms | 10.865% |
+| 64 | 284.376 ms | 293.192 ms | 3.100% |
+
+MoGe contained 98 TensorRT partitions, 98 PyTorch fallback partitions and 49
+partitions with retained shape inputs. Cold compilation took 761.90 seconds.
+Its lowered PyTorch graph was exact at batch 4, but all six compiled feature
+comparisons exceeded the 1% relative-L2 gate:
+
+| MoGe batch | Spatial relative L2 | Summary relative L2 |
+|---:|---:|---:|
+| 4 | 1.3859% | 1.0443% |
+| 16 | 1.0291% | 1.0057% |
+| 64 | 1.1324% | 1.0182% |
+
+Shapes, dtypes and finiteness passed; the lowest mean cosine was 0.9998507.
+Cosine alone was insufficient to pass the gate. **No MoGe speed measurements
+were performed**, and the threshold was not relaxed.
+
+Many small engine calls and runtime shape handling are plausible contributors
+to RADIO's slowdown, but no kernel trace isolated their cost. MoGe's remaining
+conversion error was not localized to a particular operation. Neither a causal
+performance breakdown nor an end-to-end training speedup is established.
+
+### Stop condition and coverage
+
+Attempt 06 reached its external 2,430-second limit and exited with code 124 at
+`1793330617.2929444`. The controller, timeout process and GPU worker were absent,
+and the GPU process list was empty at `1793330635.40759`. The 480×640 RADIO build
+was incomplete; 480×640 MoGe had not started. The stale `compiling` field in
+`probe.json` is the last progress snapshot, not evidence of a live process.
+No further attempt was launched, and no production backend was enabled.
+
+Results and controller evidence are preserved under
+`/shared/radio-moge/chongxi/data-expansion-attention-20261022/h200-trt-frozen-encoders-20261030/`,
+particularly `attempt-06/probe.json`, `attempt-06/controller.json`,
+`attempt-06/latest-monitor.json` and `attempt-06/analysis.json`.
+CPU validation comprised 11 tests, Ruff and syntax checks; GPU evidence above
+is narrower than complete two-orientation validation. Future acceleration work
+would need to resolve MoGe conversion error and measure the overhead of the
+hybrid boundaries before this backend could be reconsidered.
