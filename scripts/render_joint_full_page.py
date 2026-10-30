@@ -203,7 +203,7 @@ def render(root, page):
         download_panel = f'''<section id="scannetpp"><h2>ScanNet++ 下载</h2>
 <p><span class="pill">{escape(labels.get(state['stage'],state['stage']))}</span>
  · 已完成传输 {state['verified_download_bytes']/1e9:.2f} GB / {state['completed_files']:,} 个文件</p>
-<p>官方默认资产与划分，清单 {state.get('scenes',0):,} 个场景。单进程限速 20 MiB/s，逐文件校验；总字节数尚未核实，不用估算大小显示完成百分比。</p>
+<p>官方默认资产与划分，清单 {state.get('scenes',0):,} 个场景。单个下载进程，{'不设带宽上限' if state.get('rate_limit_mib_s',20)==0 else '限速 '+str(state.get('rate_limit_mib_s',20))+' MiB/s'}，当前传输 {state.get('active_range_workers',1)} 个连接，逐文件校验；总字节数尚未核实，不用估算大小显示完成百分比。</p>
 <p class="muted">下载开始前已确认正式训练更新。这批新数据尚未加入当前训练。状态更新：{download_stamp}</p></section>'''
     body = f'''<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>4×2048 QK norm · 全量训练</title><style>
