@@ -6,7 +6,8 @@ const assert = require('node:assert/strict');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright-core');
 const linked = s => {
   for (const key of ['cameras', 'targets'])
-    s[key][0].forEach((v, i) => assert(Math.abs(v - s[key][1][i]) < 1e-8));
+    for (let branch = 1; branch < s[key].length; branch++)
+      s[key][0].forEach((v, i) => assert(Math.abs(v - s[key][branch][i]) < 1e-8));
 };
 (async () => {
   const output = process.argv[3]; fs.mkdirSync(output, {recursive: true});
@@ -21,7 +22,8 @@ const linked = s => {
     await page.goto(pathToFileURL(path.resolve(process.argv[2])).href);
     await page.waitForFunction(() => document.body.dataset.ready === 'true');
     const first = await page.evaluate(() => __cloudTest()); linked(first);
-    assert.equal(await page.locator('.cloud canvas').count(), 2);
+    const branches = await page.evaluate(() => CLOUD_DATA.names.length);
+    assert.equal(await page.locator('.cloud canvas').count(), branches);
     assert(first.counts.every(n => n > 10000));
     const coloredPixels = await page.locator('#view0 canvas').evaluate(c => {
       const canvas = document.createElement('canvas'); canvas.width = c.width; canvas.height = c.height;
@@ -41,6 +43,7 @@ const linked = s => {
     const zoomed = await page.evaluate(() => __cloudTest()); linked(zoomed);
     assert.notDeepEqual(zoomed.cameras[0], rotated.cameras[0]);
     await page.locator('#overlay').check(); assert(await page.locator('#card1').isHidden());
+    for (let i = 2; i < branches; i++) assert(await page.locator('#card'+i).isHidden());
     await page.locator('#reset').click();
     await page.screenshot({path: path.join(output, 'overlay.png'), fullPage: true});
     await page.locator('#camera').selectOption('shared');
@@ -70,7 +73,7 @@ const linked = s => {
     await page.screenshot({path: path.join(output, 'mobile.png'), fullPage: true});
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     assert.deepEqual(errors, []); assert.deepEqual(network, []);
-    const result = {stage: 'passed', images: visited.length, coloredPixels, firstCounts: first.counts,
+    const result = {stage: 'passed', images: visited.length, branches, coloredPixels, firstCounts: first.counts,
       synchronizedOrbitZoom: true, overlay: true, cameraSwitch: true, plyVerified: true,
       mobileNoOverflow: true, externalRequests: network.length, errors};
     fs.writeFileSync(path.join(output, 'browser-verification.json'), JSON.stringify(result, null, 2) + '\n');
