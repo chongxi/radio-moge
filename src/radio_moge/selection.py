@@ -21,6 +21,10 @@ def selection_winners(selections, best, metrics, step):
     if metrics.get('postprocess_failed', 1) != 0:
         return winners
     for name, spec in selections.items():
+        if spec['metric'].startswith('resolution/'):
+            prefix = '/'.join(spec['metric'].split('/')[:2])
+            if metrics.get(prefix + '/postprocess_failed', 1) != 0:
+                continue
         value = metrics.get(spec['metric'])
         if value is None or not math.isfinite(value):
             continue

@@ -18,9 +18,9 @@ def write(path, value):
     temp.replace(path)
 
 
-def monitor(root, remote):
+def monitor(root, remote, handoff_key=None, no_render=False):
     known={}
-    for p in (root/'train').glob('eval-*/*.json'):
+    for p in (root/'train').glob('eval-*/**/*.json'):
         known[str(p.relative_to(root))]=hashlib.sha256(p.read_bytes()).hexdigest()
     code='''import base64,hashlib,json,subprocess,sys,time
 from pathlib import Path
@@ -33,7 +33,7 @@ names += ['train/data-pipeline-benchmark-v2.json','preflight-compact-transport.j
 names += ['train/fork-state.json','train/checkpoint-selection.json','controller-console.log']
 names += ['initialization-recovery.json','recovery-controller-console.log','launch.json','recovery-launch.json']
 names += ['data-pipeline-recovery/'+n for n in ['status.json','resume-console.log','launch.json','controller-launch.json','controller-console.log','recovery-verification.json','request.json']]
-names += [str(p.relative_to(r)) for p in (r/'train').glob('eval-*/*.json')]
+names += [str(p.relative_to(r)) for p in (r/'train').glob('eval-*/**/*.json')]
 files={}
 for name in names:
  p=r/name
@@ -92,7 +92,7 @@ print(json.dumps(dict(checked_at=time.time(),files=files,processes=processes,gpu
     handoff_path=root.parent/'handoff.json'
     handoff=json.loads(handoff_path.read_text())
     continuation = config['train'].get('lr_schedule') == 'constant'
-    key = 'active_joint_continuation' if continuation else 'active_joint_full_training'
+    key = handoff_key or ('active_joint_continuation' if continuation else 'active_joint_full_training')
     handoff[key]=dict(root=str(root),remote_root=remote,
         stage=result['state'].get('stage','preparing'),last_step=result['last_step'],
         checked_at=result['checked_at'],summary_cleaning='per-token-zero-channel',
@@ -100,7 +100,8 @@ print(json.dumps(dict(checked_at=time.time(),files=files,processes=processes,gpu
                    'final evaluation and verified serial checkpoint backup'])
     write(handoff_path,handoff)
     page_root = root.parent / 'adapter-qknorm2048-full-s43-20261028' if continuation else root
-    render(page_root,Path('.kanna/visualizations/teacher-plane-pilot.html'))
+    if not no_render:
+        render(page_root,Path('.kanna/visualizations/teacher-plane-pilot.html'))
     print(json.dumps({k:v for k,v in result.items() if k not in ('copies','state')},ensure_ascii=False))
 
 
@@ -108,5 +109,7 @@ if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('root',type=Path)
     p.add_argument('remote_root')
+    p.add_argument('--handoff-key')
+    p.add_argument('--no-render', action='store_true')
     a=p.parse_args()
-    monitor(a.root,a.remote_root)
+    monitor(a.root,a.remote_root,a.handoff_key,a.no_render)

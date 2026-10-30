@@ -4,6 +4,7 @@ from contextlib import nullcontext
 import json
 import math
 import os
+import re
 from pathlib import Path
 import signal
 import time
@@ -154,6 +155,33 @@ def check_lr_fork(config, state, digests):
         raise ValueError("LR fork requires a bounded positive new budget")
 
 
+def check_resolution_fork(config, state, digests):
+    """Add training buckets and fixed validation views without silently changing the science."""
+    previous = state['config']['data']['buckets']
+    current = config['data']['buckets']
+    old, new = {tuple(x) for x in previous}, {tuple(x) for x in current}
+    if not old < new or len(new) != len(current):
+        raise ValueError('Resolution fork must add unique buckets and preserve every old bucket')
+    if any(len(x) != 2 or any(type(d) is not int or d < 16 or d > 2048 or d % 16
+                             for d in x) for x in current):
+        raise ValueError('Resolution fork requires supported patch-aligned buckets')
+    variants = config['evaluation'].get('resolution_variants', {})
+    if not variants or len(variants) > 3:
+        raise ValueError('Resolution fork needs one to three explicit validation views')
+    for name, view in variants.items():
+        if (not re.fullmatch(r'[a-z0-9-]{1,32}', name) or set(view) != {'bucket', 'num_tokens'}
+                or view['num_tokens'] is not None or tuple(view['bucket']) not in new - old):
+            raise ValueError('Each new validation view must use a new native training bucket')
+    if {tuple(v['bucket']) for v in variants.values()} != new - old:
+        raise ValueError('Every added bucket needs a matching validation view')
+    normalized = deepcopy(config)
+    normalized['data']['buckets'] = previous
+    normalized['evaluation'].pop('resolution_variants', None)
+    check_lr_fork(normalized, state, digests)
+    if config['train']['lr'] != state['config']['train']['lr']:
+        raise ValueError('Resolution fork preserves the source learning rate')
+
+
 def train(
     config,
     resume=None,
@@ -165,6 +193,7 @@ def train(
     fork_from=None,
     performance=None,
     budget_started_at=None,
+    resolution_fork=False,
 ):
     """Single-device experiment runner. system_adapter allows small CPU integration tests."""
     invocation_started = time.monotonic()
@@ -174,14 +203,16 @@ def train(
         raise ValueError("Choose exactly one of resume, init or fork-from")
     if extension is not None and not resume:
         raise ValueError("Budget extension requires --resume")
+    if resolution_fork and (not fork_from or extension or init or resume):
+        raise ValueError('Resolution fork requires a separate --fork-from experiment')
     if budget_started_at is not None and (not fork_from or not math.isfinite(budget_started_at)
                                          or not 0 < budget_started_at <= time.time()):
         raise ValueError('An original wall-clock start requires a constant-LR fork and a past timestamp')
     settings = config["train"]
     if performance is not None:
         from .performance import validate_performance
-        validate_performance(performance, config)
-        if not resume or extension or fork_from or init:
+        validate_performance(performance, config, constant_fork=resolution_fork)
+        if not resolution_fork and (not resume or extension or fork_from or init):
             raise ValueError("Performance tuning requires an unextended exact-state resume")
     accelerator = Accelerator(
         cpu=settings.get("device") == "cpu", mixed_precision=settings["precision"]
@@ -245,7 +276,14 @@ def train(
         raw_adapter.load_state_dict(state["adapter"])
         statistics.load_state_dict(state["statistics"])
         if fork_from:
-            check_lr_fork(config, state, digests)
+            (check_resolution_fork if resolution_fork else check_lr_fork)(config, state, digests)
+            if resolution_fork and performance:
+                parent_effective = (state.get('performance') or {}).get(
+                    'effective_batch', state['config']['train']['batch_size'] *
+                    state['config']['train']['accumulation'])
+                if (performance['effective_batch'] != parent_effective
+                        or performance.get('autotune') or performance.get('data_autotune')):
+                    raise ValueError('Resolution fork preserves effective batch and forbids tuning')
             optimizer.load_state_dict(state["optimizer"])
             for group in optimizer.param_groups:
                 group["lr"] = group["initial_lr"] = settings["lr"]
@@ -297,6 +335,12 @@ def train(
             "restored": ["adapter", "statistics", "optimizer_moments", "rng", "cursor"],
             "reset": ["lr_schedule", "wall_clock_budget", "best_selection", "tracking_run"],
         }
+        if resolution_fork:
+            fork_provenance['resolution_change'] = dict(
+                parent_buckets=state['config']['data']['buckets'], buckets=config['data']['buckets'],
+                sampling='uniform bucket per logical microbatch; same source/scene sampler',
+                augmentation='same seeded random aspect crop and horizontal flip',
+                validation_views=config['evaluation']['resolution_variants'])
         atomic_json(fork_provenance, output / "fork-state.json")
     if resume:
         atomic_json(
@@ -487,6 +531,14 @@ def train(
             config["evaluation"]["limit"],
         )
         metrics["feature/total"] = feature_loss_total(metrics, config['loss'])
+        for name, view in config['evaluation'].get('resolution_variants', {}).items():
+            variant = deepcopy(config)
+            variant['evaluation'].update(view)
+            with preserve_rng():
+                extra = evaluate(system, raw_adapter, statistics, validation, variant,
+                                 destination / name, config['evaluation']['limit'])
+            extra['feature/total'] = feature_loss_total(extra, config['loss'])
+            metrics.update({f'resolution/{name}/{key}': value for key, value in extra.items()})
         if performance:
             metrics.update(schedule_position=schedule_position(step, performance),
                            logical_data_cursor=cursor, effective_batch=performance['effective_batch'])
@@ -541,7 +593,7 @@ def train(
                 link_selection('initial.pt', 'best.pt')
             if best_metrics:
                 atomic_json(best_metrics, output / 'checkpoint-selection.json')
-        if validation and not resume and not fork_from and settings.get("eval_at_start", False):
+        if validation and not resume and (not fork_from or resolution_fork) and settings.get("eval_at_start", False):
             validate()
         while step < total and not stop and not budget_exhausted():
             adapter.train()
@@ -726,6 +778,8 @@ def main():
     parser.add_argument("--config", required=True)
     parser.add_argument("--resume")
     parser.add_argument("--fork-from", help="New constant-LR experiment preserving optimizer, RNG and data cursor")
+    parser.add_argument('--resolution-fork', action='store_true',
+                        help='Explicit bucket additions with old/new validation; preserve Adam and LR')
     parser.add_argument(
         "--init", help="Initialize adapter/statistics from stage 1; reset optimizer"
     )
@@ -764,6 +818,7 @@ def main():
             performance=json.loads(Path(args.performance_config).read_text())
             if args.performance_config else None,
             budget_started_at=args.budget_started_at,
+            resolution_fork=args.resolution_fork,
         )
     )
 

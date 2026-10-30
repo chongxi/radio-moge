@@ -177,11 +177,23 @@ class MixtureBatches(Sampler):
             yield batch
 
 
-def evaluation_image(row, max_side=768):
+def evaluation_image(row, max_side=768, bucket=None):
     image = oriented_rgb(row)
     original_size = image.size
-    ratio = min(1, max_side / max(image.size))
-    size = tuple(max(1, round(v * ratio)) for v in image.size)
+    crop_box = None
+    if bucket is None:
+        ratio = min(1, max_side / max(image.size))
+        size = tuple(max(1, round(v * ratio)) for v in image.size)
+    else:
+        h, w = bucket
+        if min(h, w) <= 0 or h % 16 or w % 16:
+            raise ValueError("Evaluation bucket must contain positive patch-aligned dimensions")
+        iw, ih = image.size
+        cw, ch = min(iw, max(1, round(ih * w / h))), min(ih, max(1, round(iw * h / w)))
+        left, top = (iw - cw) // 2, (ih - ch) // 2
+        crop_box = (left, top, left + cw, top + ch)
+        image = image.crop(crop_box)
+        size = (w, h)
     image = image.resize(size, Image.Resampling.BILINEAR)
     depth = None
     if "depth" in row:
@@ -197,6 +209,9 @@ def evaluation_image(row, max_side=768):
         array = array.astype(np.float32) * float(row.get("depth_scale", 1.0))
         if rotation:
             array = np.rot90(array, -(rotation // 90)).copy()
+        if crop_box is not None:
+            left, top, right, bottom = crop_box
+            array = array[top:bottom, left:right]
         depth = torch.from_numpy(
             np.array(Image.fromarray(array).resize(size, Image.Resampling.NEAREST), copy=True)
         )

@@ -70,12 +70,16 @@ def evaluate(system, adapter, statistics, records, config, output=None, limit=No
 
     try:
         for index, record in enumerate(records[:limit] if limit else records):
-            image, gt = evaluation_image(record, settings["max_side"])
+            image, gt = evaluation_image(record, settings["max_side"], settings.get("bucket"))
             image = image.to(device)
             with autocast():
                 features, target_features = system.encode(
                     image, adapter.indices, num_tokens=settings["num_tokens"]
                 )
+                if settings.get("bucket") is not None and settings["num_tokens"] is None:
+                    expected = tuple(d // system.radio.patch_size for d in settings["bucket"])
+                    if tuple(features.spatial.shape[-2:]) != expected:
+                        raise ValueError("Native validation feature grid differs from its bucket")
             # Added branch time excludes the shared RADIO backbone and teacher.
             synchronize(device)
             start = time.perf_counter()
@@ -173,6 +177,10 @@ def evaluate(system, adapter, statistics, records, config, output=None, limit=No
         summary = aggregate(rows)
         summary.update(dataset_metrics(rows))
         if output is not None:
+            atomic_json(dict(bucket_hw=settings.get('bucket'), num_tokens=settings['num_tokens'],
+                             max_side=settings['max_side'], images=len(rows),
+                             preprocessing='center aspect crop then resize' if settings.get('bucket')
+                             else 'aspect-preserving longest-side resize'), output / 'protocol.json')
             atomic_json(rows, output / "per_image.json")
             atomic_json(summary, output / "metrics.json")
         return summary
