@@ -208,8 +208,30 @@ def retain_shape_tensor_storage(module):
     return [name for _, name in bindings]
 
 
+def add_readonly_engine_cache(cache, source):
+    """Read prior engine blobs on a miss; all saves/evictions stay in the new cache."""
+    original = cache.load
+    stats = dict(current_hits=0, reused_hits=0, misses=0)
+
+    def load(key, *args, **kwargs):
+        blob = original(key, *args, **kwargs)
+        if blob is not None:
+            stats['current_hits'] += 1
+            return blob
+        path = source / key / 'blob.bin' if source is not None else None
+        if path is not None and path.is_file():
+            stats['reused_hits'] += 1
+            return path.read_bytes()
+        stats['misses'] += 1
+        return None
+
+    cache.load = load
+    return stats
+
+
 def compile_encoder(module, shape, cache_directory, min_batch=4, opt_batch=64, max_batch=128,
-                    precision_policy='fp32_attention', example_input=None, output_names=None):
+                    precision_policy='fp32_attention', example_input=None, output_names=None,
+                    readonly_cache_directory=None):
     """Fixed spatial bucket, dynamic batch; preserve mixed precision explicitly."""
     import torch_tensorrt
     from torch_tensorrt.dynamo._compiler import (
@@ -263,6 +285,7 @@ def compile_encoder(module, shape, cache_directory, min_batch=4, opt_batch=64, m
         if not lowered_comparison['passed']:
             raise RuntimeError(f'Lowered PyTorch graph failed feature gate: {lowered_comparison}')
     cache = DiskEngineCache(str(cache_directory), 16 * 1024**3)
+    cache_stats = add_readonly_engine_cache(cache, readonly_cache_directory)
     with explicit_output_casts() as casts:
         compiled = compile_module(lowered, inputs, {}, settings, cache)
     retained_bindings = {}
@@ -276,6 +299,7 @@ def compile_encoder(module, shape, cache_directory, min_batch=4, opt_batch=64, m
                     retained_bindings[name] = bindings
     compiled.retained_shape_input_bindings = retained_bindings
     compiled.runtime_backend = 'python' if settings.use_python_runtime else 'cpp'
+    compiled.cache_reuse = cache_stats
     compiled.explicit_output_casts = casts
     compiled.explicit_reduction_dtypes = reductions
     compiled.lowered_feature_gate = lowered_comparison

@@ -16,6 +16,7 @@ def main():
         parser.add_argument('--' + name.replace('_', '-'), type=Path, required=True)
     parser.add_argument('--max-seconds', type=int, default=2400)
     parser.add_argument('--precision-diagnostic', action='store_true')
+    parser.add_argument('--reuse-engine-cache-from', type=Path)
     parser.add_argument('--precision-policy', choices=('fp32_attention', 'torch_sensitive'),
                         default='fp32_attention')
     args = parser.parse_args()
@@ -40,6 +41,8 @@ def main():
                '--max-seconds', str(args.max_seconds)]
     if not args.precision_diagnostic:
         command.extend(['--precision-policy', args.precision_policy])
+        if args.reuse_engine_cache_from is not None:
+            command.extend(['--reuse-engine-cache-from', str(args.reuse_engine_cache_from)])
     with (args.root / 'console.log').open('x') as log:
         child = subprocess.Popen(command, cwd=args.repo, env=env, stdin=subprocess.DEVNULL,
                                  stdout=log, stderr=subprocess.STDOUT)

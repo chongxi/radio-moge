@@ -5,7 +5,7 @@ import pytest
 import torch
 
 from radio_moge.trt_encoders import (
-    MoGeTensorOutputs, RadioTensorOutputs, compare_outputs, explicit_output_casts,
+    MoGeTensorOutputs, RadioTensorOutputs, add_readonly_engine_cache, compare_outputs, explicit_output_casts,
     fp32_attention_decompositions, materialize_reduction_dtypes,
     preserve_sensitive_decompositions,
     retain_shape_tensor_storage,
@@ -177,3 +177,26 @@ def test_shape_input_buffers_survive_setup_and_preserve_multiple_binding_types()
     runtime.context.set_tensor_address = lambda *args: False
     with pytest.raises(RuntimeError, match='Failed to bind'):
         runtime.setup_input_tensors(inputs, False, False)
+
+
+def test_engine_reuse_preserves_prior_cache_and_writes_only_new_entries(tmp_path):
+    prior, current = tmp_path / 'prior', tmp_path / 'current'
+    (prior / 'saved').mkdir(parents=True)
+    path = prior / 'saved' / 'blob.bin'
+    path.write_bytes(b'previous-engine')
+    identity = (path.stat().st_ino, path.stat().st_size, path.stat().st_mtime_ns)
+    entries = {'current': b'current-engine'}
+    def save(key, blob):
+        (current / key).mkdir(parents=True)
+        (current / key / 'blob.bin').write_bytes(blob)
+        entries[key] = blob
+    cache = SimpleNamespace(load=lambda key: entries.get(key), save=save)
+    stats = add_readonly_engine_cache(cache, prior)
+    assert cache.load('current') == b'current-engine'
+    assert cache.load('saved') == b'previous-engine'
+    assert cache.load('missing') is None
+    cache.save('saved', b'new-engine')
+    assert cache.load('saved') == b'new-engine'
+    assert stats == dict(current_hits=2, reused_hits=1, misses=1)
+    assert path.read_bytes() == b'previous-engine'
+    assert identity == (path.stat().st_ino, path.stat().st_size, path.stat().st_mtime_ns)

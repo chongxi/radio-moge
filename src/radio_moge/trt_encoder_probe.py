@@ -65,11 +65,17 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--reference-report', type=Path, required=True)
     parser.add_argument('--max-seconds', type=int, default=2400)
+    parser.add_argument('--reuse-engine-cache-from', type=Path)
     parser.add_argument('--precision-policy', choices=('fp32_attention', 'torch_sensitive'),
                         default='fp32_attention')
     args = parser.parse_args()
     if not 1 <= args.max_seconds <= 3600:
         raise ValueError('Probe must remain bounded')
+    if args.reuse_engine_cache_from is not None:
+        previous = json.loads((args.reuse_engine_cache_from / 'controller.json').read_text())
+        if (previous.get('stage') not in ('finished', 'failed')
+                or previous.get('child_pid') is not None or 'returncode' not in previous):
+            raise RuntimeError('Engine cache source attempt has not finished')
     report_path = args.root / 'probe.json'
     if report_path.exists():
         raise FileExistsError('Probe already started; inspect existing results')
@@ -85,7 +91,9 @@ def main():
                             ('torch', 'torch-tensorrt', 'tensorrt')},
                   input_profiles=dict(min_batch=4, opt_batch=64, max_batch=128,
                                       buckets=config['data']['buckets']),
-                  cold_compilation_excluded_from_timings=True, precision_policy=args.precision_policy)
+                  cold_compilation_excluded_from_timings=True, precision_policy=args.precision_policy,
+                  readonly_cache_source=str(args.reuse_engine_cache_from)
+                  if args.reuse_engine_cache_from is not None else None)
     atomic_json(report, report_path)
     deadline = time.monotonic() + args.max_seconds
     try:
@@ -117,6 +125,8 @@ def main():
                 if time.monotonic() >= deadline:
                     raise TimeoutError('Probe deadline reached')
                 cache = args.root / 'engines' / f'{name}-{bucket[0]}x{bucket[1]}'
+                previous_cache = (args.reuse_engine_cache_from / 'engines' / cache.name
+                                  if args.reuse_engine_cache_from is not None else None)
                 cache.mkdir(parents=True, exist_ok=True)
                 row = dict(component=name, bucket=list(bucket), stage='compiling',
                            started_at=time.time(), grid=list(grid), outputs=names, comparisons=[], timings=[])
@@ -128,7 +138,8 @@ def main():
                     with torch.no_grad():
                         compiled = compile_encoder(eager, tuple(value.shape[1:]), cache,
                                                    precision_policy=args.precision_policy,
-                                                   example_input=value[:4], output_names=names)
+                                                   example_input=value[:4], output_names=names,
+                                                   readonly_cache_directory=previous_cache)
                     torch.cuda.synchronize()
                     row['compile_seconds'] = time.perf_counter() - start
                     row['workspace_limit_bytes'] = 16 * 1024**3
@@ -139,6 +150,7 @@ def main():
                     row['preserved_torch_ops'] = compiled.preserved_torch_ops
                     row['runtime_backend'] = compiled.runtime_backend
                     row['retained_shape_input_bindings'] = compiled.retained_shape_input_bindings
+                    row['cache_reuse'] = compiled.cache_reuse
                     row['compiled_modules'] = [dict(name=n, type=type(m).__name__)
                                                for n, m in compiled.named_modules()]
                     row['tensor_rt_partitions'] = sum('tensorrt' in type(m).__module__.lower()
