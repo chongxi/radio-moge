@@ -43,3 +43,34 @@ def test_rejects_state_changes_or_silent_budget_extension(change):
         plan['stop_on_metric_regression'] = True
     with pytest.raises(ValueError):
         module('run_cosine_priority_resume').validate(plan, proof, config, now)
+
+
+def test_authorized_lr_request_retains_source_state_and_deadline():
+    plan, proof, config = inputs()
+    plan['learning_rate'] = 1e-5
+    request = dict(authorized=True, id='user-lr1e5', previous_lr=5e-6, learning_rate=1e-5,
+                   expected_step=95909, expected_cursor=12336,
+                   runtime_limits=proof['runtime_limits'], budget_started_at=1000)
+    validate = module('run_cosine_priority_resume').validate
+    assert validate(plan, proof, config, 5000, request) == 39800
+    for key, value in [('expected_cursor', 0), ('previous_lr', 2.5e-6),
+                       ('budget_started_at', 5000), ('learning_rate', 2e-5)]:
+        bad = dict(request, **{key: value})
+        with pytest.raises(ValueError):
+            validate(plan, proof, config, 5000, bad)
+
+
+def test_initialization_interruption_requires_no_new_state():
+    validate = module('run_cosine_priority_resume').validate_previous_stop
+    plan, _, _ = inputs()
+    old = dict(pid=47404, last_exit_code=-2)
+    interrupted = dict(stage='passed', controller_pid=47404, no_new_optimizer_updates=True,
+                       interrupted_before_restore=True, processes_absent=True,
+                       source_content_identity=plan['source_identity'][:4],
+                       resume_step=95909, resume_cursor=12336)
+    validate(plan, old, interrupted)
+    for key in ['no_new_optimizer_updates', 'interrupted_before_restore', 'processes_absent']:
+        with pytest.raises(ValueError):
+            validate(plan, old, dict(interrupted, **{key: False}))
+    with pytest.raises(ValueError):
+        validate(plan, dict(old, last_exit_code=1), interrupted)
