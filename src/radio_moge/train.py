@@ -195,6 +195,7 @@ def train(
     budget_started_at=None,
     resolution_fork=False,
     data_fork=False,
+    lr_adjustment=None,
 ):
     """Single-device experiment runner. system_adapter allows small CPU integration tests."""
     invocation_started = time.monotonic()
@@ -204,6 +205,8 @@ def train(
         raise ValueError("Choose exactly one of resume, init or fork-from")
     if extension is not None and not resume:
         raise ValueError("Budget extension requires --resume")
+    if lr_adjustment is not None and (not resume or extension or performance):
+        raise ValueError('LR adjustment requires exact resume with inherited performance and budget')
     if resolution_fork and (not fork_from or extension or init or resume):
         raise ValueError('Resolution fork requires a separate --fork-from experiment')
     if data_fork and (not fork_from or extension or init or resume or resolution_fork):
@@ -324,6 +327,10 @@ def train(
             step, cursor, best = state["step"], state["cursor"], state["best"]
             elapsed_before = state.get("wall_clock_elapsed_seconds", 0.0)
             restore_rng(state["rng"])
+    lr_adjustments = deepcopy((state or {}).get('lr_adjustments', [])) if resume else []
+    if lr_adjustment is not None:
+        from .lr_adjustment import apply_lr_adjustment
+        lr_adjustments = apply_lr_adjustment(config, state, optimizer, scheduler, lr_adjustment)
     limits = continued_limits(settings, state if resume else None, extension)
     performance = performance or (state or {}).get('performance')
     constant_fork = bool(fork_from or (resume and (state or {}).get('fork_provenance')))
@@ -386,6 +393,7 @@ def train(
                 "config_and_manifest_match": True,
                 "execution_revision": execution_revision,
                 "restored": ["adapter", "statistics", "optimizer", "scheduler", "rng", "cursor"],
+                "lr_adjustments": lr_adjustments,
             },
             output / "resume-state.json",
         )
@@ -431,6 +439,8 @@ def train(
         moge_weights=config["models"].get("moge_revision", MOGE_REVISION),
     )
     atomic_json(config, output / "config.json")
+    if lr_adjustments:
+        atomic_json(lr_adjustments, output / 'lr-adjustments.json')
     provenance = {
         "revisions": revisions,
         "data_digests": digests,
@@ -445,9 +455,12 @@ def train(
         "runtime_limits": limits,
         "fork_provenance": fork_provenance,
         "performance": performance,
+        "lr_adjustments": lr_adjustments,
     }
     atomic_json(provenance, output / "provenance.json")
     tracker = ExperimentTracker(config, output, resume=bool(resume), provenance=provenance)
+    if lr_adjustments:
+        tracker.record_lr_adjustments(lr_adjustments)
     writer = None
     if settings.get("tensorboard", True):
         from torch.utils.tensorboard import SummaryWriter
@@ -504,6 +517,7 @@ def train(
                 "execution_revision": provenance["execution_revision"],
                 "fork_provenance": fork_provenance,
                 "performance": performance,
+                "lr_adjustments": lr_adjustments,
             },
             output / filename,
         )
@@ -830,6 +844,7 @@ def main():
     parser = argparse.ArgumentParser(description="Train a RADIO → MoGe-2 adapter on one GPU")
     parser.add_argument("--config", required=True)
     parser.add_argument("--resume")
+    parser.add_argument('--lr-adjustment', help='Reviewed constant-LR change on exact-state resume')
     parser.add_argument("--fork-from", help="New constant-LR experiment preserving optimizer, RNG and data cursor")
     parser.add_argument('--resolution-fork', action='store_true',
                         help='Explicit bucket additions with old/new validation; preserve Adam and LR')
@@ -875,6 +890,8 @@ def main():
             budget_started_at=args.budget_started_at,
             resolution_fork=args.resolution_fork,
             data_fork=args.data_fork,
+            lr_adjustment=json.loads(Path(args.lr_adjustment).read_text())
+            if args.lr_adjustment else None,
         )
     )
 

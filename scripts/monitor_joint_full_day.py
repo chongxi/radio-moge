@@ -8,6 +8,10 @@ import math
 from pathlib import Path
 import shlex
 import subprocess
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
+from radio_moge.lr_adjustment import expected_constant_lr
 
 from render_joint_full_page import render, lines
 
@@ -31,6 +35,7 @@ names += ['train/data-pipeline-benchmark.json']
 names += ['data-pipeline-transition/'+n for n in ['status.json','resume-console.log','launch.json','controller-launch.json','controller-console.log','checkpoint-verification.json','request.json']]
 names += ['train/data-pipeline-benchmark-v2.json','preflight-compact-transport.json']
 names += ['train/fork-state.json','train/checkpoint-selection.json','train/coverage.json','controller-console.log']
+names += ['train/lr-adjustments.json','lr-adjustment-20261031/status.json','lr-adjustment-20261031/resume-console.log']
 names += ['initialization-recovery.json','recovery-controller-console.log','launch.json','recovery-launch.json']
 names += ['data-pipeline-recovery/'+n for n in ['status.json','resume-console.log','launch.json','controller-launch.json','controller-console.log','recovery-verification.json','request.json']]
 names += [str(p.relative_to(r)) for p in (r/'train').glob('eval-*/**/*.json')]
@@ -67,6 +72,8 @@ print(json.dumps(dict(checked_at=time.time(),files=files,processes=processes,gpu
         assert hashlib.sha256(p.read_bytes()).hexdigest()==row['sha256']
         receipts[name]={k:v for k,v in row.items() if k!='data'}
     config=json.loads((root/'config.json').read_text())
+    lr_history_path = root/'train/lr-adjustments.json'
+    lr_history = json.loads(lr_history_path.read_text()) if lr_history_path.exists() else []
     rows=lines(root/'train/train.jsonl')
     for row in rows:
         assert all(math.isfinite(v) for v in row.values() if type(v) in (int,float))
@@ -80,8 +87,9 @@ print(json.dumps(dict(checked_at=time.time(),files=files,processes=processes,gpu
         schedule = row.get('schedule_position', step)
         ratio = row.get('effective_batch', t['batch_size']*t['accumulation']) / (t['batch_size']*t['accumulation'])
         constant = t.get('lr_schedule') == 'constant'
-        assert math.isclose(row['lr_used'],t['lr']*(1 if constant else factor(schedule-ratio)),rel_tol=1e-10)
-        assert math.isclose(row['lr'],t['lr']*(1 if constant else factor(schedule)),rel_tol=1e-10)
+        base_lr = expected_constant_lr(t['lr'], step, lr_history) if constant else t['lr']
+        assert math.isclose(row['lr_used'],base_lr*(1 if constant else factor(schedule-ratio)),rel_tol=1e-10)
+        assert math.isclose(row['lr'],base_lr*(1 if constant else factor(schedule)),rel_tol=1e-10)
         assert row['gradient_norm']>0
         if 'update_norm' in row:
             assert row['update_norm']>0

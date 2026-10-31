@@ -79,6 +79,11 @@ class ExperimentTracker:
                     ]
             self.run.log(payload)
 
+    def record_lr_adjustments(self, history):
+        if self.run is not None:
+            with preserve_rng():
+                self.run.config.update({'learning_rate_adjustments': history}, allow_val_change=True)
+
     def finish(self, success=True):
         if self.run is not None:
             self.run.finish(exit_code=0 if success else 1)
