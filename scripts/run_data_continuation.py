@@ -38,6 +38,53 @@ def validate_plan(plan, config, performance):
         raise ValueError('Training output must be isolated')
 
 
+def validate_source(plan, checkpoint):
+    parent = checkpoint.parent.parent
+    completion_path = Path(plan.get('source_completion_verification',
+                                    parent / 'completion-verification.json'))
+    source_path = Path(plan.get('source_verification',
+                               parent / 'final-review/source-verification.json'))
+    proof = json.loads(completion_path.read_text())
+    if proof['stage'] != 'passed':
+        raise ValueError('Source stage is not complete and verified')
+    if 'source_completion_verification' in plan and (
+            proof.get('final_step') != plan['parent_step']
+            or proof.get('normal_exit_code') != 0
+            or not all(proof.get('checks', {}).values()) or not proof.get('checks')):
+        raise ValueError('Explicit completed-epoch source must match the final successful step')
+    source = json.loads(source_path.read_text())
+    selected = [f for f in source['files'] if f.get('relative') ==
+                str(checkpoint.relative_to(parent))]
+    if (source['stage'] != 'passed' or len(selected) != 1
+            or selected[0]['identity'] != plan['parent_identity']
+            or selected[0]['checkpoint']['step'] != plan['parent_step']):
+        raise ValueError('Selected checkpoint is not the verified source')
+    return parent
+
+
+def validate_dataset_views(plan, config, prepared, digest):
+    views = config['evaluation']['dataset_variants']
+    bindings = plan.get('validation_bindings')
+    if bindings is not None and set(bindings) != set(views):
+        raise ValueError('Each validation view needs an explicit verified binding')
+    for name, view in views.items():
+        expected = prepared['manifest_sha256']['val-scannetpp.jsonl']
+        if bindings is not None:
+            binding = bindings[name]
+            if binding['manifest'] != view['manifest']:
+                raise ValueError('Validation manifest differs from its binding')
+            proof = json.loads(Path(binding['preparation_proof']).read_text())
+            if proof['stage'] != 'passed':
+                raise ValueError('Validation preparation has not passed')
+            for key in binding['digest_key_path']:
+                proof = proof[key]
+            if not isinstance(proof, str) or proof != binding['sha256']:
+                raise ValueError('Validation digest differs from preparation proof')
+            expected = proof
+        if digest(Path(view['manifest'])) != expected:
+            raise ValueError('Frozen validation manifest changed')
+
+
 def run(root, repo, revision):
     plan = json.loads((root / 'plan.json').read_text())
     config = json.loads((root / 'config.json').read_text())
@@ -53,17 +100,7 @@ def run(root, repo, revision):
             raise RuntimeError('GPU already has a compute process')
         if identity(checkpoint) != plan['parent_identity']:
             raise ValueError('Source checkpoint identity changed')
-        parent = checkpoint.parent.parent
-        proof = json.loads((parent / 'completion-verification.json').read_text())
-        if proof['stage'] != 'passed':
-            raise ValueError('Source stage is not complete and verified')
-        source = json.loads((parent / 'final-review/source-verification.json').read_text())
-        selected = [f for f in source['files'] if f.get('relative') ==
-                    str(checkpoint.relative_to(parent))]
-        if (source['stage'] != 'passed' or len(selected) != 1
-                or selected[0]['identity'] != plan['parent_identity']
-                or selected[0]['checkpoint']['step'] != plan['parent_step']):
-            raise ValueError('Selected checkpoint is not the verified source')
+        parent = validate_source(plan, checkpoint)
         prepared = json.loads(Path(plan['snapshot_verification']).read_text())
         if prepared['stage'] != 'passed' or not prepared['decoded_all_accepted_images']:
             raise ValueError('Snapshot preparation has not passed')
@@ -80,9 +117,7 @@ def run(root, repo, revision):
             parent_config = json.loads((parent / 'config.json').read_text())
             if digest(Path(parent_config['data']['train_manifest'])) != prepared['original_train_sha256']:
                 raise ValueError('Snapshot does not preserve the source training manifest')
-        for view in config['evaluation']['dataset_variants'].values():
-            if digest(Path(view['manifest'])) != prepared['manifest_sha256']['val-scannetpp.jsonl']:
-                raise ValueError('Frozen new validation manifest changed')
+        validate_dataset_views(plan, config, prepared, digest)
         if plan['phase'] == 'coverage':
             count = prepared['counts']['original_train'] + prepared['counts']['scannetpp_train']
             if (plan['additional_updates'] != math.ceil(count / plan['effective_batch'])
