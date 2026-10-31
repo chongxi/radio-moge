@@ -10,7 +10,7 @@ from PIL import Image
 import pytest
 import torch
 
-from radio_moge.lr_adjustment import apply_lr_adjustment, expected_constant_lr
+from radio_moge.lr_adjustment import apply_lr_adjustment, expected_constant_lr, reviewed_source_lr
 from radio_moge.train import train
 from test_performance import feature_config, profile
 from test_training import tiny_system
@@ -142,6 +142,61 @@ def test_lr_resume_preserves_full_coverage_and_original_budget(tmp_path, monkeyp
     assert finished["lr_adjustments"] == resumed["lr_adjustments"]
     logged = [json.loads(line) for line in (final.parent / "train.jsonl").read_text().splitlines()]
     assert [r["lr_used"] for r in logged] == [2.5e-6, 5e-6, 5e-6]
+    # A later dataset stage inherits the actual adjusted LR, despite the
+    # parent's immutable initial config retaining2.5e-6. No tensor state resets.
+    next_config = deepcopy(trial)
+    next_config['output_dir'] = str(tmp_path/'next-data-stage')
+    next_config['train'].update(lr=5e-6, steps=8)  # 38records/effective16 =>3updates.
+    from radio_moge.data_fork import check_data_fork
+    unreviewed = deepcopy(next_config)
+    unreviewed['train']['lr'] = 1e-5
+    with pytest.raises(ValueError, match='cannot increase'):
+        check_data_fork(unreviewed, finished, finished['data_digests'])
+    next_path = train(next_config, fork_from=final, data_fork=True,
+                      performance=profile(5, 0), system_adapter=tiny_system())
+    next_initial = torch.load(next_path.parent/'initial.pt', weights_only=True)
+    assert next_initial['step'] == 5 and next_initial['cursor'] == 0
+    assert next_initial['optimizer']['param_groups'][0]['lr'] == 5e-6
+    assert next_initial['config']['train']['lr'] == 5e-6
+    assert next_initial['lr_adjustments'] == []
+    assert next_initial['fork_provenance']['parent_lr'] == 5e-6
+    for key, values in finished['optimizer']['state'].items():
+        for name, value in values.items():
+            torch.testing.assert_close(next_initial['optimizer']['state'][key][name], value,
+                                       rtol=0, atol=0)
+    assert torch.load(next_path, weights_only=True)['step'] == 8
+
+
+@pytest.mark.parametrize('bad', ['unauthorized', 'future', 'chain', 'duplicate', 'optimizer',
+                                  'scheduler', 'nan', 'reset', 'incomplete'])
+def test_data_fork_source_rate_requires_complete_consistent_ledger(bad):
+    change = dict(authorized=True, id='reviewed-lr', expected_step=10, effective_after_step=10,
+                  previous_lr=2.5e-6, learning_rate=1e-5, optimizer_state_reset=False,
+                  data_cursor_reset=False, budget_extended=False)
+    state = dict(config={'train': dict(lr=2.5e-6, lr_schedule='constant')}, step=10,
+                 lr_adjustments=[change], optimizer={'param_groups': [dict(lr=1e-5, initial_lr=1e-5)]},
+                 scheduler=dict(base_lrs=[1e-5], _last_lr=[1e-5]))
+    assert reviewed_source_lr(state) == 1e-5
+    if bad == 'unauthorized':
+        change['authorized'] = False
+    elif bad == 'future':
+        change['effective_after_step'] = change['expected_step'] = 11
+    elif bad == 'chain':
+        change['previous_lr'] = 3e-6
+    elif bad == 'duplicate':
+        state['lr_adjustments'].append(dict(change))
+    elif bad == 'optimizer':
+        state['optimizer']['param_groups'][0]['lr'] = 2.5e-6
+    elif bad == 'scheduler':
+        state['scheduler']['_last_lr'] = [2.5e-6]
+    elif bad == 'nan':
+        change['learning_rate'] = float('nan')
+    elif bad == 'reset':
+        change['data_cursor_reset'] = True
+    else:
+        del change['budget_extended']
+    with pytest.raises(ValueError):
+        reviewed_source_lr(state)
 
 
 @pytest.mark.parametrize("expired", [False, True])

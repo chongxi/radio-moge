@@ -7,6 +7,7 @@ import random
 
 def check_data_fork(config, state, digests):
     from .train import check_lr_fork
+    from .lr_adjustment import reviewed_source_lr
     normalized = deepcopy(config)
     previous = state['config']
     for key in ['train_manifest', 'mixture_weights', 'coverage_epochs']:
@@ -24,7 +25,7 @@ def check_data_fork(config, state, digests):
         if key != 'train' and digests.get(key) != value:
             raise ValueError('Data fork must preserve all existing validation/probe identities')
     check_lr_fork(normalized, state, state['data_digests'])
-    if config['train']['lr'] > state['config']['train']['lr']:
+    if config['train']['lr'] > reviewed_source_lr(state):
         raise ValueError('Data fork cannot increase the source learning rate')
     coverage = config['data'].get('coverage_epochs')
     if coverage is not None and (coverage != 1 or config['data'].get('mixture_weights')):

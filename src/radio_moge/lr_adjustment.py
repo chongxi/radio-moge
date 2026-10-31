@@ -69,3 +69,42 @@ def expected_constant_lr(initial_lr, step, history):
             return value
         value = change["learning_rate"]
     return value
+
+
+def reviewed_source_lr(state):
+    """Resolve an adjusted constant-LR parent's rate for a new data fork.
+
+    The immutable initial config can predate authorized resume adjustments. A
+    ledger is accepted only when the saved optimizer and scheduler agree with
+    its final value. This does not authorize an additional LR increase.
+    """
+    initial = state['config']['train']['lr']
+    history = state.get('lr_adjustments', [])
+    if not history:
+        return initial
+    if state['config']['train'].get('lr_schedule') != 'constant':
+        raise ValueError('Adjusted data-fork source must use a constant LR')
+    value, previous_step, ids = initial, -1, set()
+    for change in history:
+        identity = change.get('id', '')
+        boundary = change.get('effective_after_step')
+        target = change.get('learning_rate')
+        if (change.get('authorized') is not True
+                or not re.fullmatch(r'[a-z0-9-]{1,64}', identity) or identity in ids
+                or type(boundary) is not int or not previous_step < boundary <= state['step']
+                or change.get('expected_step') != boundary
+                or change.get('previous_lr') != value
+                or type(target) not in (int, float) or not math.isfinite(target)
+                or not 0 < target <= 1e-3
+                or any(change.get(key) is not False for key in
+                       ['optimizer_state_reset', 'data_cursor_reset', 'budget_extended'])):
+            raise ValueError('Unverified or inconsistent source LR adjustment ledger')
+        ids.add(identity)
+        value, previous_step = target, boundary
+    groups = state.get('optimizer', {}).get('param_groups', [])
+    scheduler = state.get('scheduler', {})
+    if (not groups or any(g.get('lr') != value or g.get('initial_lr') != value for g in groups)
+            or scheduler.get('base_lrs') != [value] * len(groups)
+            or scheduler.get('_last_lr') != [value] * len(groups)):
+        raise ValueError('Source optimizer/scheduler differ from the reviewed LR ledger')
+    return value
