@@ -68,7 +68,7 @@ def select_scenes(dataset, control, cutoff):
     for split in ['nvs_sem_train', 'nvs_sem_val']:
         for scene in sorted(splits[split]):
             prefix = f'data/{scene}/dslr/'
-            required = ['train_test_lists.json', 'nerfstudio/transforms_undistorted.json',
+            required = ['train_test_lists.json', 'nerfstudio/transforms_undistorted.zip',
                         'resized_undistorted_images.zip', 'resized_undistorted_masks.zip']
             if all(receipt_ready(control, dataset, prefix + r, cutoff, r.endswith('.zip'))
                    for r in required):
