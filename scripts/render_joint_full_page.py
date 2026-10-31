@@ -198,13 +198,19 @@ def render(root, page):
         state = download['state']
         labels = {'waiting_for_training_updates':'等待正式训练更新', 'starting_download':'准备下载',
                   'downloading':'下载中', 'extracting':'校验并解压', 'complete':'下载完成',
+                  'draining_extractions':'等待后台解压完成',
                   'needs_inspection':'下载暂停，正在检查'}
+        pipeline_note = (
+            f"<p>下载与解压并行；后台解压{'进行中' if state.get('extraction_active') else '空闲'}，"
+            f"已在解压期间传输 {state.get('network_bytes_during_extraction',0)/1e9:.2f} GB。</p>"
+            if state.get('extraction_pipeline_enabled') else ''
+        )
         download_stamp = time.strftime('%Y-%m-%d %H:%M UTC',time.gmtime(download['checked_at']))
         download_panel = f'''<section id="scannetpp"><h2>ScanNet++ 下载</h2>
 <p><span class="pill">{escape(labels.get(state['stage'],state['stage']))}</span>
  · 已完成传输 {state['verified_download_bytes']/1e9:.2f} GB / {state['completed_files']:,} 个文件</p>
 <p>官方默认资产与划分，清单 {state.get('scenes',0):,} 个场景。单个下载进程，{'不设带宽上限' if state.get('rate_limit_mib_s',20)==0 else '限速 '+str(state.get('rate_limit_mib_s',20))+' MiB/s'}，当前传输 {state.get('active_range_workers',1)} 个连接，逐文件校验；总字节数尚未核实，不用估算大小显示完成百分比。</p>
-<p class="muted">下载开始前已确认正式训练更新。这批新数据尚未加入当前训练。状态更新：{download_stamp}</p></section>'''
+{pipeline_note}<p class="muted">下载开始前已确认正式训练更新。这批新数据尚未加入当前训练。状态更新：{download_stamp}</p></section>'''
     body = f'''<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>4×2048 QK norm · 全量训练</title><style>
 *{{box-sizing:border-box}}body{{margin:0;background:#101723;color:#e6edf7;font:16px/1.65 system-ui,sans-serif}}main{{max-width:1200px;margin:auto;padding:28px 20px}}h1{{font-size:32px;line-height:1.3}}h2{{font-size:23px}}h3{{font-size:17px}}a{{color:#75d0ff}}section,details{{background:#182232;border:1px solid #304057;border-radius:12px;padding:20px;margin:14px 0}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}.grid section{{margin:0;min-width:0}}svg{{width:100%;color:#bbc7d8}}svg text{{fill:currentColor;font-size:12px}}.muted{{color:#acbbcf}}.pill{{display:inline-block;padding:4px 12px;background:#26405a;border-radius:20px}}table{{border-collapse:collapse;width:100%;font-size:14px}}td,th{{padding:9px;text-align:left;border-bottom:1px solid #354359}}.scroll{{overflow-x:auto}}pre{{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.7 system-ui}}iframe{{border:0;width:100%;height:960px;background:white}}@media(max-width:700px){{.grid{{grid-template-columns:1fr}}h1{{font-size:25px}}main{{padding:18px 12px}}section,details{{padding:15px}}}}</style><main>

@@ -23,6 +23,7 @@ import socket
 import stat
 import sys
 import tempfile
+import threading
 import time
 import traceback
 from types import SimpleNamespace
@@ -196,6 +197,8 @@ class AtomicRetriever:
         resume=False,
         range_workers=1,
         performance_file=None,
+        check=None,
+        on_chunk=None,
     ):
         self.root, self.control, self.record = data_root.resolve(), control, record
         if not math.isfinite(bytes_per_second) or bytes_per_second < 0:
@@ -207,6 +210,8 @@ class AtomicRetriever:
         self.resume = resume
         self.range_workers = range_workers
         self.performance_file = performance_file
+        self.check = check or (lambda: None)
+        self.on_chunk = on_chunk or (lambda size: None)
 
     def selected_range_workers(self):
         workers = self.range_workers
@@ -217,6 +222,13 @@ class AtomicRetriever:
         return workers
 
     def __call__(self, url, filename, reporthook=None, data=None):
+        self.check()
+        try:
+            return self._retrieve(url, filename, reporthook, data)
+        finally:
+            self.record(network_active=False)
+
+    def _retrieve(self, url, filename, reporthook=None, data=None):
         path = Path(filename).resolve()
         relative = str(path.relative_to(self.root))
         if self.before_asset and Path(relative).parts[0] == "data":
@@ -258,6 +270,7 @@ class AtomicRetriever:
             current_bytes=offset,
             completed_files=self.completed,
             verified_download_bytes=self.verified_bytes,
+            network_active=True,
         )
         with urllib.request.urlopen(request, timeout=60) as response:
             status = response.status
@@ -295,6 +308,7 @@ class AtomicRetriever:
                         sha.update(chunk)
             received = offset
             started, last = time.monotonic(), time.monotonic()
+            started_at = time.time()
             throttle_seconds = 0.0
             workers = self.selected_range_workers()
             transfer_info = {}
@@ -315,9 +329,11 @@ class AtomicRetriever:
             )
             with closing(chunks), part.open("ab" if offset else "wb") as stream:
                 for chunk in chunks:
+                    self.check()
                     stream.write(chunk)
                     sha.update(chunk)
                     received += len(chunk)
+                    self.on_chunk(len(chunk))
                     if received > total:
                         raise ValueError("Transfer exceeded declared size")
                     delay = (
@@ -346,6 +362,7 @@ class AtomicRetriever:
                 raise urllib.error.ContentTooShortError(
                     "Incomplete transfer; partial preserved", None
                 )
+            self.check()
             part.replace(path)
             key = hashlib.sha256(relative.encode()).hexdigest()
             atomic_json(
@@ -356,6 +373,7 @@ class AtomicRetriever:
                     sha256=sha.hexdigest(),
                     identity=current,
                     completed_at=time.time(),
+                    started_at=started_at,
                     resumed_from_bytes=offset,
                     transferred_this_attempt_bytes=received - offset,
                     transfer_seconds=time.monotonic() - started,
@@ -383,9 +401,11 @@ class AtomicRetriever:
             return str(path), response.headers
 
 
-def verified_extract(archive, path, record, control):
+def verified_extract(archive, path, record, control, *, receipt_archive=None):
     """One CRC-checked extraction into staging, then publish; never extract traversal."""
     destination = Path(path).resolve()
+    archive_path = Path(receipt_archive or archive.filename)
+    started_at = time.time()
     stage = Path(tempfile.mkdtemp(prefix=".scannetpp-extract-", dir=destination))
     members = archive.infolist()
     seen = set()
@@ -400,7 +420,7 @@ def verified_extract(archive, path, record, control):
             raise ValueError("Encrypted archive is unsupported")
     record(
         stage="extracting",
-        archive=Path(archive.filename).name,
+        archive=archive_path.name,
         staging=str(stage),
         extraction_members=len(members),
     )
@@ -429,19 +449,140 @@ def verified_extract(archive, path, record, control):
     for source in stage.iterdir():
         publish(source, destination / source.name)
     stage.rmdir()
-    key = hashlib.sha256(str(archive.filename).encode()).hexdigest()
+    key = hashlib.sha256(str(archive_path).encode()).hexdigest()
     atomic_json(
         control / "extractions" / f"{key}.json",
         dict(
             stage="passed",
-            archive=Path(archive.filename).name,
+            archive=archive_path.name,
             crc_checked=True,
             files=sum(not m.is_dir() for m in members),
             expanded_bytes=sum(m.file_size for m in members),
             completed_at=time.time(),
+            started_at=started_at,
         ),
     )
     record(stage="downloading", staging=None)
+
+
+class ExtractionPipeline:
+    """One extraction worker; bounded archives retained independently of the caller.
+
+    The official caller may unlink a ZIP immediately after extractall returns.
+    A same-filesystem hard link owns its bytes until CRC, publication and receipt
+    finish. Journals keep unfinished work inspectable after a process failure.
+    """
+
+    def __init__(self, root, control, record, zip_type, max_jobs=2, max_bytes=2 * 1024**3):
+        if not 1 <= max_jobs <= 2 or max_bytes <= 0:
+            raise ValueError("Invalid extraction queue bounds")
+        self.root, self.control = Path(root).resolve(), Path(control)
+        self.record, self.zip_type = record, zip_type
+        self.max_jobs, self.max_bytes = max_jobs, max_bytes
+        self.pending, self.failure, self.closed = deque(), None, False
+        self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="dataset-extract")
+
+    @staticmethod
+    def require_clean(control):
+        for path in (Path(control) / "extraction-pipeline").glob("*.json"):
+            if json.loads(path.read_text()).get("stage") != "passed":
+                raise ValueError("Unfinished background extraction requires inspection")
+
+    def check(self):
+        if self.failure is not None:
+            raise RuntimeError("Background extraction failed; retained ZIP requires inspection") from self.failure
+        for future, _ in self.pending:
+            if future.done():
+                future.result()
+        while self.pending and self.pending[0][0].done():
+            self.pending.popleft()
+
+    def submit(self, archive, destination):
+        if self.closed:
+            raise RuntimeError("Extraction pipeline already closed")
+        self.check()
+        source, destination = Path(archive).resolve(), Path(destination).resolve()
+        relative = str(source.relative_to(self.root))
+        if destination != source.parent:
+            raise ValueError("Unexpected ZIP extraction destination")
+        size = source.stat().st_size
+        receipt_key = hashlib.sha256(relative.encode()).hexdigest()
+        receipt = json.loads((self.control / "receipts" / f"{receipt_key}.json").read_text())
+        if receipt["path"] != relative or receipt["bytes"] != size:
+            raise ValueError("Queued ZIP differs from transfer receipt")
+        # Oversized archives can run alone; one newly downloaded archive may wait
+        # at this boundary. No ZIP payload is buffered in Python memory.
+        while self.pending and (
+            len(self.pending) >= self.max_jobs
+            or sum(n for _, n in self.pending) + size > self.max_bytes
+        ):
+            self.record(extraction_backpressure=True)
+            self.pending[0][0].result()
+            self.check()
+        key = hashlib.sha256(str(source).encode()).hexdigest()
+        journal = self.control / "extraction-pipeline" / f"{key}.json"
+        if journal.exists():
+            raise ValueError("Existing extraction journal requires inspection")
+        spool = source.parent / ".scannetpp-pipeline"
+        spool.mkdir(exist_ok=True, mode=0o700)
+        retained = spool / f"{key}.zip"
+        os.link(source, retained)  # Fails closed on unsupported/cross-device links.
+        info = source.stat()
+        job = dict(stage="queued", archive=str(source), destination=str(destination),
+                   retained_archive=str(retained), bytes=size, inode=info.st_ino,
+                   device=info.st_dev, submitted_at=time.time())
+        atomic_json(journal, job)
+        future = self.pool.submit(self._extract, job, journal)
+        self.pending.append((future, size))
+        self.record(extraction_backpressure=False, extraction_pending_jobs=len(self.pending),
+                    extraction_pending_bytes=sum(n for _, n in self.pending))
+
+    def _extract(self, job, journal):
+        if self.failure is not None:
+            raise RuntimeError("Earlier extraction failed; queued ZIP retained")
+        try:
+            retained = Path(job["retained_archive"])
+            info = retained.stat()
+            if (info.st_dev, info.st_ino, info.st_size) != (
+                job["device"], job["inode"], job["bytes"]
+            ):
+                raise ValueError("Retained ZIP identity changed")
+            job.update(stage="extracting", started_at=time.time())
+            atomic_json(journal, job)
+            self.record(extraction_active=True, extraction_current=job["archive"],
+                        extraction_started_at=job["started_at"])
+
+            def progress(**changes):
+                self.record(**{"extraction_" + k: v for k, v in changes.items()})
+
+            with self.zip_type(retained) as archive:
+                verified_extract(archive, job["destination"], progress, self.control,
+                                 receipt_archive=job["archive"])
+            job.update(stage="passed", completed_at=time.time())
+            atomic_json(journal, job)
+            retained.unlink()
+            self.record(extraction_active=False, extraction_stage="idle",
+                        last_extraction_completed_at=job["completed_at"])
+        except BaseException as error:
+            self.failure = error
+            job.update(stage="needs_inspection", error_type=type(error).__name__)
+            atomic_json(journal, job)
+            self.record(extraction_active=False, extraction_stage="needs_inspection")
+            raise
+
+    def close(self):
+        if self.closed:
+            return
+        self.closed = True
+        try:
+            # Even a network exception must drain queued verified downloads before
+            # writing the stopped status, so ordinary resume remains consistent.
+            self.pool.shutdown(wait=True)
+            self.check()
+            self.record(extraction_pending_jobs=0, extraction_pending_bytes=0,
+                        extraction_active=False, extraction_backpressure=False)
+        finally:
+            self.pool.shutdown(wait=True)
 
 
 def inventory(module, cfg, root):
@@ -621,11 +762,23 @@ def run(args):
         processes=1,
         completed_files=0,
         verified_download_bytes=0,
+        extraction_pipeline_enabled=getattr(args, "overlap_extraction", False),
+        network_bytes_during_extraction=0,
     )
+    state_lock = threading.RLock()
 
     def record(**changes):
-        state.update(changes, updated_at=time.time())
-        atomic_json(control / "status.json", state)
+        with state_lock:
+            state.update(changes, updated_at=time.time())
+            atomic_json(control / "status.json", state)
+
+    def note_chunk(size):
+        with state_lock:
+            if state.get("extraction_active"):
+                state["network_bytes_during_extraction"] += size
+                state["last_overlap_observed_at"] = time.time()
+                state["last_overlap_download"] = state.get("current")
+                state["last_overlap_extraction"] = state.get("extraction_current")
 
     if resume:
         state.update(
@@ -681,6 +834,7 @@ def run(args):
                     )
 
             if resume:
+                ExtractionPipeline.require_clean(control)
                 proof = verify_resume_state(root, control, previous, record)
                 frozen = json.loads((control / "inventory.json").read_text())
                 if inventory(module, cfg, root) != frozen:
@@ -694,6 +848,11 @@ def run(args):
                     scenes=frozen["scenes"],
                     inventory_frozen=True,
                 )
+            original_zip = zipfile.ZipFile
+            pipeline = (
+                ExtractionPipeline(root, control, record, original_zip)
+                if getattr(args, "overlap_extraction", False) else None
+            )
             module.urlretrieve = AtomicRetriever(
                 root,
                 control,
@@ -703,17 +862,20 @@ def run(args):
                 bytes_per_second=rate_limit * 1024**2,
                 range_workers=getattr(args, "range_workers", 1),
                 performance_file=getattr(args, "performance_file", None),
+                check=pipeline.check if pipeline else None,
+                on_chunk=note_chunk if pipeline else None,
             )
             if resume:
                 module.urlretrieve.completed = previous["completed_files"]
                 module.urlretrieve.verified_bytes = previous["verified_download_bytes"]
-            original_zip = zipfile.ZipFile
-
             class CheckedZip(original_zip):
                 def extractall(self, path=None, members=None, pwd=None):
                     if members is not None or pwd is not None:
                         raise ValueError("Unexpected partial/encrypted extraction")
-                    verified_extract(self, path, record, control)
+                    if pipeline:
+                        pipeline.submit(self.filename, path)
+                    else:
+                        verified_extract(self, path, record, control)
 
             # Private module shares zipfile; this process has no other archive users.
             module.zipfile.ZipFile = CheckedZip
@@ -728,8 +890,13 @@ def run(args):
             try:
                 module.main(SimpleNamespace(config_file=str(args.config)))
             finally:
-                builtins.input = original_input
-                module.zipfile.ZipFile = original_zip
+                try:
+                    if pipeline:
+                        record(stage="draining_extractions")
+                        pipeline.close()
+                finally:
+                    builtins.input = original_input
+                    module.zipfile.ZipFile = original_zip
             freeze_inventory()
             frozen = json.loads((control / "inventory.json").read_text())
             assert inventory(module, cfg, root) == frozen, (
@@ -790,6 +957,10 @@ if __name__ == "__main__":
     )
     p.add_argument("--nice", type=int, default=15, choices=range(20))
     p.add_argument("--range-workers", type=int, default=1, choices=range(1, 9))
+    p.add_argument(
+        "--overlap-extraction", action="store_true",
+        help="Overlap downloads with one CRC extraction worker; at most2 pending ZIPs/2GiB",
+    )
     p.add_argument(
         "--performance-file",
         type=Path,

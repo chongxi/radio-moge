@@ -141,4 +141,31 @@ fallback, worker bounds and extraction behavior are unchanged. Receipts addition
 record probe bytes and duration. Tests cover nonzero resume offsets, contiguous
 coverage and invalid later ranges. This removes most serial probe bytes; sustained
 throughput improvement must be measured after deployment, not inferred from the
-smaller probe alone. Download and extraction are still sequential.
+smaller probe alone. This probe-only version kept download and extraction sequential.
+
+## Overlapping download and extraction, 2026-10-31
+
+The user explicitly requested downloading and extracting simultaneously.
+`--overlap-extraction` retains the existing network path (up to8 validated range
+requests) and adds one background CRC/extraction worker. While that worker extracts
+one completed ZIP, the official script can download the next asset. Two unfinished
+archives, including the active extraction, fit in the queue, with a2GiB compressed
+byte budget. An archive exceeding the budget runs alone; at most one additionally
+downloaded archive can wait at enqueue. Archive payloads stay on disk, with no
+whole-archive memory buffering or additional training/GPU work.
+
+Because the official script deletes a ZIP after `extractall` returns, the wrapper
+first creates a same-filesystem hard link in a private `.scannetpp-pipeline` folder.
+The worker owns that link until CRC, staged publication and the original-path
+extraction receipt succeed. Per-archive journals preserve pending work on failure.
+An unfinished journal prevents blind resume and requires inspection. No private
+official source or configuration is changed.
+
+Worker failures propagate to the network loop; the incomplete network prefix and
+failed/queued ZIP links remain available for inspection. On a network error or
+ordinary interrupt, the worker drains all previously downloaded ZIPs before the
+stopped status is written. Final inventory verification runs only after the entire
+queue drains. Status writes use a lock, with separate network and extraction state;
+`network_bytes_during_extraction` counts actual transferred chunks observed while
+the worker is active. This verifies overlap without treating thread existence as
+proof of throughput improvement. Sustained speed remains an empirical result.

@@ -332,7 +332,8 @@ def test_uncapped_transfer_never_sleeps_and_records_measured_bytes(tmp_path, mon
     assert receipt["rate_limit_mib_s"] == receipt["throttle_seconds"] == 0
     assert receipt["transferred_this_attempt_bytes"] == len(body)
     assert receipt["resumed_from_bytes"] == 0 and receipt["transfer_seconds"] > 0
-    assert states[-1]["last_transfer_mib_s"] > 0
+    assert next(s["last_transfer_mib_s"] for s in states if "last_transfer_mib_s" in s) > 0
+    assert states[-1]["network_active"] is False
 
 
 @pytest.mark.parametrize("rate", [-1, float("nan"), float("inf")])
@@ -602,3 +603,219 @@ def test_parallel_retriever_resume_keeps_streamed_full_file_checksum(tmp_path, m
     assert receipt["resumed_from_bytes"] == 123
     assert receipt["transferred_this_attempt_bytes"] == len(body) - 123
     assert receipt["active_range_workers"] == 4 and receipt["throttle_seconds"] == 0
+
+
+def pipeline_archive(root, control, name, payload=b'fixture'):
+    path = root / 'data/scene' / (name + '.zip')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, 'w') as archive:
+        archive.writestr(name + '/frame.bin', payload)
+    relative = str(path.relative_to(root))
+    download.atomic_json(
+        control / 'receipts' / (hashlib.sha256(relative.encode()).hexdigest() + '.json'),
+        dict(path=relative, bytes=path.stat().st_size,
+             sha256=hashlib.sha256(path.read_bytes()).hexdigest()),
+    )
+    return path
+
+
+def test_pipeline_overlaps_next_download_and_survives_official_zip_unlink(tmp_path, monkeypatch):
+    import threading
+    root, control = tmp_path / 'dataset', tmp_path / 'state'
+    source = pipeline_archive(root, control, 'first')
+    started, release = threading.Event(), threading.Event()
+    original_extract = download.verified_extract
+
+    def blocked(*args, **kwargs):
+        started.set()
+        assert release.wait(5)
+        return original_extract(*args, **kwargs)
+
+    monkeypatch.setattr(download, 'verified_extract', blocked)
+    pipeline = download.ExtractionPipeline(root, control, lambda **kw: None, zipfile.ZipFile)
+    try:
+        pipeline.submit(source, source.parent)
+        assert started.wait(5)
+        source.unlink()  # Exactly what the unchanged official caller does.
+        overlap = []
+        monkeypatch.setattr(download.urllib.request, 'urlopen', lambda *a, **k: Response(
+            b'next-network-data', 200, {'Content-Length': '17', 'ETag': 'stable'}))
+        retriever = download.AtomicRetriever(
+            root, control, lambda **kw: None, bytes_per_second=0,
+            check=pipeline.check, on_chunk=overlap.append,
+        )
+        retriever('https://scannetpp.mlsg.cit.tum.de/fixture', source.parent / 'next.bin')
+        assert sum(overlap) == 17
+        assert not (source.parent / 'first').exists()  # Download finished before extraction.
+        retained = next((source.parent / '.scannetpp-pipeline').glob('*.zip'))
+        assert retained.exists()
+    finally:
+        release.set()
+        pipeline.close()
+    assert (source.parent / 'first/frame.bin').read_bytes() == b'fixture'
+    assert not retained.exists()
+    receipt = json.loads(next((control / 'extractions').glob('*.json')).read_text())
+    assert receipt['archive'] == source.name and receipt['crc_checked']
+    assert receipt['completed_at'] >= receipt['started_at']
+    download.ExtractionPipeline.require_clean(control)
+
+
+@pytest.mark.parametrize('bound', ['jobs', 'bytes', 'oversized'])
+def test_pipeline_backpressure_bounds_unfinished_archives(tmp_path, monkeypatch, bound):
+    import threading
+    root, control = tmp_path / 'dataset', tmp_path / 'state'
+    sources = [pipeline_archive(root, control, f'asset{i}', bytes(128)) for i in range(3)]
+    started, release, pressure, returned = (threading.Event() for _ in range(4))
+    original_extract = download.verified_extract
+
+    def blocked(*args, **kwargs):
+        started.set()
+        assert release.wait(5)
+        return original_extract(*args, **kwargs)
+
+    monkeypatch.setattr(download, 'verified_extract', blocked)
+    size = sources[0].stat().st_size
+    limit = 10**9 if bound == 'jobs' else (size if bound == 'bytes' else 1)
+    pipeline = download.ExtractionPipeline(
+        root, control, lambda **kw: pressure.set() if kw.get('extraction_backpressure') else None,
+        zipfile.ZipFile, max_bytes=limit,
+    )
+    pipeline.submit(sources[0], sources[0].parent)
+    assert started.wait(5)
+    next_index = 1
+    if bound == 'jobs':
+        pipeline.submit(sources[1], sources[1].parent)
+        next_index = 2
+    errors = []
+
+    def submit_next():
+        try:
+            pipeline.submit(sources[next_index], sources[next_index].parent)
+            returned.set()
+        except BaseException as error:
+            errors.append(error)
+
+    thread = threading.Thread(target=submit_next)
+    thread.start()
+    try:
+        assert pressure.wait(5)
+        assert not returned.is_set()
+        assert len(list((control / 'extraction-pipeline').glob('*.json'))) == next_index
+    finally:
+        release.set()
+        thread.join(5)
+        pipeline.close()
+    assert not thread.is_alive() and not errors and returned.is_set()
+
+
+def test_pipeline_crc_failure_propagates_and_retains_archive(tmp_path):
+    root, control = tmp_path / 'dataset', tmp_path / 'state'
+    source = pipeline_archive(root, control, 'broken')
+    source.write_bytes(source.read_bytes().replace(b'fixture', b'corrupt'))
+    pipeline = download.ExtractionPipeline(root, control, lambda **kw: None, zipfile.ZipFile)
+    pipeline.submit(source, source.parent)
+    source.unlink()
+    with pytest.raises(RuntimeError, match='Background extraction failed'):
+        pipeline.close()
+    retained = next((source.parent / '.scannetpp-pipeline').glob('*.zip'))
+    assert retained.exists() and not (source.parent / 'broken').exists()
+    assert not list((control / 'extractions').glob('*.json'))
+    with pytest.raises(ValueError, match='requires inspection'):
+        download.ExtractionPipeline.require_clean(control)
+    with pytest.raises(RuntimeError, match='Background extraction failed'):
+        pipeline.check()
+
+
+def test_pipeline_cannot_complete_over_preexisting_extracted_file(tmp_path):
+    root, control = tmp_path / 'dataset', tmp_path / 'state'
+    source = pipeline_archive(root, control, 'existing')
+    target = source.parent / 'existing/frame.bin'
+    target.parent.mkdir()
+    target.write_bytes(b'original')
+    pipeline = download.ExtractionPipeline(root, control, lambda **kw: None, zipfile.ZipFile)
+    pipeline.submit(source, source.parent)
+    with pytest.raises(RuntimeError, match='Background extraction failed'):
+        pipeline.close()
+    assert target.read_bytes() == b'original'
+    assert next((source.parent / '.scannetpp-pipeline').glob('*.zip')).exists()
+
+
+@pytest.mark.parametrize('failure', [None, 'network', 'interrupt', 'crc'])
+def test_run_pipeline_drains_before_completion_or_network_error(tmp_path, monkeypatch, failure):
+    import threading
+    from types import SimpleNamespace
+    import yaml
+    root, state, previous = recovery_fixture(tmp_path)
+    original_metadata = (root / 'splits/train.txt').read_bytes()
+    frozen = json.loads((state / 'inventory.json').read_text())
+    frozen.update(scenes=1, splits={'fixture': 1})
+    frozen['assets'] = frozen['assets'][:2] + [dict(path='data/scene/newdir'), dict(path='data/scene/next.bin')]
+    download.atomic_json(state / 'inventory.json', frozen)
+    previous.update(stage='needs_inspection', data_root=str(root), pid=987654, started_at=123.0)
+    download.atomic_json(state / 'status.json', previous)
+    cfg = tmp_path / 'private.yml'
+    cfg.write_text(yaml.safe_dump(dict(token='fixture-only-token', data_root=str(root))))
+    official = tmp_path / 'fixture.py'
+    official.write_text('''import zipfile,yaml
+from pathlib import Path
+from urllib.request import urlretrieve
+def main(args):
+ root=Path(yaml.safe_load(Path(args.config_file).read_text())["data_root"])
+ p=root/"data/scene/newdir.zip"
+ urlretrieve("https://scannetpp.mlsg.cit.tum.de/zip", p)
+ with zipfile.ZipFile(p) as z: z.extractall(p.parent)
+ p.unlink()
+ urlretrieve("https://scannetpp.mlsg.cit.tum.de/next", root/"data/scene/next.bin")
+''')
+    body = io.BytesIO()
+    with zipfile.ZipFile(body, 'w') as z:
+        z.writestr('newdir/image.bin', b'fixture')
+    payload = body.getvalue()
+    if failure == 'crc':
+        payload = payload.replace(b'fixture', b'corrupt')
+    extracting, release = threading.Event(), threading.Event()
+    original_extract = download.verified_extract
+
+    def blocked(*args, **kwargs):
+        extracting.set()
+        assert release.wait(5)
+        return original_extract(*args, **kwargs)
+
+    monkeypatch.setattr(download, 'verified_extract', blocked)
+
+    def response(request, timeout):
+        if request.full_url.endswith('/zip'):
+            return Response(payload, 200, {'Content-Length': str(len(payload)), 'ETag': 'stable'})
+        assert extracting.wait(5)
+        # The actual next transfer is entered while the ZIP worker is blocked.
+        assert not (root / 'data/scene/newdir').exists()
+        release.set()
+        if failure == 'interrupt':
+            raise KeyboardInterrupt()
+        return Response(b'new', 200, {'Content-Length': '10' if failure == 'network' else '3', 'ETag': 'stable'})
+
+    monkeypatch.setattr(download.urllib.request, 'urlopen', response)
+    monkeypatch.setattr(download, 'inventory', lambda *a: frozen)
+    monkeypatch.setattr(download.os, 'nice', lambda *a: None)
+    monkeypatch.setattr(download.os, 'umask', lambda *a: None)
+    monkeypatch.setattr(download.shutil, 'disk_usage', lambda *a: SimpleNamespace(free=5 * 1024**4))
+    args = SimpleNamespace(control=state, config=cfg, script=official, training=tmp_path/'training',
+                           resume=True, resume_id='overlap-fixture', overlap_extraction=True,
+                           rate_limit_mib_s=0)
+    if failure:
+        with pytest.raises(RuntimeError, match='Private download stopped'):
+            download.run(args)
+    else:
+        download.run(args)
+    result = json.loads((state / 'status.json').read_text())
+    assert result['stage'] == ('needs_inspection' if failure else 'complete')
+    assert not result['extraction_active']
+    assert (root / 'splits/train.txt').read_bytes() == original_metadata
+    if failure != 'crc':
+        assert result['extraction_pending_jobs'] == 0
+        proof = download.verify_resume_state(root, state, result)
+        assert proof['completed_assets'] == (3 if failure in ('network', 'interrupt') else 4)
+        assert not list((root / 'data/scene/.scannetpp-pipeline').glob('*.zip'))
+    else:
+        assert list((root / 'data/scene/.scannetpp-pipeline').glob('*.zip'))
+        assert not (state / 'completion-receipts.json').exists()
