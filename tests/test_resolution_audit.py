@@ -43,3 +43,23 @@ def test_audit_rejects_corrupted_evidence(corruption):
         args[0][0]['extra'] = float('nan')
     with pytest.raises(AssertionError):
         module.check_view(*args)
+
+
+def test_explicit_sensor_identity_supports_lidar_without_relabeling_nyu():
+    rows = [dict(image='lidar-frame', dataset='scannetpp_iphone_lidar', postprocess_failed=0,
+                 **{'gt_teacher/abs_rel': .1, 'gt_student/abs_rel': .2})]
+    expected = [('lidar-frame', 'scannetpp_iphone_lidar')]
+    reference = [r.copy() for r in rows]
+    metrics = {'images': 1, 'gt_teacher/abs_rel': .1, 'gt_student/abs_rel': .2}
+    proof = module.check_view(rows, metrics, metrics, expected, '', reference,
+                              expected_sensor_ids=expected)
+    assert proof['sensor_rows'] == 1 and proof['nyu_sensor_rows'] == 0
+    assert proof['sensor_source_counts'] == {'scannetpp_iphone_lidar': 1}
+    with pytest.raises(AssertionError):
+        module.check_view(rows, metrics, metrics, expected, '', reference)
+    with pytest.raises(AssertionError):
+        module.check_view(rows, metrics, metrics, expected, '', reference, expected_sensor_ids=[])
+    del reference[0]['gt_student/abs_rel']
+    with pytest.raises(AssertionError):
+        module.check_view(rows, metrics, metrics, expected, '', reference,
+                          expected_sensor_ids=expected)

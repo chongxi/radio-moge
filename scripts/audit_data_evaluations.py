@@ -16,7 +16,8 @@ def expected_manifest(remote):
     expected = [(posixpath.normpath(posixpath.join(posixpath.dirname(remote), r['image'])),
                  r['dataset']) for r in rows]
     assert len(expected) == len(set(expected))
-    return local, expected, sum('depth' in r for r in rows)
+    sensor_ids = [identity for identity, row in zip(expected, rows, strict=True) if 'depth' in row]
+    return local, expected, sensor_ids
 
 
 def audit(root):
@@ -45,7 +46,7 @@ def audit(root):
             continue
         proofs = {}
         for name, view in views.items():
-            local, expected, sensor_count = manifests[view['manifest']]
+            local, expected, sensor_ids = manifests[view['manifest']]
             folder = root/f'train/eval-{step:07d}'/view['suffix']
             baseline = root/f"train/eval-{plan['parent_step']:07d}"/view['suffix']
             protocol = load(folder/'protocol.json')
@@ -54,8 +55,9 @@ def audit(root):
             assert protocol['images'] == len(expected)
             metrics = load(folder/'metrics.json')
             proof = check_view(load(folder/'per_image.json'), metrics, row, expected,
-                               view['prefix'], load(baseline/'per_image.json'))
-            assert proof['nyu_sensor_rows'] == sensor_count
+                               view['prefix'], load(baseline/'per_image.json'),
+                               expected_sensor_ids=sensor_ids)
+            assert proof['sensor_rows'] == len(sensor_ids)
             total = math.fsum(metrics['feature/'+k]*v for k, v in config['loss'].items())
             assert math.isclose(row[view['prefix']+'feature/total'], total, abs_tol=1e-12)
             proof.update(protocol=protocol, manifest_sha256=digest(local),

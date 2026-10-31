@@ -24,7 +24,7 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def check_view(rows, metrics, log, expected, prefix, reference):
+def check_view(rows, metrics, log, expected, prefix, reference, expected_sensor_ids=None):
     assert [(r['image'], r['dataset']) for r in rows] == expected
     counts = Counter(r['dataset'] for r in rows)
     for row in rows:
@@ -55,12 +55,20 @@ def check_view(rows, metrics, log, expected, prefix, reference):
         assert log[prefix + key] == value, key
         errors.append(abs(value - actual))
     gt = [r for r in rows if 'gt_teacher/abs_rel' in r]
-    assert all(r['dataset'] == 'nyuv2' for r in gt)
+    if expected_sensor_ids is None:
+        assert all(r['dataset'] == 'nyuv2' for r in gt)
+    else:
+        for values in (rows, reference):
+            for kind in ('teacher', 'student'):
+                assert [(r['image'], r['dataset']) for r in values
+                        if f'gt_{kind}/abs_rel' in r] == expected_sensor_ids
     assert [(r['image'], r['dataset']) for r in reference] == expected
     teacher_diffs = [abs(a[k] - b[k]) for a, b in zip(rows, reference, strict=True)
                      for k in b if k.startswith('gt_teacher/')]
     assert max(teacher_diffs, default=0) < 1e-8
-    return dict(images=len(rows), source_counts=dict(counts), nyu_sensor_rows=len(gt),
+    return dict(images=len(rows), source_counts=dict(counts), sensor_rows=len(gt),
+                sensor_source_counts=dict(Counter(r['dataset'] for r in gt)),
+                nyu_sensor_rows=sum(r['dataset'] == 'nyuv2' for r in gt),
                 exact_identity_order_source_match=True, all_per_image_values_finite=True,
                 postprocess_failures=0, max_aggregate_difference=max(errors, default=0),
                 max_frozen_teacher_difference=max(teacher_diffs, default=0))
