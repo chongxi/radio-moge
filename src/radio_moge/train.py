@@ -194,6 +194,7 @@ def train(
     performance=None,
     budget_started_at=None,
     resolution_fork=False,
+    data_fork=False,
 ):
     """Single-device experiment runner. system_adapter allows small CPU integration tests."""
     invocation_started = time.monotonic()
@@ -205,14 +206,16 @@ def train(
         raise ValueError("Budget extension requires --resume")
     if resolution_fork and (not fork_from or extension or init or resume):
         raise ValueError('Resolution fork requires a separate --fork-from experiment')
+    if data_fork and (not fork_from or extension or init or resume or resolution_fork):
+        raise ValueError('Data fork requires a separate --fork-from experiment')
     if budget_started_at is not None and (not fork_from or not math.isfinite(budget_started_at)
                                          or not 0 < budget_started_at <= time.time()):
         raise ValueError('An original wall-clock start requires a constant-LR fork and a past timestamp')
     settings = config["train"]
     if performance is not None:
         from .performance import validate_performance
-        validate_performance(performance, config, constant_fork=resolution_fork)
-        if not resolution_fork and (not resume or extension or fork_from or init):
+        validate_performance(performance, config, constant_fork=resolution_fork or data_fork)
+        if not (resolution_fork or data_fork) and (not resume or extension or fork_from or init):
             raise ValueError("Performance tuning requires an unextended exact-state resume")
     accelerator = Accelerator(
         cpu=settings.get("device") == "cpu", mixed_precision=settings["precision"]
@@ -229,6 +232,15 @@ def train(
     val_path = config["data"].get("val_manifest")
     validation = read_manifest(val_path) if val_path else []
     check_split(records, validation)
+    dataset_validation = {}
+    for name, view in config.get('evaluation', {}).get('dataset_variants', {}).items():
+        if (not re.fullmatch(r'[a-z0-9-]{1,32}', name)
+                or set(view) != {'manifest', 'num_tokens', 'max_side'}):
+            raise ValueError('Invalid fixed dataset validation view')
+        extra_records = read_manifest(view['manifest'])
+        check_split(records, extra_records)
+        check_split(validation, extra_records)
+        dataset_validation[name] = extra_records
     probe_path = config['data'].get('train_probe_manifest')
     train_probe = read_manifest(probe_path) if probe_path else []
     if train_probe and not {r['image'] for r in train_probe} <= {r['image'] for r in records}:
@@ -241,6 +253,8 @@ def train(
     }
     if train_probe:
         digests['train_probe'] = manifest_digest(train_probe)
+    for name, extra_records in dataset_validation.items():
+        digests['dataset/' + name] = manifest_digest(extra_records)
     output = Path(config["output_dir"])
     output.mkdir(parents=True, exist_ok=True)
     if any(output.iterdir()) and not resume:
@@ -276,8 +290,10 @@ def train(
         raw_adapter.load_state_dict(state["adapter"])
         statistics.load_state_dict(state["statistics"])
         if fork_from:
-            (check_resolution_fork if resolution_fork else check_lr_fork)(config, state, digests)
-            if resolution_fork and performance:
+            from .data_fork import check_data_fork
+            check = check_data_fork if data_fork else check_resolution_fork if resolution_fork else check_lr_fork
+            check(config, state, digests)
+            if (resolution_fork or data_fork) and performance:
                 parent_effective = (state.get('performance') or {}).get(
                     'effective_batch', state['config']['train']['batch_size'] *
                     state['config']['train']['accumulation'])
@@ -290,6 +306,11 @@ def train(
             # Keep Adam moments and its update counter. Only the LR policy is reset.
             scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.0)
             step, cursor = state["step"], state["cursor"]
+            if data_fork:
+                cursor = 0
+                if performance and (performance['anchor_cursor'] != 0
+                                    or performance['anchor_step'] != step):
+                    raise ValueError('Data fork needs a fresh stream cursor and source step anchor')
             restore_rng(state["rng"])
         elif resume:
             previous = {k: v for k, v in state["config"].items() if k != "output_dir"}
@@ -341,6 +362,15 @@ def train(
                 sampling='uniform bucket per logical microbatch; same source/scene sampler',
                 augmentation='same seeded random aspect crop and horizontal flip',
                 validation_views=config['evaluation']['resolution_variants'])
+        if data_fork:
+            fork_provenance['data_change'] = dict(
+                parent_cursor=state['cursor'], new_cursor=0,
+                parent_digests=state['data_digests'], digests=digests,
+                parent_manifest=state['config']['data']['train_manifest'],
+                manifest=config['data']['train_manifest'],
+                sampling='permutation' if config['data'].get('coverage_epochs') else 'source/scene mixture')
+            fork_provenance['restored'].remove('cursor')
+            fork_provenance['reset'].append('data_cursor_for_new_manifest')
         atomic_json(fork_provenance, output / "fork-state.json")
     if resume:
         atomic_json(
@@ -409,6 +439,7 @@ def train(
         "device": str(accelerator.device),
         "train_images": len(records),
         "validation_images": len(validation),
+        "dataset_validation_images": {k: len(v) for k, v in dataset_validation.items()},
         "code_revision": config.get("code_revision"),
         "execution_revision": execution_revision or (state or {}).get("execution_revision"),
         "runtime_limits": limits,
@@ -448,6 +479,8 @@ def train(
         return limit is not None and elapsed_seconds() >= limit
 
     def save(filename):
+        if coverage is not None:
+            atomic_json(coverage.report(), output / 'coverage.json')
         atomic_save(
             {
                 "format_version": 1,
@@ -478,6 +511,15 @@ def train(
     total = min(limits["steps"], stop_after) if stop_after else limits["steps"]
     accumulation = (performance['effective_batch'] // settings['batch_size']
                     if performance else settings['accumulation'])
+    coverage = None
+    if config['data'].get('coverage_epochs'):
+        from .data_fork import CoverageTracker
+        if not fork_provenance or 'data_change' not in fork_provenance:
+            raise ValueError('A coverage epoch requires an explicit new data stream')
+        expected = math.ceil(len(records) / (settings['batch_size'] * accumulation))
+        if limits['steps'] - fork_provenance['step'] != expected:
+            raise ValueError('Coverage budget must be exactly one full permutation plus final padding')
+        coverage = CoverageTracker(len(records), settings['batch_size'], settings['seed'], cursor)
     loader_config = deepcopy(config)
     if performance:
         loader_config['data']['workers'] = performance['workers']
@@ -539,6 +581,15 @@ def train(
                                  destination / name, config['evaluation']['limit'])
             extra['feature/total'] = feature_loss_total(extra, config['loss'])
             metrics.update({f'resolution/{name}/{key}': value for key, value in extra.items()})
+        for name, extra_records in dataset_validation.items():
+            variant = deepcopy(config)
+            view = config['evaluation']['dataset_variants'][name]
+            variant['evaluation'].update({k: v for k, v in view.items() if k != 'manifest'})
+            with preserve_rng():
+                extra = evaluate(system, raw_adapter, statistics, extra_records, variant,
+                                 destination / ('dataset-' + name), None)
+            extra['feature/total'] = feature_loss_total(extra, config['loss'])
+            metrics.update({f'dataset/{name}/{key}': value for key, value in extra.items()})
         if performance:
             metrics.update(schedule_position=schedule_position(step, performance),
                            logical_data_cursor=cursor, effective_batch=performance['effective_batch'])
@@ -593,7 +644,7 @@ def train(
                 link_selection('initial.pt', 'best.pt')
             if best_metrics:
                 atomic_json(best_metrics, output / 'checkpoint-selection.json')
-        if validation and not resume and (not fork_from or resolution_fork) and settings.get("eval_at_start", False):
+        if validation and not resume and (not fork_from or resolution_fork or data_fork) and settings.get("eval_at_start", False):
             validate()
         while step < total and not stop and not budget_exhausted():
             adapter.train()
@@ -661,6 +712,8 @@ def train(
             optimizer.step()
             scheduler.step()
             step += 1
+            if coverage is not None:
+                coverage.advance(cursor)
             synchronize_update()
             elapsed = time.perf_counter() - started
             optimizer_seconds += elapsed
@@ -780,6 +833,8 @@ def main():
     parser.add_argument("--fork-from", help="New constant-LR experiment preserving optimizer, RNG and data cursor")
     parser.add_argument('--resolution-fork', action='store_true',
                         help='Explicit bucket additions with old/new validation; preserve Adam and LR')
+    parser.add_argument('--data-fork', action='store_true',
+                        help='Explicit dataset change preserving Adam; reset cursor and evaluate baseline')
     parser.add_argument(
         "--init", help="Initialize adapter/statistics from stage 1; reset optimizer"
     )
@@ -819,6 +874,7 @@ def main():
             if args.performance_config else None,
             budget_started_at=args.budget_started_at,
             resolution_fork=args.resolution_fork,
+            data_fork=args.data_fork,
         )
     )
 

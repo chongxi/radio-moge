@@ -114,8 +114,10 @@ def audit(root):
     return completed
 
 
-def verify_wandb(root, step):
-    audit = load(root/f'eval-{step:07d}-resolution-verification.json')
+def verify_wandb(root, step, audit_kind='resolution'):
+    if audit_kind not in ('resolution', 'data'):
+        raise ValueError('Unknown independent audit kind')
+    audit = load(root/f'eval-{step:07d}-{audit_kind}-verification.json')
     assert audit['stage'] == 'passed'
     dest = root/f'eval-{step:07d}-wandb-verification.json'
     if dest.exists():
