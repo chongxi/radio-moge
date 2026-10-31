@@ -136,14 +136,22 @@ def transfer_chunks(
                     raise ValueError("Truncated or oversized parallel range")
                 return body
 
-        end = min(total - 1, offset + chunk_bytes - 1)
+        # Prove Range/validator support with a small prefix; the previous full
+        # 16 MiB probe delayed every parallel worker behind one serial transfer.
+        # All remaining chunks still undergo the same independent validation.
+        probe_bytes = min(chunk_bytes, 64 * 1024)
+        end = min(total - 1, offset + probe_bytes - 1)
+        probe_started = time.monotonic()
         first = fetch(offset, end)
+        probe_seconds = time.monotonic() - probe_started
         if first is not None:
             response.close()
             record(
                 active_range_workers=workers,
                 range_chunk_bytes=chunk_bytes,
                 parallel_range_verified=True,
+                range_probe_bytes=end - offset + 1,
+                range_probe_seconds=probe_seconds,
             )
             position = end + 1
             pending = deque()
@@ -355,6 +363,8 @@ class AtomicRetriever:
                     throttle_seconds=throttle_seconds,
                     requested_range_workers=workers,
                     active_range_workers=transfer_info.get("active_range_workers", 1),
+                    range_probe_bytes=transfer_info.get("range_probe_bytes"),
+                    range_probe_seconds=transfer_info.get("range_probe_seconds"),
                     checksum_kind="local streamed SHA256; no publisher hash supplied",
                 ),
             )

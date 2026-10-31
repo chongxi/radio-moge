@@ -398,6 +398,84 @@ def test_parallel_ranges_are_ordered_bounded_and_validate_resumed_offsets(monkey
     assert records[-1]["active_range_workers"] == 4
 
 
+@pytest.mark.parametrize("offset", [0, 12345])
+def test_small_probe_starts_parallel_workers_without_serial_full_chunk(monkeypatch, offset):
+    import threading
+
+    body = bytes(range(256)) * (5 * 1024 * 1024 // 256)
+    chunk = 2 * 1024 * 1024
+    calls, records = [], []
+    lock = threading.Lock()
+
+    def response(request, timeout):
+        start, end = map(int, request.get_header("Range").removeprefix("bytes=").split("-"))
+        with lock:
+            calls.append((start, end))
+        return Response(
+            body[start : end + 1],
+            206,
+            {
+                "Content-Length": str(end - start + 1),
+                "Content-Range": f"bytes {start}-{end}/{len(body)}",
+                "ETag": "stable",
+            },
+        )
+
+    monkeypatch.setattr(download.urllib.request, "urlopen", response)
+    result = b"".join(
+        download.transfer_chunks(
+            Response(body[offset:], 200, {}),
+            "https://example.test/asset",
+            None,
+            offset,
+            len(body),
+            {"etag": "stable"},
+            4,
+            lambda **kw: records.append(kw),
+            chunk,
+        )
+    )
+    assert calls[0] == (offset, offset + 64 * 1024 - 1)
+    ordered = sorted(calls)
+    assert ordered[1] == (offset + 64 * 1024, offset + 64 * 1024 + chunk - 1)
+    assert all(left[1] + 1 == right[0] for left, right in zip(ordered, ordered[1:]))
+    assert ordered[-1][1] == len(body) - 1
+    assert result == body[offset:]
+    assert records[-1]["range_probe_bytes"] == 64 * 1024
+    assert records[-1]["range_probe_seconds"] >= 0
+
+
+@pytest.mark.parametrize("bad", ["identity", "range", "truncated"])
+def test_small_probe_does_not_relax_later_chunk_checks(monkeypatch, bad):
+    body = b"x" * (5 * 1024 * 1024)
+
+    def response(request, timeout):
+        start, end = map(int, request.get_header("Range").removeprefix("bytes=").split("-"))
+        headers = {
+            "ETag": "stable",
+            "Content-Length": str(end - start + 1),
+            "Content-Range": f"bytes {start}-{end}/{len(body)}",
+        }
+        part = body[start : end + 1]
+        if start == 64 * 1024:
+            if bad == "identity":
+                headers["ETag"] = "changed"
+            elif bad == "range":
+                headers["Content-Range"] = "bytes 0-1/2"
+            else:
+                part = part[:-1]
+        return Response(part, 206, headers)
+
+    monkeypatch.setattr(download.urllib.request, "urlopen", response)
+    with pytest.raises(ValueError):
+        b"".join(
+            download.transfer_chunks(
+                Response(body, 200, {}), "https://example.test/asset", None, 0, len(body),
+                {"etag": "stable"}, 4, lambda **kw: None, 2 * 1024 * 1024,
+            )
+        )
+
+
 @pytest.mark.parametrize("bad", ["identity", "range", "length", "truncated", "oversized"])
 def test_parallel_range_rejects_mismatched_or_truncated_source(monkeypatch, bad):
     body = b"x" * 32

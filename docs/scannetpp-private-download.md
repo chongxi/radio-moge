@@ -122,3 +122,23 @@ changing between1and8 at the next asset without another restart. It contains no
 URLs or credentials. Higher concurrency is evaluated with real remaining assets;
 no additional full-dataset reads or training are involved. New receipts distinguish
 requested and actual range workers.
+
+## Shorter parallel-range probe, 2026-10-31
+
+A read-only sample of 167 completed transfers since the latest resume covered
+1,463 seconds: transfer-body timing accounted for879 seconds, completed ZIP
+extraction/publication gaps for394 seconds, and the remaining190 seconds included
+startup, requests, metadata and the current unfinished operation. Large parallel
+transfers averaged19.81MB/s within their recorded transfer intervals, while overall
+verified-byte progress was10.35MB/s. These observations do not establish a network
+limit or attribute all waiting to any one system component.
+
+The previous parallel path first fetched16MiB through a single request before
+starting its worker pool. It now validates a64KiB prefix (or a smaller configured
+chunk) and immediately schedules the remaining16MiB ranges. Every range retains
+the original source-validator, Content-Range and length checks; SHA assembly,
+fallback, worker bounds and extraction behavior are unchanged. Receipts additionally
+record probe bytes and duration. Tests cover nonzero resume offsets, contiguous
+coverage and invalid later ranges. This removes most serial probe bytes; sustained
+throughput improvement must be measured after deployment, not inferred from the
+smaller probe alone. Download and extraction are still sequential.
