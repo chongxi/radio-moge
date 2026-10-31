@@ -66,3 +66,15 @@ def test_train_views_exclude_official_test_and_bad_camera(tmp_path):
     (directory / 'nerfstudio/transforms_undistorted.json').write_text(json.dumps(camera))
     rows = snapshot.candidate_views(tmp_path, 'scene', 'nvs_sem_train')
     assert [r['view'] for r in rows] == ['one.jpg']
+
+
+def test_holdout_rule_is_stable_and_bounded_workers_preserve_order(monkeypatch):
+    scenes = [f'{i:010x}' for i in range(856)]
+    heldout = {s for s in scenes if snapshot.internal_holdout(s)}
+    assert 20 < len(heldout) < 70
+    assert heldout == {s for s in reversed(scenes) if snapshot.internal_holdout(s)}
+    monkeypatch.setattr(snapshot, 'inspect_image', lambda r: (dict(r, checked=True), None))
+    rows = [dict(index=i) for i in range(41)]
+    result = list(snapshot.bounded_inspection(rows, 4))
+    assert [r[0] for r in result] == rows
+    assert all(r[1][0]['checked'] for r in result)

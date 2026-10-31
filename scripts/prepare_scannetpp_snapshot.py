@@ -5,6 +5,7 @@ source, configuration, credentials or URLs. Output is a new sibling dataset.
 """
 import argparse
 from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import io
 import json
@@ -126,6 +127,18 @@ def fixed_validation(rows, count=128):
     raise ValueError('Insufficient completed held-out validation views')
 
 
+def internal_holdout(scene):
+    # Independent of completion order and snapshot cutoff; retained in later phases.
+    return int(sha(('scannetpp-internal-val-v1:' + scene).encode())[:8], 16) % 20 == 0
+
+
+def bounded_inspection(rows, workers):
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        for start in range(0, len(rows), workers * 2):
+            batch = rows[start:start + workers * 2]
+            yield from zip(batch, executor.map(inspect_image, batch), strict=True)
+
+
 def inspect_image(row):
     raw = Path(row['image']).read_bytes()
     with Image.open(io.BytesIO(raw)) as image:
@@ -149,7 +162,9 @@ def inspect_image(row):
                 valid_fraction=fraction, encoded_bytes=len(raw)), None
 
 
-def prepare(dataset, control, original, output, cutoff):
+def prepare(dataset, control, original, output, cutoff, workers=1):
+    if workers not in range(1, 5):
+        raise ValueError('Use one to four bounded CPU decoding workers')
     if output.exists():
         raise FileExistsError('Use a new snapshot; do not modify a published or partial snapshot')
     if output.parent != original.parent:
@@ -167,7 +182,11 @@ def prepare(dataset, control, original, output, cutoff):
         scenes, splits = select_scenes(dataset, control, cutoff)
         atomic(output / 'snapshot.json', dict(cutoff=cutoff, scenes=scenes, splits=splits,
                source=str(dataset), original=str(original), modality='undistorted DSLR',
-               validation_limit=128, mask_valid_fraction_min=.98, all_train_views=True))
+               validation_limit=128, mask_valid_fraction_min=.98, all_train_views=True,
+               internal_validation_rule='sha256(scannetpp-internal-val-v1:scene) first8 hex %20 ==0',
+               internal_validation_scenes=[r['scene'] for r in scenes
+                                           if r['split']=='nvs_sem_train' and internal_holdout(r['scene'])],
+               decoding_workers=workers))
         heldout_hashes = set()
         for file in sorted(original.glob('*.jsonl')):
             if not (file.name.startswith('val') or file.name.startswith('test')):
@@ -188,18 +207,32 @@ def prepare(dataset, control, original, output, cutoff):
                 target.write(line)
         candidates = []
         for scene in scenes:
-            candidates.extend(candidate_views(dataset, **scene))
+            if scene['split'] != 'nvs_sem_train':
+                continue  # Official validation/test scenes remain untouched for future evaluation.
+            rows = candidate_views(dataset, **scene)
+            if internal_holdout(scene['scene']):
+                rows = [dict(r, split='val', internal_scene_holdout=True) for r in rows]
+            candidates.extend(rows)
         validation = fixed_validation([r for r in candidates if r['split'] == 'val'], None)
+        if len(validation) < 128:
+            raise ValueError('Not enough independent internal-validation scenes/views')
         selected = validation + [r for r in candidates if r['split'] == 'train']
         status('decoding', candidate_train=len(selected) - len(validation), candidate_val=len(validation))
         seen = set(old_hashes) | heldout_hashes
         val_rows, new_scenes = [], set()
         last = time.monotonic()
         with (output / 'train.jsonl.incoming').open('a') as merged, (output / 'scannetpp-train.jsonl.incoming').open('w') as new:
-            for candidate in selected:
-                if candidate['split'] == 'val' and len(val_rows) == 128:
-                    continue
-                row, reason = inspect_image(candidate)
+            # Validation first, round-robin across permanently held-out scenes.
+            # Train decoding is bounded independently; no million-future eager queue.
+            def inspected():
+                for candidate in validation:
+                    if len(val_rows) == 128:
+                        break
+                    yield candidate, inspect_image(candidate)
+                training = [r for r in selected if r['split'] == 'train']
+                yield from bounded_inspection(training, workers)
+
+            for candidate, (row, reason) in inspected():
                 counts['inspected'] += 1
                 if row is None:
                     counts[reason] += 1
@@ -239,6 +272,7 @@ def prepare(dataset, control, original, output, cutoff):
                original_prefix_unchanged=True, official_test_scenes_excluded=True,
                official_test_views_excluded=True, decoded_all_accepted_images=True,
                duplicate_hashes_filtered=True, old_heldouts_excluded=True,
+               internal_validation_scenes_permanently_excluded=True,
                source_files_modified=False, training_ready_modality='undistorted DSLR RGB'))
         status('passed')
     except Exception as error:
@@ -251,5 +285,6 @@ if __name__ == '__main__':
     for key in ['dataset', 'control', 'original', 'output']:
         parser.add_argument('--' + key, type=Path, required=True)
     parser.add_argument('--cutoff', type=float, required=True)
+    parser.add_argument('--workers', type=int, default=1)
     args = parser.parse_args()
     prepare(**vars(args))
