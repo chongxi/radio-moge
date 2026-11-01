@@ -68,9 +68,9 @@ def build(root, output):
             start = page.index('<p>左侧使用 C-RADIOv4-H')
             end = page.index('</p>', start) + 4
             page = page[:start] + '<p>' + html.escape(view['weights']) + '</p>' + page[end:]
-    page = page.replace('FIXED 20 SCENES', 'MEASURED LASER GT')
+    page = page.replace('FIXED 20 SCENES', 'MEASURED LASER GT').replace('20 SCENES · LOCAL INTERACTION', '18 LASER VIEWS · 7 SCENES')
     page = page.replace('各自相机', '测量相机').replace('共用 MoGe-2 相机', '同一测量相机')
-    page = page.replace('</main>', '<section style="overflow:auto"><h2>同一GT支持上的物理几何误差</h2><table id="physical"></table><p>平整度是固定GT平面区域内，对预测自身拟合平面的RMS；可能因错误尺度而变小。必须同时查看XYZ、GT平面误差与非平面区域误差。</p></section></main>')
+    page = page.replace('</main>', '<section style="overflow:auto"><h2>当前图像：同一GT支持上的物理几何误差</h2><table id="physical"></table><p>平整度是固定GT平面区域内，对预测自身拟合平面的RMS；可能因错误尺度而变小。必须同时查看XYZ、GT平面误差与非平面区域误差。</p></section></main>')
     page = page.replace("__DATA__", json.dumps(display, separators=(",", ":")).replace("</", "<\\/"))
     page = page.replace("__BUNDLE__", bundle.read_text().replace("</script", "<\\/script"))
     for destination in [root / "index.html", output]:
