@@ -42,7 +42,8 @@ def plane_targets(depth, valid, intrinsics):
     return labels, planes, [patch.metadata() for patch in patches]
 
 
-def prepare(dataset, output, scenes=None, scan_limit=None, height=400, width=640):
+def prepare(dataset, output, scenes=None, scan_limit=None, height=400, width=640,
+            split='train', min_gt_fraction=.2):
     if output.exists():
         raise FileExistsError('Use a new output directory; no implicit retry or overwrite')
     train = set((dataset / 'splits/nvs_sem_train.txt').read_text().split())
@@ -51,11 +52,13 @@ def prepare(dataset, output, scenes=None, scan_limit=None, height=400, width=640
         forbidden.update((dataset / f'splits/{name}.txt').read_text().split())
     if train & forbidden:
         raise ValueError('Official scene splits overlap')
-    eligible = sorted(s for s in train if not heldout(s))
+    if split not in ('train', 'val') or not .2 <= min_gt_fraction <= 1:
+        raise ValueError('Invalid split or minimum measured support')
+    eligible = sorted(s for s in train if heldout(s) == (split == 'val'))
     selected = sorted(scenes) if scenes else eligible
     if (not selected or len(set(selected)) != len(selected)
             or not set(selected) <= set(eligible) or (scan_limit is not None and scan_limit < 1)):
-        raise ValueError('Only eligible non-heldout official training scenes may be prepared')
+        raise ValueError('Scenes must match the official train and permanent train/val split')
     output.mkdir(parents=True, mode=0o700)
     (output / 'rgb').mkdir()
     (output / 'geometry').mkdir()
@@ -63,6 +66,7 @@ def prepare(dataset, output, scenes=None, scan_limit=None, height=400, width=640
              'source_modality': 'original panocam RGB and laser radial range',
              'eligible_training_scenes': len(eligible), 'selected_scenes': selected,
              'verification_subset': bool(scenes or scan_limit), 'scan_limit': scan_limit,
+             'split': split, 'min_gt_fraction': min_gt_fraction,
              'records': 0, 'rejected': [], 'input_proofs': [], 'training_started': False,
              'source_files_modified': False, 'all_splits_preserved': True}
     rows = []
@@ -98,11 +102,11 @@ def prepare(dataset, output, scenes=None, scan_limit=None, height=400, width=640
                         raise ValueError('Source changed while preparing GT')
                 projector = PanoramaProjector(arrays['azimuth'], arrays['polar'])
                 for yaw in (0, 60, 120, 180, 240, 300):
-                    rgb, depth, valid, intrinsics, report = projector.project(
+                    rgb, depth, valid, intrinsics, report, source_indices = projector.project(
                         arrays['rgb'], arrays['range'], arrays['mask'],
-                        height=height, width=width, yaw=yaw)
+                        height=height, width=width, yaw=yaw, return_source_indices=True)
                     name = f'{scene}-{image_path.stem}-yaw{yaw:03d}'
-                    if report['rgb_valid_fraction'] < .98 or report['valid_fraction'] < .5:
+                    if report['rgb_valid_fraction'] < .98 or report['valid_fraction'] < min_gt_fraction:
                         state['rejected'].append({'id': name, 'projection': report})
                         continue
                     labels, planes, regions = plane_targets(depth, valid, intrinsics)
@@ -113,7 +117,8 @@ def prepare(dataset, output, scenes=None, scan_limit=None, height=400, width=640
                     temporary = gt_path.with_suffix('.npz.incoming')
                     with temporary.open('xb') as file:
                         np.savez_compressed(file, depth=depth, valid=valid, intrinsics=intrinsics,
-                                            plane_labels=labels, planes=planes)
+                                            plane_labels=labels, planes=planes,
+                                            source_indices=source_indices)
                     temporary.replace(gt_path)
                     # Independent readback before admitting a published record.
                     with Image.open(rgb_path) as file:
@@ -127,7 +132,7 @@ def prepare(dataset, output, scenes=None, scan_limit=None, height=400, width=640
                                  'sha256': sha_file(rgb_path), 'geometry_sha256': sha_file(gt_path),
                                  'dataset': 'scannetpp_panocam', 'supervision': 'scannetpp_panocam_laser',
                                  'group': 'scannetpp:' + scene, 'scene': scene, 'id': name,
-                                 'split': 'train', 'official_split': 'nvs_sem_train',
+                                 'split': split, 'official_split': 'nvs_sem_train',
                                  'source_scan': image_path.stem, 'projection': report,
                                  'planes': regions, 'width': width, 'height': height})
                     state['records'] = len(rows)
@@ -139,10 +144,10 @@ def prepare(dataset, output, scenes=None, scan_limit=None, height=400, width=640
                 del projector, arrays
         if not rows:
             raise ValueError('No view passed the calibrated GT admission checks')
-        temporary = output / 'train.jsonl.incoming'
+        temporary = output / (split + '.jsonl.incoming')
         temporary.write_text(''.join(json.dumps(row, allow_nan=False) + '\n' for row in rows))
-        temporary.replace(output / 'train.jsonl')
-        state.update(stage='prepared', finished_at=time.time(), manifest_sha256=sha_file(output / 'train.jsonl'))
+        temporary.replace(output / (split + '.jsonl'))
+        state.update(stage='prepared', finished_at=time.time(), manifest_sha256=sha_file(output / (split + '.jsonl')))
         atomic_json(state, output / 'preparation.json')
     except BaseException as error:
         state.update(stage='failed', failed_at=time.time(), error=type(error).__name__ + ': ' + str(error))
@@ -156,5 +161,8 @@ if __name__ == '__main__':
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--scenes', nargs='+')
     parser.add_argument('--scan-limit', type=int)
+    parser.add_argument('--split', choices=['train', 'val'], default='train')
+    parser.add_argument('--min-gt-fraction', type=float, default=.2)
     args = parser.parse_args()
-    prepare(args.dataset, args.output, args.scenes, args.scan_limit)
+    prepare(args.dataset, args.output, args.scenes, args.scan_limit,
+            split=args.split, min_gt_fraction=args.min_gt_fraction)

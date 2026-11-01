@@ -65,7 +65,7 @@ class PanoramaProjector:
         return result_y.reshape(wanted.shape[:2]), result_x.reshape(wanted.shape[:2])
 
     def project(self, rgb, distance, mask, height=400, width=640, yaw=0., pitch=0.,
-                fov_degrees=90., max_pixel_error=.5):
+                fov_degrees=90., max_pixel_error=.5, return_source_indices=False):
         if (rgb.shape != (*self.azimuth.shape, 3) or distance.shape != self.azimuth.shape
                 or mask.shape != self.azimuth.shape or not 0 < max_pixel_error <= 1):
             raise ValueError('All original panorama modalities must have identical dimensions')
@@ -77,7 +77,8 @@ class PanoramaProjector:
         target_u, target_v = np.meshgrid(np.arange(width), np.arange(height))
         pixel_error = np.hypot(u - target_u, v - target_v)
         angular_support = (rays[..., 2] > 0) & (pixel_error <= max_pixel_error)
-        anonymous_ok = ndimage.binary_erosion(mask == 255, iterations=1, border_value=0)[ys, xs]
+        anonymous_ok = ndimage.binary_erosion(mask == 255, structure=np.ones((3, 3)),
+                                             iterations=1, border_value=0)[ys, xs]
         # Reject a depth stencil if its native source pixels cross a hole or edge.
         native_valid = np.isfinite(distance) & (distance > 0) & (distance < 65.535)
         clean = np.where(native_valid, distance, 0)
@@ -91,7 +92,7 @@ class PanoramaProjector:
         depth = np.where(valid, depth, 0).astype(np.float32)
         output_rgb = rgb[ys, xs].copy()
         output_rgb[~(angular_support & anonymous_ok)] = 127
-        return output_rgb, depth, valid, intrinsics, {
+        result = output_rgb, depth, valid, intrinsics, {
             'yaw_degrees': yaw, 'pitch_degrees': pitch, 'fov_degrees': fov_degrees,
             'source_shape': list(distance.shape), 'output_shape': [height, width],
             'valid_fraction': float(valid.mean()),
@@ -103,3 +104,6 @@ class PanoramaProjector:
             'range_to_z_conversion': True, 'depth_holes_filled': False,
             'original_camera_to_scanner_rotation': rotation.tolist(),
         }
+        if return_source_indices:
+            return (*result, np.stack((ys, xs), -1).astype(np.int32))
+        return result

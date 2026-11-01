@@ -259,6 +259,13 @@ def train(
     val_path = config["data"].get("val_manifest")
     validation = read_manifest(val_path) if val_path else []
     check_split(records, validation)
+    geometry_validation = []
+    if config['data'].get('geometry_val_manifest'):
+        if not config.get('geometry_supervision'):
+            raise ValueError('Measured geometry validation requires the GT stage')
+        geometry_validation = read_manifest(config['data']['geometry_val_manifest'])
+        validate_gt_records(geometry_validation, split='val')
+        check_split(records, geometry_validation)
     dataset_validation = {}
     for name, view in config.get('evaluation', {}).get('dataset_variants', {}).items():
         if (not re.fullmatch(r'[a-z0-9-]{1,32}', name)
@@ -280,6 +287,9 @@ def train(
     }
     if config.get('geometry_supervision'):
         digests['geometry'] = geometry_digest(records)
+    if geometry_validation:
+        digests['geometry_val'] = geometry_digest(geometry_validation)
+        digests['geometry_val_rgb'] = manifest_digest(geometry_validation)
     if train_probe:
         digests['train_probe'] = manifest_digest(train_probe)
     for name, extra_records in dataset_validation.items():
@@ -645,6 +655,12 @@ def train(
                                  destination / ('dataset-' + name), None)
             extra['feature/total'] = feature_loss_total(extra, config['loss'])
             metrics.update({f'dataset/{name}/{key}': value for key, value in extra.items()})
+        if geometry_validation:
+            from .gt_evaluate import evaluate_ground_truth
+            with preserve_rng():
+                extra = evaluate_ground_truth(system, raw_adapter, geometry_validation, config,
+                                               destination / 'gt-laser-known-camera')
+            metrics.update({f'gt_laser_known_camera/{key}': value for key, value in extra.items()})
         if performance:
             metrics.update(schedule_position=schedule_position(step, performance),
                            logical_data_cursor=cursor, effective_batch=performance['effective_batch'])

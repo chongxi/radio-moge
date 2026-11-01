@@ -15,13 +15,15 @@ from .data import tensor_from_pil
 GT_SOURCES = ('scannetpp_panocam_laser', 'scannetpp_dslr_mesh')
 
 
-def validate_gt_records(records):
+def validate_gt_records(records, split='train'):
+    if split not in ('train', 'val'):
+        raise ValueError('Unsupported GT split')
     for row in records:
         scene = row.get('scene', '')
         heldout = int(hashlib.sha256(('scannetpp-internal-val-v1:' + scene).encode())
                       .hexdigest()[:8], 16) % 20 == 0
-        if (row.get('supervision') not in GT_SOURCES or row.get('split') != 'train'
-                or row.get('official_split') != 'nvs_sem_train' or heldout
+        if (row.get('supervision') not in GT_SOURCES or row.get('split') != split
+                or row.get('official_split') != 'nvs_sem_train' or heldout != (split == 'val')
                 or row.get('group') != 'scannetpp:' + scene or not scene
                 or not row.get('geometry') or not row.get('geometry_sha256')):
             raise ValueError('GT training requires verified measured geometry and eligible training scenes')

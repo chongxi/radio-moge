@@ -258,3 +258,42 @@ def test_gt_init_preserves_weights_statistics_and_does_not_inherit_rgb_pipeline(
     assert final['performance'] is None
     assert final['initialization_provenance']['source_step'] == 1
     assert hashlib.sha256(source_path.read_bytes()).hexdigest() == before
+
+
+def test_gt_validation_requires_permanent_heldout_and_reports_metric_error(tmp_path):
+    from types import SimpleNamespace
+    from radio_moge.gt_evaluate import evaluate_ground_truth
+    row = publish_pair(tmp_path)
+    row.update(id='heldout-pair', height=32, width=48, split='val')
+    with pytest.raises(ValueError):
+        validate_gt_records([row], split='val')
+    scene = next(str(i) for i in range(100) if int(hashlib.sha256(
+        ('scannetpp-internal-val-v1:' + str(i)).encode()).hexdigest()[:8], 16) % 20 == 0)
+    row.update(scene=scene, group='scannetpp:' + scene)
+    validate_gt_records([row], split='val')
+    with pytest.raises(ValueError):
+        validate_gt_records([row])
+
+    class Adapter(torch.nn.Module):
+        indices = []
+
+        def __init__(self):
+            super().__init__()
+            self.anchor = torch.nn.Parameter(torch.zeros(1))
+
+        def forward(self, image):
+            return image
+
+    target = plane_target()
+    raw = raw_for(target)
+    raw['metric_scale'] = torch.tensor([1.1])
+    system = SimpleNamespace(encode=lambda image, indices: (image, None),
+                             decoder=lambda image, size: raw)
+    adapter = Adapter().train()
+    metrics = evaluate_ground_truth(system, adapter, [row], {'train': {'precision': 'no'}},
+                                    tmp_path / 'eval')
+    assert metrics['abs_rel'] == pytest.approx(.1, abs=1e-6)
+    assert metrics['rmse'] == pytest.approx(.3, abs=1e-6)
+    assert metrics['plane_rmse_m'] == pytest.approx(.3, abs=1e-6)
+    assert metrics['images'] == 1 and adapter.training
+    assert adapter.anchor.grad is None
