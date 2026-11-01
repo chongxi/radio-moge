@@ -1,0 +1,145 @@
+{
+  "output_dir": "/home/buildhub/shared/radio-moge/chongxi/data-expansion-attention-20261022/gt-geometry-stage-20261101/pilot/train",
+  "models": {
+    "moge_repo": "Ruicheng/moge-2-vitl-normal",
+    "moge_revision": "cb0e8bbd6b1e243589717c78e750b1ba4c093acf",
+    "window_size": null
+  },
+  "adapter": {
+    "kind": "joint_attention",
+    "initialization_seed": 43,
+    "indices": [
+      7,
+      15,
+      23,
+      31
+    ],
+    "spec": {
+      "name": "full_joint_qknorm_s43_all_inputs_clean",
+      "family": "joint",
+      "width": 2048,
+      "blocks": 4,
+      "heads": 32,
+      "position": "rope",
+      "gate": true,
+      "registers": 4,
+      "activation": "swiglu",
+      "local": false,
+      "layer_scale": 0.01,
+      "qk_norm": true,
+      "summary_cleaning": "per-token-zero-channel"
+    }
+  },
+  "data": {
+    "train_manifest": "/home/buildhub/shared/radio-moge/datasets/scannetpp-laser-gt-v1-20261101/train.jsonl",
+    "val_manifest": "/home/buildhub/shared/radio-moge/datasets/attention-full-mix-v1-20261022/val-selection.jsonl",
+    "buckets": [
+      [
+        400,
+        640
+      ]
+    ],
+    "workers": 1,
+    "augment": true
+  },
+  "train": {
+    "seed": 43,
+    "precision": "bf16",
+    "steps": 1000,
+    "batch_size": 1,
+    "accumulation": 16,
+    "lr": 1e-05,
+    "weight_decay": 0.01,
+    "warmup": 0,
+    "clip_grad": 1.0,
+    "calibration_batches": 128,
+    "log_every": 10,
+    "save_every": 100,
+    "eval_every": 250,
+    "tensorboard": true,
+    "eval_at_start": true,
+    "max_seconds": 7200,
+    "record_cosine_speed": true,
+    "update_norm_every": 10,
+    "lr_schedule": "constant"
+  },
+  "loss": {
+    "spatial": 0.1,
+    "summary": 0.1,
+    "cosine": 0.1,
+    "summary_cosine": 0.1,
+    "gt_depth": 1.0,
+    "gt_points": 1.0,
+    "gt_gradient": 0.5,
+    "gt_normal": 0.2,
+    "gt_plane": 0.2
+  },
+  "evaluation": {
+    "num_tokens": 1200,
+    "max_side": 640,
+    "limit": null,
+    "visualizations": 8,
+    "selection_metric": "dataset/scannetpp-lidar/gt_student/abs_rel",
+    "checkpoint_metrics": {
+      "scannetpp-gt": {
+        "metric": "dataset/scannetpp-lidar/gt_student/abs_rel",
+        "mode": "min"
+      },
+      "nyu-gt": {
+        "metric": "gt_student/abs_rel",
+        "mode": "min"
+      },
+      "spatial": {
+        "metric": "macro/spatial/cosine",
+        "mode": "max"
+      },
+      "summary": {
+        "metric": "macro/summary/cosine",
+        "mode": "max"
+      }
+    },
+    "resolution_variants": {
+      "native-640x400": {
+        "bucket": [
+          400,
+          640
+        ],
+        "num_tokens": null
+      }
+    },
+    "dataset_variants": {
+      "scannetpp-dslr": {
+        "manifest": "/home/buildhub/shared/radio-moge/datasets/attention-scannetpp-snapshot-v3-20261031/val-scannetpp.jsonl",
+        "num_tokens": 1200,
+        "max_side": 640
+      },
+      "scannetpp-lidar": {
+        "manifest": "/home/buildhub/shared/radio-moge/datasets/scannetpp-iphone-lidar-val-v1-20261031/val-scannetpp-lidar.jsonl",
+        "num_tokens": 1200,
+        "max_side": 640
+      }
+    }
+  },
+  "tracking": {
+    "enabled": true,
+    "mode": "online",
+    "project": "radio-moge",
+    "name": "gt-geometry-laser-pilot-20261101",
+    "tags": [
+      "gt-geometry",
+      "original-laser-panorama",
+      "adapter-only",
+      "source-step232288",
+      "feature-weight0.1",
+      "constant-lr1e-5",
+      "bounded-pilot"
+    ],
+    "images": 8,
+    "entity": "brainsim",
+    "group": "gt-geometry-stage-20261101"
+  },
+  "geometry_supervision": {
+    "target": "ground_truth",
+    "camera": "known_intrinsics"
+  }
+}

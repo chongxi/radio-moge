@@ -18,7 +18,7 @@ def read_manifest(path):
         if not line.strip():
             continue
         row = json.loads(line)
-        for key in ("image", "depth"):
+        for key in ("image", "depth", "geometry"):
             if key in row:
                 row[key] = str((path.parent / row[key]).resolve())
                 if not Path(row[key]).is_file():

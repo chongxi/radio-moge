@@ -34,6 +34,8 @@ from .data import (
 from .evaluate import evaluate, synchronize
 from .decoder import geometry_points_with_grad, postprocess
 from .losses import FeatureStatistics, feature_loss_total, geometry_losses, weighted_loss
+from .gt_geometry import GT_LOSS_KEYS, ground_truth_losses
+from .gt_data import GroundTruthImages, geometry_digest, validate_gt_records
 from .planes import FLATNESS_MODES, PlaneConfig, detect_planes, plane_losses
 from .system import build_system
 from .tracking import ExperimentTracker, preserve_rng
@@ -57,8 +59,12 @@ def make_loader(records, config, start, count, calibration=False):
             len(records), train["batch_size"], data["buckets"], train["seed"], start, count
         )
     compact = data.get('compact_transport', False)
+    dataset = (GroundTruthImages(records, data['augment'])
+               if config.get('geometry_supervision') and not calibration else
+               TrainingImages(records, data['augment'] and not calibration,
+                              compact_transport=compact))
     loader = DataLoader(
-        TrainingImages(records, data["augment"] and not calibration, compact_transport=compact),
+        dataset,
         batch_sampler=sampler,
         num_workers=data["workers"],
         pin_memory=torch.cuda.is_available(),
@@ -95,8 +101,22 @@ def validate_config(config):
         raise ValueError("Use 0–4 data workers; respect the workspace's CPU/memory limits")
     if any(min(pair) < 16 or max(pair) > 2048 for pair in data["buckets"]):
         raise ValueError("Invalid training resolution bucket")
-    if any(v < 0 for v in config["loss"].values()):
-        raise ValueError("Loss weights must be nonnegative")
+    if any(not math.isfinite(v) or v < 0 for v in config["loss"].values()):
+        raise ValueError("Loss weights must be finite and nonnegative")
+    gt = config.get('geometry_supervision')
+    if gt:
+        if gt != {'target': 'ground_truth', 'camera': 'known_intrinsics'}:
+            raise ValueError('Unsupported GT geometry supervision protocol')
+        if data.get('compact_transport'):
+            raise ValueError('GT pairs require the paired loader, not RGB-only compact transport')
+        if config['loss'].get('gt_depth', 0) <= 0 or config['loss'].get('gt_points', 0) <= 0:
+            raise ValueError('GT training requires positive metric gt_depth and gt_points anchors')
+        if any(config['loss'].get(k, 0) for k in
+               ('points', 'mask', 'scale', 'gradient', 'normal',
+                'plane_flatness', 'plane_normal', 'plane_anchor')):
+            raise ValueError('GT geometry cannot silently mix teacher pseudo-geometry losses')
+    elif any(config['loss'].get(k, 0) for k in GT_LOSS_KEYS):
+        raise ValueError('GT loss weights require explicit geometry_supervision')
     if config.get('plane_flatness_mode', 'teacher_axis') not in FLATNESS_MODES:
         raise ValueError('Unknown plane flatness mode')
     if any(config["loss"].get(k, 0) for k in ("plane_flatness", "plane_normal", "plane_anchor")):
@@ -232,6 +252,8 @@ def train(
         )
     set_seed(settings["seed"])
     records = read_manifest(config["data"]["train_manifest"])
+    if config.get('geometry_supervision'):
+        validate_gt_records(records)
     val_path = config["data"].get("val_manifest")
     validation = read_manifest(val_path) if val_path else []
     check_split(records, validation)
@@ -254,6 +276,8 @@ def train(
         "train": manifest_digest(records),
         "val": manifest_digest(validation) if validation else None,
     }
+    if config.get('geometry_supervision'):
+        digests['geometry'] = geometry_digest(records)
     if train_probe:
         digests['train_probe'] = manifest_digest(train_probe)
     for name, extra_records in dataset_validation.items():
@@ -332,7 +356,10 @@ def train(
         from .lr_adjustment import apply_lr_adjustment
         lr_adjustments = apply_lr_adjustment(config, state, optimizer, scheduler, lr_adjustment)
     limits = continued_limits(settings, state if resume else None, extension)
-    performance = performance or (state or {}).get('performance')
+    # A new objective initialized with --init does not inherit a parent's RGB-only pipeline.
+    performance = performance or ((state or {}).get('performance') if not init else None)
+    if config.get('geometry_supervision') and performance:
+        raise ValueError('GT paired batches do not support the RGB-only performance pipeline')
     constant_fork = bool(fork_from or (resume and (state or {}).get('fork_provenance')))
     if performance is not None:
         from .performance import validate_performance
@@ -349,6 +376,16 @@ def train(
                 best = spec['baseline']
     optimizer_seconds = (state or {}).get('optimizer_elapsed_seconds', 0.0) if resume else 0.0
     fork_provenance = (state or {}).get("fork_provenance") if resume else None
+    initialization_provenance = ((state or {}).get('initialization_provenance')
+                                 if resume else None)
+    if init:
+        initialization_provenance = {
+            'checkpoint': str(Path(init).resolve()), 'source_step': state['step'],
+            'restored': ['adapter', 'statistics'],
+            'reset': ['optimizer', 'scheduler', 'rng', 'data_cursor', 'step', 'tracking_run'],
+            'geometry_supervision': config.get('geometry_supervision'),
+        }
+        atomic_json(initialization_provenance, output / 'initialization-state.json')
     if fork_from:
         fork_provenance = {
             "checkpoint": str(Path(fork_from).resolve()),
@@ -454,6 +491,7 @@ def train(
         "execution_revision": execution_revision or (state or {}).get("execution_revision"),
         "runtime_limits": limits,
         "fork_provenance": fork_provenance,
+        "initialization_provenance": initialization_provenance,
         "performance": performance,
         "lr_adjustments": lr_adjustments,
     }
@@ -516,6 +554,7 @@ def train(
                 "runtime_limits": limits,
                 "execution_revision": provenance["execution_revision"],
                 "fork_provenance": fork_provenance,
+                "initialization_provenance": initialization_provenance,
                 "performance": performance,
                 "lr_adjustments": lr_adjustments,
             },
@@ -673,7 +712,8 @@ def train(
                 batches = grouped_window(iterator, accumulation, performance['compute_batch'])
             else:
                 batches = (next(iterator) for _ in range(accumulation))
-            for cpu_image in batches:
+            for cpu_batch in batches:
+                cpu_image = cpu_batch['image'] if isinstance(cpu_batch, dict) else cpu_batch
                 weight = len(cpu_image) / (settings['batch_size'] * accumulation)
                 image = cpu_image.to(accelerator.device, non_blocking=True)
                 with amp(), torch.no_grad():
@@ -681,7 +721,17 @@ def train(
                 with amp():
                     prediction = adapter(features)
                 losses = statistics.loss(prediction, target)
-                if geometry_enabled:
+                if config.get('geometry_supervision'):
+                    gt_target = {k: v.to(accelerator.device, non_blocking=True)
+                                 for k, v in cpu_batch.items() if k != 'image'}
+                    predicted_raw = system.decoder(prediction, image.shape[-2:])
+                    losses.update(ground_truth_losses(predicted_raw, gt_target))
+                    losses['feature_weighted'] = sum(losses[k] * config['loss'].get(k, 0)
+                                                     for k in ('spatial', 'summary', 'cosine',
+                                                               'summary_cosine'))
+                    losses['geometry_weighted'] = sum(losses[k] * config['loss'].get(k, 0)
+                                                      for k in GT_LOSS_KEYS)
+                elif geometry_enabled:
                     with torch.no_grad():
                         target_raw = system.decoder(target, image.shape[-2:])
                     # Do not put this path in no_grad: decoder input gradients train the adapter.
