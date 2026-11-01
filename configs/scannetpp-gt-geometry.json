@@ -31,7 +31,7 @@
     }
   },
   "data": {
-    "train_manifest": "/home/buildhub/shared/radio-moge/datasets/scannetpp-laser-gt-v1-20261101/train.jsonl",
+    "train_manifest": "/home/buildhub/shared/radio-moge/datasets/scannetpp-laser-gt-pilot-v1-20261101/train/train.jsonl",
     "val_manifest": "/home/buildhub/shared/radio-moge/datasets/attention-full-mix-v1-20261022/val-selection.jsonl",
     "buckets": [
       [
@@ -40,7 +40,8 @@
       ]
     ],
     "workers": 1,
-    "augment": true
+    "augment": true,
+    "geometry_val_manifest": "/home/buildhub/shared/radio-moge/datasets/scannetpp-laser-gt-pilot-v1-20261101/val/val.jsonl"
   },
   "train": {
     "seed": 43,
@@ -79,7 +80,7 @@
     "max_side": 640,
     "limit": null,
     "visualizations": 8,
-    "selection_metric": "dataset/scannetpp-lidar/gt_student/abs_rel",
+    "selection_metric": "gt_laser_known_camera/abs_rel",
     "checkpoint_metrics": {
       "scannetpp-gt": {
         "metric": "dataset/scannetpp-lidar/gt_student/abs_rel",
@@ -96,6 +97,10 @@
       "summary": {
         "metric": "macro/summary/cosine",
         "mode": "max"
+      },
+      "laser-gt": {
+        "metric": "gt_laser_known_camera/abs_rel",
+        "mode": "min"
       }
     },
     "resolution_variants": {
