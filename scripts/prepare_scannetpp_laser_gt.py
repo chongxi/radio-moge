@@ -14,7 +14,7 @@ import numpy as np
 from PIL import Image
 
 from radio_moge.checkpoint import atomic_json
-from radio_moge.planes import detect_planes, PlaneConfig
+from radio_moge.gt_planes import measured_planes
 from radio_moge.scannetpp_panorama import PanoramaProjector
 
 
@@ -35,7 +35,7 @@ def plane_targets(depth, valid, intrinsics):
                        (v - intrinsics[1, 2]) / intrinsics[1, 1], np.ones_like(u)), -1)
     points *= depth[..., None]
     labels, planes = np.zeros((h, w), np.uint8), np.zeros((6, 4), np.float32)
-    patches = detect_planes(points, valid, PlaneConfig())
+    patches = measured_planes(points, valid)
     for i, patch in enumerate(patches):
         labels[patch.mask] = i + 1
         planes[i] = np.r_[patch.normal, patch.offset]
@@ -67,6 +67,7 @@ def prepare(dataset, output, scenes=None, scan_limit=None, height=400, width=640
              'eligible_training_scenes': len(eligible), 'selected_scenes': selected,
              'verification_subset': bool(scenes or scan_limit), 'scan_limit': scan_limit,
              'split': split, 'min_gt_fraction': min_gt_fraction,
+             'plane_method': 'sparse measured GT RANSAC; no hole depth or label filling',
              'records': 0, 'rejected': [], 'input_proofs': [], 'training_started': False,
              'source_files_modified': False, 'all_splits_preserved': True}
     rows = []

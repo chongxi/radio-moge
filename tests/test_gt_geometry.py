@@ -297,3 +297,19 @@ def test_gt_validation_requires_permanent_heldout_and_reports_metric_error(tmp_p
     assert metrics['plane_rmse_m'] == pytest.approx(.3, abs=1e-6)
     assert metrics['images'] == 1 and adapter.training
     assert adapter.anchor.grad is None
+
+
+def test_sparse_measured_plane_fit_never_fills_holes_or_crosses_depth_step():
+    from radio_moge.gt_planes import measured_planes
+    target = plane_target(height=80, width=120)
+    target['depth'][..., 60:] = 5
+    points = camera_points(target['depth'], target['intrinsics'])[0].numpy()
+    valid = np.random.default_rng(7).random((80, 120)) < .35
+    patches = measured_planes(points, valid)
+    assert len(patches) >= 2
+    assert any(abs(p.offset - 3) < 1e-5 for p in patches)
+    assert any(abs(p.offset - 5) < 1e-5 for p in patches)
+    for patch in patches:
+        assert not np.any(patch.mask & ~valid)
+        assert np.max(np.abs(points[patch.mask] @ patch.normal + patch.offset)) < 1e-5
+        assert patch.rms < 1e-5
