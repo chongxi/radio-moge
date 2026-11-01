@@ -13,6 +13,7 @@ import torch
 
 from radio_moge.checkpoint import atomic_json
 from radio_moge.decoder import postprocess
+from radio_moge.data import read_manifest
 from radio_moge.gt_data import GroundTruthImages, validate_gt_records
 from radio_moge.gt_geometry import calibrated_geometry
 from radio_moge.gt_geometry_metrics import physical_geometry_metrics
@@ -230,7 +231,7 @@ def export(args):
     provenance = json.loads((pilot / 'train/provenance.json').read_text())
     assert state['data_digests'] == provenance['data_digests']
     assert state['revisions'] == provenance['revisions']
-    records = [json.loads(line) for line in Path(config['data']['geometry_val_manifest']).read_text().splitlines()]
+    records = read_manifest(config['data']['geometry_val_manifest'])
     validate_gt_records(records, split='val')
     assert len(records) == 18 and len({r['scene'] for r in records}) == 7
     system, adapter = build_system(config, 'cuda')
@@ -240,7 +241,13 @@ def export(args):
     gc.collect()
     review = json.loads((pilot / 'eval-0001000-feature-alignment-review.json').read_text())
     cosine = review['views']['native-640x400']['metrics']['spatial/cosine']['current']
-    fixed = fixed20(system, adapter, config, args.reference_export, output / 'fixed20', checkpoint, cosine)
+    if args.completed_fixed20 is None:
+        fixed = fixed20(system, adapter, config, args.reference_export, output / 'fixed20', checkpoint, cosine)
+    else:
+        fixed = json.loads((args.completed_fixed20 / 'data.json').read_text())
+        assert fixed['status'] == 'complete' and fixed['checkpoint_step'] == 1000
+        assert len(fixed['samples']) == 20
+        assert Path(fixed['checkpoint']) == checkpoint
     def rows(step):
         return json.loads((pilot / f'train/eval-{step:07d}/gt-laser-known-camera/per_image.json').read_text())
     measured = laser(system, adapter, config, records, output / 'laser', archive, rows(1000), rows(0))
@@ -249,11 +256,14 @@ def export(args):
     atomic_json(dict(stage='complete', finished_at=time.time(), checkpoint_step=1000,
                      fixed20_images=len(fixed['samples']), laser_images=measured['images'],
                      source_identity_unchanged=True, archive_unchanged=True,
-                     production_updates=0, fixed20_parent_teacher_reused=True), output / 'completion.json')
+                     production_updates=0, fixed20_parent_teacher_reused=True,
+                     fixed20_existing_export=str(args.completed_fixed20) if args.completed_fixed20 else None),
+                output / 'completion.json')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('pilot', 'reference-export', 'archive-proof', 'output'):
         parser.add_argument('--' + name, type=Path, required=True)
+    parser.add_argument('--completed-fixed20', type=Path)
     export(parser.parse_args())

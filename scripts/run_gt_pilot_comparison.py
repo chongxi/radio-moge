@@ -35,6 +35,11 @@ def run(args):
                    str(Path(__file__).with_name('export_gt_pilot_comparison.py'))]
         for name in ('pilot', 'reference_export', 'archive_proof', 'output'):
             command.extend(['--' + name.replace('_', '-'), str(getattr(args, name))])
+        if plan.get('completed_fixed20'):
+            completed = Path(plan['completed_fixed20'])
+            prior = json.loads((completed / 'data.json').read_text())
+            assert prior['status'] == 'complete' and prior['checkpoint_step'] == 1000
+            command.extend(['--completed-fixed20', str(completed)])
         env = dict(os.environ, OMP_NUM_THREADS='1', MKL_NUM_THREADS='1',
                    OPENBLAS_NUM_THREADS='1', NUMEXPR_NUM_THREADS='1',
                    HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1')
