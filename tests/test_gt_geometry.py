@@ -128,16 +128,26 @@ def publish_pair(tmp_path, name='pair', height=32, width=48):
 
 def test_paired_augmentation_keeps_camera_depth_and_plane_aligned(tmp_path):
     row = publish_pair(tmp_path, height=40, width=60)
+    target = plane_target(height=40, width=60)
+    rays = camera_points(torch.ones_like(target['depth']), target['intrinsics'])
+    normal = torch.tensor([.3, .1, 1.])
+    normal /= normal.norm()
+    target['depth'] = 3 / (rays * normal).sum(-1)
+    target['planes'][:, 0, :3] = normal
+    np.savez(row['geometry'], **{k: v[0].numpy() for k, v in target.items()})
     loader = GroundTruthImages([row], augment=True)
+    signs = set()
     for seed in range(8):
-        a = loader[0, seed, 32, 32]
-        b = loader[0, seed, 32, 32]
+        a = loader[0, seed, 40, 40]
+        b = loader[0, seed, 40, 40]
         for key in a:
             torch.testing.assert_close(a[key], b[key], rtol=0, atol=0)
         points = camera_points(a['depth'][None], a['intrinsics'][None])[0]
         plane = a['planes'][0]
         assert ((points * plane[:3]).sum(-1) + plane[3]).abs().max() < 1e-6
         assert a['intrinsics'][0, 0] == pytest.approx(.8 * 60 / 40)
+        signs.add(int(torch.sign(plane[0])))
+    assert signs == {-1, 1}
 
 
 def test_gt_admission_rejects_heldout_or_unverified_data(tmp_path):
@@ -226,3 +236,25 @@ def test_gt_config_rejects_teacher_geometry_or_missing_anchors(tmp_path):
     config['loss']['gt_points'] = 0
     with pytest.raises(ValueError, match='anchors'):
         validate_config(config)
+
+
+def test_gt_init_preserves_weights_statistics_and_does_not_inherit_rgb_pipeline(tmp_path):
+    parent_config = config_for(tmp_path)
+    parent_config['data']['val_manifest'] = None
+    parent_config['output_dir'] = str(tmp_path / 'feature-parent')
+    source_path = train(parent_config, stop_after=1, system_adapter=tiny_system())
+    source = torch.load(source_path, weights_only=True)
+    source['performance'] = {'data_pipeline': 'prepared', 'compact_transport': True}
+    torch.save(source, source_path)
+    before = hashlib.sha256(source_path.read_bytes()).hexdigest()
+    config = gt_config(tmp_path)
+    final_path = train(config, init=source_path, system_adapter=tiny_system())
+    initial = torch.load(final_path.parent / 'initial.pt', weights_only=True)
+    final = torch.load(final_path, weights_only=True)
+    for section in ('adapter', 'statistics'):
+        for key in source[section]:
+            torch.testing.assert_close(initial[section][key], source[section][key], rtol=0, atol=0)
+    assert initial['step'] == 0 and initial['optimizer']['state'] == {}
+    assert final['performance'] is None
+    assert final['initialization_provenance']['source_step'] == 1
+    assert hashlib.sha256(source_path.read_bytes()).hexdigest() == before

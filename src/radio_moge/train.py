@@ -221,6 +221,8 @@ def train(
     invocation_started = time.monotonic()
     elapsed_before = 0.0
     validate_config(config)
+    if config.get('geometry_supervision') and performance:
+        raise ValueError('GT paired batches do not support the RGB-only performance pipeline')
     if sum(bool(x) for x in (resume, init, fork_from)) > 1:
         raise ValueError("Choose exactly one of resume, init or fork-from")
     if extension is not None and not resume:
