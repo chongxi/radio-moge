@@ -20,6 +20,8 @@ from radio_moge.corpus_admission import checked_json, file_ref
 from radio_moge.geometry_cache import (GeometryPackWriter, canonical_json, publish_json,
                                       read_geometry_member, sha_file)
 from radio_moge.native_teacher_scope import review_scope, select_preflight, require_visual_preflight
+from radio_moge.teacher_rgb_review import (REASON, reviewed_rgb_exclusions,
+                                          accounted_preflight, verify_constant_rgb)
 from radio_moge.upstream import load_moge
 
 
@@ -33,6 +35,8 @@ def run(config, mode, attempt, preflight):
             or inventory['dataset_counts'] != config['expected_counts']):
         raise ValueError('Complete frozen inventory required')
     all_rows, bindings = review_scope(root, route, config)
+    rgb_review_ref = file_ref(root / 'hypersim-review-rgb-degeneracy-01/review.json')
+    excluded = reviewed_rgb_exclusions(rgb_review_ref, all_rows, route['native_outcomes'])
     probes = select_preflight(all_rows, bindings)
     output = root / attempt
     output.mkdir(exist_ok=False)
@@ -50,6 +54,8 @@ def run(config, mode, attempt, preflight):
         policy.update(dataset='hypersim', generator_sha256=sha_file(Path(__file__)),
             reused_inference_generator_sha256=sha_file(Path(__file__).with_name('cache_coco_teacher_geometry.py')),
             scope_helper_sha256=sha_file(Path(__file__).parents[1] / 'src/radio_moge/native_teacher_scope.py'),
+            rgb_review_helper_sha256=sha_file(Path(__file__).parents[1] / 'src/radio_moge/teacher_rgb_review.py'),
+            rgb_input_review=rgb_review_ref, input_exclusion_reason=REASON,
             candidate_routing_sha256=route_ref['sha256'], native_depth_decision=route['decision'],
             preflight_image_sha256=[r['sha256'] for r in probes], native_geometry_read=False,
             minimum_valid_fraction=.05, torch=str(torch.__version__), cuda=torch.version.cuda)
@@ -73,7 +79,14 @@ def run(config, mode, attempt, preflight):
         rows = probes if mode == 'preflight' else all_rows
         for row in rows:
             native = bindings[row['corpus_ordinal']]
-            result, stats = infer_one(model, row)
+            if row['corpus_ordinal'] in excluded:
+                record = excluded[row['corpus_ordinal']]
+                verify_constant_rgb(row, record['channel_min'])
+                result, stats = None, dict(reason=REASON, valid_fraction=0., valid_pixels=0,
+                    total_pixels=row['height'] * row['width'], rgb_input_review=rgb_review_ref,
+                    constant_rgb=record['channel_min'], teacher_inference_performed=False)
+            else:
+                result, stats = infer_one(model, row)
             if result is not None and stats['valid_fraction'] < .05:
                 result = None
                 stats['reason'] = 'insufficient_teacher_support'
@@ -122,7 +135,10 @@ def run(config, mode, attempt, preflight):
         status.update(stage='complete', completed_at=time.time(), expected_scope=len(rows),
             verified_cache_members=verified, torch=str(torch.__version__), cuda=torch.version.cuda,
             teacher_frozen=True, examples=examples, scenes=sorted(route['scene_counts']),
-            passed=bool(mode == 'preflight' and not rejections and verified == len(probes)))
+            reviewed_input_exclusions=sum(r['reason'] == REASON for r in rejections),
+            numeric_preflight_definition='All selected inputs accounted; only evidenced constant RGB may reject',
+            passed=bool(mode == 'preflight' and verified == status['completed']
+                        and accounted_preflight(verified, rejections, probes, excluded)))
         write_json(output / 'status.json', status)
         publish_json(output / 'report.json', status)
     except BaseException as error:
