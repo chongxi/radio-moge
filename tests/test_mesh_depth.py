@@ -3,7 +3,7 @@ import pytest
 import torch
 
 from radio_moge.geometry_sources import pinhole_rays
-from radio_moge.mesh_depth import CudaMeshDepth
+from radio_moge.mesh_depth import CudaMeshDepth, conservative_visibility
 
 
 @pytest.fixture
@@ -42,3 +42,28 @@ def test_cuda_holes_and_occlusions_do_not_create_measured_support():
     assert 0 < valid.mean() < .5
     np.testing.assert_allclose(depth[valid], 2, atol=1e-6)
     assert np.all(depth[~valid] == 0)
+
+
+def test_conservative_support_only_removes_holes_edges_and_unstable_rays():
+    depth = np.full((32, 48), 3., np.float32)
+    valid = np.ones_like(depth, bool)
+    valid[10, 10] = False
+    depth[10, 10] = 0
+    depth[:, 30:] = 6
+    shifted = [(depth.copy(), valid.copy()) for _ in range(4)]
+    shifted[0][0][20, 20] = 8
+    support = conservative_visibility(depth, valid, shifted)
+    assert support.sum() > 500 and not np.any(support & ~valid)
+    assert not support[8:13, 8:13].any()
+    assert not support[:, 28:32].any()
+    assert not support[20, 20]
+
+
+def test_cuda_conservative_visibility_preserves_planar_depth(rasterizer):
+    k = np.array([[.9, .02, .4], [0, 1.1, .6], [0, 0, 1]])
+    original, valid, _ = rasterizer.render(k, np.eye(4), 48, 64)
+    depth, support, _, quality = rasterizer.render_conservative(k, np.eye(4), 48, 64)
+    assert quality['initial_valid_pixels'] == int(valid.sum())
+    assert support.mean() > .7
+    np.testing.assert_array_equal(original[support], depth[support])
+    assert np.all(depth[~support] == 0)

@@ -7,6 +7,31 @@ import numpy as np
 import torch
 
 
+def conservative_visibility(depth, valid, shifted):
+    """Remove unsupported/unstable neighborhoods and subpixel visibility changes.
+
+    This is a *selection mask*, not repaired depth. It uses only rasterizer
+    outputs so independent CPU intersections remain a genuine parity check.
+    Triangle-ID erosion is deliberately avoided: tiny coplanar triangles are
+    not occlusions. Four +/-quarter-pixel diagonal samples are required.
+    """
+    from scipy.ndimage import binary_erosion, maximum_filter, minimum_filter
+
+    depth, valid = np.asarray(depth), np.asarray(valid)
+    if (depth.ndim != 2 or valid.shape != depth.shape or valid.dtype != np.bool_
+            or len(shifted) != 4 or not np.isfinite(depth[valid]).all()):
+        raise ValueError('Finite center depth/support and four offset renders required')
+    safe = np.where(valid, depth, 0)
+    support = binary_erosion(valid, iterations=2)
+    support &= maximum_filter(safe, 5) - minimum_filter(safe, 5) <= .02 + .02 * safe
+    for other, other_valid in shifted:
+        other, other_valid = np.asarray(other), np.asarray(other_valid)
+        if other.shape != depth.shape or other_valid.shape != depth.shape or other_valid.dtype != np.bool_:
+            raise ValueError('Offset renders must retain the original pixel grid')
+        support &= other_valid & np.isfinite(other) & (np.abs(other - safe) <= .005 + .01 * safe)
+    return support
+
+
 class CudaMeshDepth:
     def __init__(self, vertices, faces, device='cuda', near=.01, far=100.):
         import nvdiffrast.torch as dr
@@ -49,3 +74,19 @@ class CudaMeshDepth:
                  & (depth > self.near) & (depth < self.far))
         depth = torch.where(valid, depth, 0)
         return depth.cpu().numpy(), valid.cpu().numpy(), triangles.cpu().numpy()
+
+    def render_conservative(self, intrinsics, c2w, height, width):
+        depth, valid, triangles = self.render(intrinsics, c2w, height, width)
+        shifted = []
+        for dx, dy in ((-.25, -.25), (-.25, .25), (.25, -.25), (.25, .25)):
+            k = np.array(intrinsics, dtype=np.float64, copy=True)
+            # Moving K's center opposite the sample offset evaluates that ray.
+            k[0, 2] -= dx / width
+            k[1, 2] -= dy / height
+            other, other_valid, _ = self.render(k, c2w, height, width)
+            shifted.append((other, other_valid))
+        support = conservative_visibility(depth, valid, shifted)
+        quality = dict(initial_valid_pixels=int(valid.sum()), retained_pixels=int(support.sum()),
+            retained_fraction=float(support.mean()), depth_filled_or_averaged=False,
+            visibility_policy='5x5 stable (.02+.02Z m); four quarter-pixel rays (.005+.01Z m)')
+        return np.where(support, depth, 0), support, triangles, quality
