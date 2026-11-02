@@ -231,7 +231,7 @@ to one CPU by process affinity, including native Embree/TBB work.
   also states that it was filtered using lowres/highres disagreement, so the
   sample is selection-biased. The diagnostic reports two pixel-origin mappings
   without fitting either to depth; exact highres K remains unresolved. Within
-  stable reference regions, frame median differences ranged roughly 4--39 mm,
+  stable reference regions, frame median absolute differences ranged roughly 4--39 mm,
   and some frames still have substantial >5 cm disagreement and large tails.
   High confidence alone therefore does not complete ARKit acceptance. Preserve
   `arkit-faro-quality-probe-01`; review visibility/calibration and broader
