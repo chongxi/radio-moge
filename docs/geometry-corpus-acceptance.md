@@ -352,6 +352,40 @@ attempts and matching preflights. `geometry_cache.py` writes checksummed atomic
 tar packs with per-image source/camera/mask provenance and bounded random reads.
 Source assets, candidate caches, and the eventual accepted corpus remain distinct.
 
+## Complete heldout RGB census and IRS outcome tooling (22:05 UTC)
+
+`heldout-rgb-census-01` completed all 190,954 memberships in the 16 frozen
+validation/test manifests with zero decode/identity failures. These memberships
+refer to 188,686 distinct file paths, not independently established images or
+scenes. Its completed SQLite index, per-manifest/source counts, original hash
+conventions, policy and manifest hashes were checked in
+`heldout-rgb-census-01/identity-review-01.json`. The source conventions comprise
+190,838 encoded-file hashes and 116 legacy NYU raw-RGB hashes. Quarter-turn
+orientation metadata was retained, and no evaluation depth was read.
+
+The complete training RGB census is still running. No full train/heldout pixel
+comparison or heldout-isolation gate has passed; no claims of semantic or
+perceptual near-duplicate independence follow from this census.
+
+The IRS producer remains active in full pack readback. New
+`audit_irs_teacher_outcomes.py` requires its complete report and verified-member
+count before creating an audit output. It binds every frozen IRS RGB exactly
+once to a teacher receipt or explicit rejection, verifies original eye/row
+identity and pinned nonmetric teacher provenance, and records relative depth
+quantile/support statistics per family and eye. It selects the two largest
+p99-to-median ratios and two lowest-support candidates per family/eye for later
+inspection. These selections do not change masks, depth values or eligibility.
+
+The audit reads receipt metadata, relying on the producer's completed payload
+readback. It does not independently reread arrays or rehash every tar, and is not
+source-quality acceptance. Final corpus accounting still verifies actual payloads.
+Snapshot `code-irs-outcome-audit-v1` (`840e826`) passed 15 combined outcome/scope/
+coverage tests; `code-irs-outcome-audit-v2` (`e0f079d`) passed three strengthened
+IRS tests that isolate wrong semantic contracts from stale hash failures and
+reject an incomplete verified count even when a report says complete. Evidence
+is in `irs-outcome-tooling-tests-01.json` and `-02.json`. The actual full IRS
+outcome audit has not yet run. Production optimizer updates remain zero.
+
 ## Hypersim complete outcomes and reviewed fallback scope (21:20 UTC)
 
 The Hypersim producer has completed all 59,344 inputs and verified all 58,739
