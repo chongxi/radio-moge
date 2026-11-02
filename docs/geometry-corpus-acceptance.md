@@ -352,6 +352,56 @@ attempts and matching preflights. `geometry_cache.py` writes checksummed atomic
 tar packs with per-image source/camera/mask provenance and bounded random reads.
 Source assets, candidate caches, and the eventual accepted corpus remain distinct.
 
+## Heldout RGB census and complete native-outcome accounting (20:33 UTC)
+
+`audit_heldout_rgb.py` now reads the 16 inventory-bound validation/test manifests
+under their original checksum and split contracts. The legacy NYU internal-val
+manifest stores raw RGB pixel hashes and has no split/dataset fields; its named
+schema identifies it as heldout NYU without rewriting those fields. The two
+older ScanNet sensor/laser manifests use encoded-file hashes. Their producer
+code establishes these conventions. RGB decoding checks EXIF, explicit quarter
+turns, and published dimensions. No evaluation depth/geometry is opened.
+
+`heldout-rgb-preflight-01` verified 104 records (78 distinct paths) from all 16
+manifests, with no errors: 101 encoded-file hashes, three legacy raw-pixel hashes,
+and rotations 0/90/180/270. The numeric identity review is stored beside its
+report. Full `heldout-rgb-census-01` is running from `code-heldout-rgb-v1`, one
+worker at nice 10. Its scope is 190,954 manifest memberships, including repeated
+subsets, **not** 190,954 independently established images/scenes. At 20:33 it had
+read 5,888 records without error. The separate full training RGB census had read
+178,432 images without error. Neither census was complete.
+
+After both complete error-free censuses, `audit_heldout_rgb.py compare` will join
+all raw/oriented canonical hash combinations in a new disk-backed index. It
+preserves every heldout membership, records exact pixel and normalized scene
+overlaps, and retains the documented IRS official-test shared-family exception.
+It refuses partial census inputs and does not modify either source index or
+automatically exclude images. Exact identity comparison does not establish the
+absence of perceptual near-duplicates or semantic scene independence. The full
+train/heldout comparison has **not** run yet.
+
+Hypersim has processed all 59,344 inputs and is still performing the producer's
+full pack readback. Receipt metadata shows 55,663 unflagged candidates, 3,076
+flagged candidates, and 605 rejections (32 non-rigid camera poses, 573 insufficient
+world-verified support). The live `source_review_images=3448` includes 372 of
+those already rejected images; adding it to all rejections double-counts them.
+The distinct native unresolved scope is 3,681 images. This is a metadata tally,
+not a completed source-quality review or approval of the unflagged candidates.
+
+`audit_hypersim_outcomes.py` is prepared to bind each input exactly once to its
+receipt or rejection, preserve the flag/rejection distinction, and produce a
+separate unresolved-row manifest. It requires a completed producer report with
+full array readback before running. Its output is explicitly a receipt-metadata
+audit, not an independent second array verification or training admission. No
+fallback selection or exclusion is made by this audit.
+
+The combined native-outcome, heldout-RGB, training-RGB and coverage suite passed
+22 tests in the bounded preparation environment, including reencoded identical
+pixels, legacy hash conventions, heldout split/orientation failures, partial
+census rejection, and duplicate native outcomes. Evidence is in
+`heldout-rgb-tooling-tests-01.json`. These tests do not exercise the actual
+student/teacher model gate. Production optimizer updates remain zero.
+
 ## Actual-model preflight tooling (prepared, not yet run)
 
 `scripts/probe_corpus_model.py` now provides the genuine zero-update model gate.
