@@ -460,6 +460,32 @@ trainer tests; rerunning in the model environment resolved those dependency
 failures without code changes. The actual RGB census uses the native preparation
 environment, where the RGB tests passed. No actual-model training gate was run.
 
+RGB preflight 01 stopped before image reading because download task IDs were
+mistaken for scene/visit groups. Snapshot `code-rgb-audit-v2` (`191dd62`) derives
+those groups from the frozen index and passed 13 focused tests, including that
+failure case. `rgb-identity-preflight-02` then read 1,524 selected images across
+all eight sources with zero identity/orientation/hash failures. No exact
+canonical pixel repeats occurred in this sample. The descriptor retrieved
+237 similar pairs, all within existing groups; this is not a prevalence estimate.
+All eight source overview sheets and 14 closest-pair sheets were inspected.
+The IRS examples were adjacent left-eye frames; two additional exact-directory,
+same-frame stereo pairs were inspected separately in `rgb-stereo-spotcheck-02`.
+No stereo disparity or calibration claim follows from that RGB comparison.
+
+The inspected sheets show overlapping adjacent views and Structured3D empty/full
+variants with similar appearance but different details. ARKit includes repeated
+poster designs across visits; visit IDs are not certificates of unique physical
+scenes. Six source overviews are indoor, while the COCO/TartanAir samples include
+outdoor content, with dark and underwater TartanAir examples. Textureless/very
+bright Structured3D walls also remain visible. These are sampled observations,
+not corpus-wide content percentages or automatic exclusion decisions.
+
+`rgb-identity-census-01` is now rereading all 1,637,909 frozen training RGB rows in
+one low-priority CPU process using the unchanged v2 snapshot. It writes a new
+sidecar database, with no GPU, source edits or optimizer updates. It must finish
+before claiming full canonical exact-duplicate results. Canonical held-out
+comparison and final sampling balance after geometry exclusions still remain.
+
 ## Publication and supervision contract
 
 Every input image needs an outcome: verified native cache, explicitly identified
