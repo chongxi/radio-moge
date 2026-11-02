@@ -635,6 +635,77 @@ sidecar database, with no GPU, source edits or optimizer updates. It must finish
 before claiming full canonical exact-duplicate results. Canonical held-out
 comparison and final sampling balance after geometry exclusions still remain.
 
+## Completed teacher preflights and the blank-image rejection
+
+On November 2 at 22:07 UTC, the IRS producer completed all 133,879 candidates
+and their full payload readback with no producer rejections. The queued NYU,
+ScanNet review-scene and Hypersim review-scene preflights then completed. All
+12 NYU sheets (45 views), 13 ScanNet sheets (50 views), and 29 Hypersim sheets
+(116 views) were actually inspected. These are candidate-generation reviews,
+not full source acceptance or calibrated depth validation.
+
+NYU's 45 views cover 42 scenes and 24 scene types, including all six raw-projection
+regressions. Its review permits separate nonmetric teacher candidates while
+native registration remains unresolved. `nyuv2-teacher-cache-01` subsequently
+completed all 1,043 images and full readback with zero rejections at 22:25 UTC.
+The 116 validation and 290 test images remain outside this producer's scope.
+ScanNet's review covers all 25 quarantined scenes; original anonymity holes
+remain excluded. Its separate 35,783-image teacher job is queued behind the
+Hypersim producer on the existing GPU lock. Neither review clears native flags.
+
+The first Hypersim visual review **failed**, despite its numerical preflight
+passing: `ai_012_007/scene_cam_01/frame.0000.tonemap.jpg`, corpus ordinal 210812,
+is entirely white. Its teacher output had full support and nonconstant depth.
+`hypersim-review-rgb-degeneracy-01` verified the original bytes and RGB extrema
+for all 3,681 unresolved native inputs. Exactly this one input is spatially
+constant; the other 3,680 are nonconstant. This finding applies to that subset,
+not to every image in the corpus. The explicit exclusion retains its frozen
+identity, original native failure, diagnostic evidence and reason. It must also
+be honored when preparing the eventual RGB replay manifest.
+
+Snapshot `code-hypersim-review-teacher-v2` (`74b7ba3`) binds the complete RGB
+diagnostic and explicit review, verifies the constant image again, and rejects
+it before inference. Ten focused input-exclusion, source-scope and outcome
+tests passed. A one-pixel variation cannot be called exactly constant;
+unreviewed, unexpected or duplicate preflight rejections cannot pass.
+`hypersim-review-teacher-preflight-02` then completed 115 candidates with one
+reviewed input exclusion. All 115 retained RGB rows and actual depth, support
+and intrinsics arrays are bitwise identical to the previously inspected
+preflight. The second visual review explicitly references that parity and the
+original sheets; it does not claim newly rendered sheets were viewed.
+`hypersim-review-teacher-cache-01` is generating the full 3,681-input scope with
+that exclusion. Its outputs remain separate nonmetric candidates; in particular,
+the original `ai_009_003` ray-direction discrepancy is still unresolved.
+
+## IRS complete outcome distributions and selected extremes
+
+`irs-teacher-outcomes-01` accounts for all 133,879 frozen inputs once, across
+13 environment families and both eyes. It validates bound receipt metadata
+after completed producer readback; it does not independently reread every
+payload. There are 132,863 fully supported teacher maps. Relative p99 depth
+exceeds eight times its image's valid-depth median in 9,548 images, sixteen
+times in 2,579, thirty-two times in 426, and sixty-four times in four. The
+largest ratio is 77.717. These are per-image relative quantities, not meters,
+confidence scores or proof that a sample is wrong.
+
+`selected-view-qc-01` independently reread 104 actual RGB/member payloads:
+the two largest relative p99 tails and two least-supported images per family
+and eye. All 26 sheets were inspected. This deterministic extreme selection
+does not estimate prevalence; ties in full support can select adjacent views.
+Nearby furniture, plates, partitions and doors sometimes dominate the median,
+leaving narrow distant backgrounds. Kitchen, SCLRestaurant and ConvenienceStore
+tails also occur at glazing or exterior regions. Dark interiors, fine plants,
+mirrors and displays remain uncertain; a full teacher mask is not confidence.
+
+The saved review flags ten specific images for further source-quality decisions:
+three blurred Bistro window close-ups, five Diner dark/framed-panel views,
+and two nearby Supermarket shelving views with differing predicted background
+depth. These are observed ambiguities, not automatic exclusions or verified
+physical errors. No far-depth threshold has been used to repair labels or
+declare all high-ratio samples invalid. Original native disparity concerns,
+source-quality acceptance, canonical heldout comparison and corpus admission
+remain open. Pseudo replacements must not inflate unique-image coverage.
+
 ## Publication and supervision contract
 
 Every input image needs an outcome: verified native cache, explicitly identified
