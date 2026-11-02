@@ -34,6 +34,9 @@ def read_manifest(path):
 
 
 def check_split(train, validation):
+    if hasattr(train, 'check_heldout'):
+        train.check_heldout(validation)
+        return
     overlap = {r["image"] for r in train} & {r["image"] for r in validation}
     groups = {r["group"] for r in train if "group" in r}
     overlap_groups = groups & {r["group"] for r in validation if "group" in r}
@@ -44,6 +47,8 @@ def check_split(train, validation):
 
 
 def manifest_digest(records):
+    if hasattr(records, 'digest'):
+        return records.digest()
     # Include size and mtime to detect accidental file replacement on resume.
     metadata = [
         (r, Path(r["image"]).stat().st_size, Path(r["image"]).stat().st_mtime_ns) for r in records
@@ -147,7 +152,9 @@ class MixtureBatches(Sampler):
 
     def __init__(self, records, weights, batch_size, buckets, seed, start, count):
         grouped = defaultdict(lambda: defaultdict(list))
-        for index, row in enumerate(records):
+        source_rows = (records.sampling_records() if hasattr(records, 'sampling_records')
+                       else enumerate(records))
+        for index, row in source_rows:
             grouped[row["dataset"]][row["group"]].append(index)
         if set(weights) != set(grouped):
             raise ValueError("Mixture weights must name every dataset exactly once")

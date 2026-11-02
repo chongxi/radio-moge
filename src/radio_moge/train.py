@@ -37,6 +37,9 @@ from .losses import FeatureStatistics, feature_loss_total, geometry_losses, weig
 from .gt_geometry import GT_LOSS_KEYS, ground_truth_losses
 from .official_gt import OFFICIAL_GT_KEYS, OFFICIAL_GT_WEIGHTS, official_ground_truth_losses
 from .gt_data import GroundTruthImages, geometry_digest, validate_gt_records
+from .corpus_admission import open_training_gate
+from .corpus_data import CorpusRecords, CorpusImages, collate_corpus
+from .corpus_losses import corpus_geometry_losses
 from .planes import FLATNESS_MODES, PlaneConfig, detect_planes, plane_losses
 from .system import build_system
 from .tracking import ExperimentTracker, preserve_rng
@@ -62,7 +65,9 @@ def make_loader(records, config, start, count, calibration=False):
             len(records), train["batch_size"], data["buckets"], train["seed"], start, count
         )
     compact = data.get('compact_transport', False)
-    dataset = (GroundTruthImages(records, data['augment'])
+    corpus = bool(data.get('geometry_corpus')) and not calibration
+    dataset = (CorpusImages(records, data['augment']) if corpus else
+               GroundTruthImages(records, data['augment'])
                if config.get('geometry_supervision') and not calibration else
                TrainingImages(records, data['augment'] and not calibration,
                               compact_transport=compact))
@@ -72,6 +77,7 @@ def make_loader(records, config, start, count, calibration=False):
         num_workers=data["workers"],
         pin_memory=torch.cuda.is_available(),
         generator=torch.Generator().manual_seed(train["seed"]),
+        collate_fn=collate_corpus if corpus else None,
     )
     if compact:
         from .prefetch import FloatLoader
@@ -108,10 +114,22 @@ def validate_config(config):
     if any(not math.isfinite(v) or v < 0 for v in config["loss"].values()):
         raise ValueError("Loss weights must be finite and nonnegative")
     gt = config.get('geometry_supervision')
+    corpus = data.get('geometry_corpus')
+    if corpus is not None:
+        if (not isinstance(corpus, dict) or set(corpus) != {'path', 'sha256'}
+                or not isinstance(corpus['path'], str) or not Path(corpus['path']).is_absolute()
+                or not isinstance(corpus['sha256'], str)
+                or not re.fullmatch('[0-9a-f]{64}', corpus['sha256'])
+                or gt != {'target': 'offline_corpus', 'camera': 'provenance_aware',
+                          'objective': 'moge2_core'}
+                or config.get('feature_replay') is None):
+            raise ValueError('Offline corpus requires a sealed gate, provenance-aware core loss and RGB replay')
     if gt:
         protocol = dict(gt)
         objective = protocol.pop('objective', 'metric_custom')
-        if (protocol != {'target': 'ground_truth', 'camera': 'known_intrinsics'}
+        expected = ({'target': 'offline_corpus', 'camera': 'provenance_aware'} if corpus else
+                    {'target': 'ground_truth', 'camera': 'known_intrinsics'})
+        if (protocol != expected
                 or objective not in ('metric_custom', 'moge2_core')):
             raise ValueError('Unsupported GT geometry supervision protocol')
         if data.get('compact_transport'):
@@ -236,6 +254,11 @@ def train(
     invocation_started = time.monotonic()
     elapsed_before = 0.0
     validate_config(config)
+    corpus_gate = None
+    if config['data'].get('geometry_corpus'):
+        if fork_from or extension or resolution_fork or data_fork or lr_adjustment:
+            raise ValueError('Corpus configuration/budget changes need new acceptance, not an implicit fork')
+        corpus_gate = open_training_gate(config, init=init, resume=bool(resume))
     if config.get('geometry_supervision') and performance:
         raise ValueError('GT paired batches do not support the RGB-only performance pipeline')
     if sum(bool(x) for x in (resume, init, fork_from)) > 1:
@@ -268,8 +291,8 @@ def train(
             "the small CPU test suite does not load pretrained backbones."
         )
     set_seed(settings["seed"])
-    records = read_manifest(config["data"]["train_manifest"])
-    if config.get('geometry_supervision'):
+    records = CorpusRecords(corpus_gate) if corpus_gate else read_manifest(config['data']['train_manifest'])
+    if config.get('geometry_supervision') and not corpus_gate:
         validate_gt_records(records)
     val_path = config["data"].get("val_manifest")
     validation = read_manifest(val_path) if val_path else []
@@ -294,7 +317,9 @@ def train(
         config, [validation, geometry_validation, *dataset_validation.values()])
     probe_path = config['data'].get('train_probe_manifest')
     train_probe = read_manifest(probe_path) if probe_path else []
-    if train_probe and not {r['image'] for r in train_probe} <= {r['image'] for r in records}:
+    probe_subset = (all(records.contains_selected(r) for r in train_probe) if corpus_gate else
+                    not train_probe or {r['image'] for r in train_probe} <= {r['image'] for r in records})
+    if not probe_subset:
         raise ValueError('Training diagnostics must be a subset of the training images')
     if train_probe and not validation:
         raise ValueError('Training diagnostics require a separate validation manifest')
@@ -303,7 +328,7 @@ def train(
         "val": manifest_digest(validation) if validation else None,
     }
     if config.get('geometry_supervision'):
-        digests['geometry'] = geometry_digest(records)
+        digests['geometry'] = records.digest() if corpus_gate else geometry_digest(records)
     if geometry_validation:
         digests['geometry_val'] = geometry_digest(geometry_validation)
         digests['geometry_val_rgb'] = manifest_digest(geometry_validation)
@@ -775,15 +800,21 @@ def train(
                     losses.update(gt_features)
                     losses['feature_replay_fraction'] = losses['spatial'].new_tensor(float(replay_slot))
                 if config.get('geometry_supervision'):
-                    gt_target = {k: v.to(accelerator.device, non_blocking=True)
-                                 for k, v in cpu_batch.items() if k != 'image'}
                     predicted_raw = system.decoder(prediction, image.shape[-2:])
                     official = config['geometry_supervision'].get('objective') == 'moge2_core'
-                    if official:
+                    if corpus_gate:
+                        losses.update(corpus_geometry_losses(
+                            predicted_raw, cpu_batch['geometry_targets'],
+                            config['models'].get('moge_source'), seed=settings['seed'] + cursor))
+                    elif official:
+                        gt_target = {k: v.to(accelerator.device, non_blocking=True)
+                                     for k, v in cpu_batch.items() if k != 'image'}
                         losses.update(official_ground_truth_losses(
                             predicted_raw, gt_target, config['models'].get('moge_source'),
                             seed=settings['seed'] + cursor))
                     else:
+                        gt_target = {k: v.to(accelerator.device, non_blocking=True)
+                                     for k, v in cpu_batch.items() if k != 'image'}
                         losses.update(ground_truth_losses(predicted_raw, gt_target))
                     losses['feature_weighted'] = sum(losses[k] * config['loss'].get(k, 0)
                                                      for k in ('spatial', 'summary', 'cosine',
