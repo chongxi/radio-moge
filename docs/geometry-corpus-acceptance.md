@@ -44,9 +44,25 @@ remain explicit rather than guessed):
   [camera utility](https://github.com/bertjiazheng/Structured3D/blob/master/misc/utils.py).
 - IRS: [paper](https://arxiv.org/html/1912.09678v1),
   [release/checksums](https://github.com/blackjack2015/IRS),
-  [official loader](https://github.com/blackjack2015/IRS/blob/master/dataloader/SIRSLoader.py).
+  [official loader](https://github.com/blackjack2015/IRS/blob/master/dataloader/SIRSLoader.py),
+  [author's updated calibration](https://github.com/HKBU-HPML/IRS#overview-of-irs).
 - COCO: [paper](https://arxiv.org/abs/1405.0312),
   [official annotation tasks](https://cocodataset.org/#format-data).
+
+Additional IRS review: the author's updated repository documents baseline 0.1 m
+and focal length 480 px. This resolves the missing nominal baseline, **not** the
+validity of every released label. The author acknowledged incorrect samples in
+[issue 3](https://github.com/blackjack2015/IRS/issues/3); image/disparity alignment
+must be checked independently. An official training-list entry alone is not a
+label-quality certificate. The initial bounded probe intentionally does not admit
+IRS to training; follow-up acceptance must bind the actual version and pairing.
+
+ScanNet++ coordinate caution: the official Nerfstudio conversion changes world
+axes as well as camera axes. A manifest's Nerfstudio `transform_matrix` must not
+be applied directly to the original aligned scan mesh. Cross-check against the
+metric COLMAP poses before rendering. `fetch_scannetpp_scanner_poses.py` obtains
+the missing registration metadata in a new supplement, without modifying the
+existing dataset or printing private authentication material.
 
 ## Publication and supervision contract
 
