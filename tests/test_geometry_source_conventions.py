@@ -52,6 +52,10 @@ def test_hypersim_scaled_orientation_is_not_a_depth_scale():
     actual, scale = hypersim_pose_rotation(np.eye(3) * .25)
     np.testing.assert_allclose(actual, np.eye(3))
     assert scale == .25
+    near_rotation = np.eye(3)
+    near_rotation[0, 1] = 2e-6
+    # Decimal metadata roundoff is permitted; geometry still needs its own check.
+    assert hypersim_pose_rotation(near_rotation)[0][0, 1] > 0
     for bad in (np.diag([1, 1, .5]), np.diag([1, 1, -1]), np.zeros((3, 3))):
         with pytest.raises(ValueError):
             hypersim_pose_rotation(bad)

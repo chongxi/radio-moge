@@ -87,8 +87,11 @@ def hypersim_pose_rotation(orientation):
     if scale <= 1e-12:
         raise ValueError('Degenerate camera orientation')
     rotation = matrix / scale
-    if (not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-6, rtol=0)
-            or not np.isclose(np.linalg.det(rotation), 1, atol=1e-6, rtol=0)):
+    # Released decimal pose coefficients can have ~2e-6 orthogonality residual.
+    # Admit only <=1e-5 numeric residual, and still require the independent
+    # per-pixel world/range check. This is not permission to repair affine poses.
+    if (not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-5, rtol=0)
+            or not np.isclose(np.linalg.det(rotation), 1, atol=1e-5, rtol=0)):
         raise ValueError('Camera orientation contains shear, anisotropic scale, or reflection')
     return rotation, float(scale)
 
