@@ -73,12 +73,19 @@ def convert_structured3d(raw, normal_rgb, semantic, camera, layout, alpha):
                                 matching_pixels=int(matches.sum())))
     conflict = checked & ~agrees
     valid = supported & ~conflict
+    verified_pixels = int((agrees & supported).sum())
+    needs_review = verified_pixels < 100
+    candidate_fraction = float(valid.mean())
+    # Local normals alone cannot detect a global unit error. Without independent
+    # metric plane support the entire native image stays quarantined.
+    if needs_review:
+        valid[:] = False
     stats = dict(native_supported_pixels=int(native.sum()), native_valid_fraction=float(native.mean()),
         stable_fraction=float(stable.mean()), valid_fraction=float(valid.mean()),
         normal_consistent_pixels=int(supported.sum()), layout_checked_pixels=int(checked.sum()),
-        layout_verified_pixels=int((agrees & supported).sum()),
+        layout_verified_pixels=verified_pixels,
         layout_conflicting_pixels=int(conflict.sum()), planes=plane_stats,
-        source_needs_review=bool((agrees & supported).sum() < 100),
+        source_needs_review=needs_review, candidate_fraction_before_image_gate=candidate_fraction,
         normal_cosine_quantiles=(np.quantile(cosine[stable], [.01, .5, .99]).tolist()
                                  if stable.any() else None))
     depth[~valid] = 0
