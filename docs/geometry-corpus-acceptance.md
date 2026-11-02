@@ -144,9 +144,10 @@ to one CPU by process affinity, including native Embree/TBB work.
   New six-pair raw-file reproduction covers three frozen training office scenes.
   The official MAT explicitly aliases `office_0000` to raw `nyu_office_0/`;
   enforce the same MAT record, not guessed filename equality. The first failed
-  alias check is preserved. Reproduction 02 matches depth support exactly; five
-  depth maps match within float32 precision, and one has a maximum 0.393 mm
-  discrepancy. **RGB reproduction does not match**: MAE 6.04--12.71/255 after
+  alias check is preserved. Reproduction 02 matches five depth/support maps
+  within float32 precision; one has two differing support pixels (agreement
+  0.99999349) and a maximum 0.393 mm common-depth discrepancy.
+  **RGB reproduction does not match**: MAE 6.04--12.71/255 after
   literal toolbox undistortion (raw RGB is worse). Two four-panel sheets were
   inspected. Do not approve RGB/depth registration or invent an image-fitted
   correction; investigate processing/version/raw-frame correspondence first.
