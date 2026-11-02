@@ -34,3 +34,30 @@ def test_replay_source_rejects_validation_rows(tmp_path):
     write_new_jsonl([dict(image='a.png', dataset='a', group='a', split='val')], manifest)
     with pytest.raises(ValueError, match='training scenes'):
         select_rgb_pool(manifest, {'a': 1.}, 1, 43)
+
+
+def test_official_irs_audit_allows_shared_scene_but_never_shared_test_frames(tmp_path):
+    selected = [dict(image=str(tmp_path / 'train.png'), group='irs:scene', sha256='train-hash')]
+    audit = tmp_path / 'official.jsonl'
+    row = dict(image='test.png', group='irs:scene', sha256='test-hash', dataset='irs',
+               split='official-test', official_split='test')
+    audit.write_text(json.dumps(row) + '\n')
+    with pytest.raises(ValueError, match='overlaps heldout'):
+        check_heldout_metadata(selected, [audit])
+    proof = check_heldout_metadata(selected, [audit], [audit])[str(audit)]
+    assert not proof['scene_disjoint_required'] and proof['shared_scene_rows'] == 1
+    for change in ({'image': 'train.png'}, {'sha256': 'train-hash'}):
+        audit.write_text(json.dumps(dict(row, **change)) + '\n')
+        with pytest.raises(ValueError, match='overlaps heldout'):
+            check_heldout_metadata(selected, [audit], [audit])
+    audit.write_text(json.dumps(dict(row, dataset='another-source')) + '\n')
+    with pytest.raises(ValueError, match='restricted to the IRS'):
+        check_heldout_metadata(selected, [audit], [audit])
+
+
+def test_irs_training_pool_rejects_official_test_frames(tmp_path):
+    manifest = tmp_path / 'bad-irs.jsonl'
+    write_new_jsonl([dict(image='a.png', dataset='irs', group='irs:a', split='train',
+                          official_split='test')], manifest)
+    with pytest.raises(ValueError, match='exclude every official test frame'):
+        select_rgb_pool(manifest, {'irs': 1.}, 1, 43)

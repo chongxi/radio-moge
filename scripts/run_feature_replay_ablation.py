@@ -62,6 +62,8 @@ def select_rgb_pool(manifest, weights, count, seed):
                 row = json.loads(line)
                 if row.get('split') != 'train' or not row.get('group'):
                     raise ValueError('Replay source must be exclusively training scenes')
+                if row.get('dataset') == 'irs' and row.get('official_split') != 'train':
+                    raise ValueError('IRS replay must exclude every official test frame')
                 groups[row['dataset']][row['group']].append(offset)
             offset += len(line)
     if set(groups) != set(weights):
@@ -81,7 +83,8 @@ def select_rgb_pool(manifest, weights, count, seed):
                 file.seek(byte_offset)
                 row = json.loads(file.readline())
                 rgb = {key: row[key] for key in ('image', 'dataset', 'group', 'split',
-                                                'sha256', 'sha256_kind', 'image_rotation_cw')
+                                                'sha256', 'sha256_kind', 'image_rotation_cw',
+                                                'official_split')
                        if key in row}
                 rgb['image'] = str((Path(manifest).parent / rgb['image']).resolve())
                 rgb['replay_origin_byte_offset'] = byte_offset
@@ -95,26 +98,37 @@ def select_rgb_pool(manifest, weights, count, seed):
                       sampling='Original source quotas; uniform scene/frame proposals without duplicate images')
 
 
-def check_heldout_metadata(rows, manifests):
+def check_heldout_metadata(rows, manifests, irs_frame_audits=()):
     """Inspect split metadata only; never open validation/test depth labels."""
     images = {row['image'] for row in rows}
     groups = {row['group'] for row in rows}
     hashes = {row['sha256'] for row in rows if row.get('sha256')}
     proof = {}
+    frame_audits = {str(Path(path)) for path in irs_frame_audits}
     for manifest in manifests:
         count, checksum = 0, hashlib.sha256()
+        frame_audit = str(Path(manifest)) in frame_audits
+        shared_scene_rows = 0
         with Path(manifest).open('rb') as file:
             for line in file:
                 checksum.update(line)
                 if not line.strip():
                     continue
                 row = json.loads(line)
+                if frame_audit and (row.get('dataset') != 'irs' or row.get('split') != 'official-test'
+                                    or row.get('official_split') != 'test'):
+                    raise ValueError('Frame-only exemption is restricted to the IRS official-frame audit')
                 image = str((Path(manifest).parent / row['image']).resolve())
-                if (image in images or row.get('group') in groups
+                shared_scene_rows += int(row.get('group') in groups)
+                if (image in images or (not frame_audit and row.get('group') in groups)
                         or (row.get('sha256') and row['sha256'] in hashes)):
                     raise ValueError(f'Replay overlaps heldout metadata: {manifest}')
                 count += 1
-        proof[str(manifest)] = dict(images=count, sha256=checksum.hexdigest(), overlap=0)
+        proof[str(manifest)] = dict(images=count, sha256=checksum.hexdigest(), overlap=0,
+                                    scene_disjoint_required=not frame_audit,
+                                    shared_scene_rows=shared_scene_rows,
+                                    protocol='IRS official frame audit, NOT a scene-generalization test'
+                                    if frame_audit else 'Scene-disjoint primary validation/test')
     return proof
 
 
@@ -157,7 +171,14 @@ def prepare(root, parent, revision):
         raise ValueError('Original heldout-split metadata must be available for leakage checks')
     heldout = list(dict.fromkeys([*fixed, *(str(path) for path in validations),
                                  *(str(path) for path in tests)]))
-    pool_proof['heldout_metadata_checks'] = check_heldout_metadata(rows, heldout)
+    irs_audit = source_dir / 'test-irs-official.jsonl'
+    irs_protocol = source_dir.parent / 'irs-rgb-ready-v1-20261022/dataset_info.json'
+    irs_info = read(irs_protocol)
+    assert irs_info['stage'] == 'ready' and irs_info['verification']['primary_scene_splits_disjoint']
+    assert 'official frame-level test is audit-only and shares scene families' in irs_info['limits']
+    pool_proof['irs_split_protocol'] = dict(path=str(irs_protocol), sha256=digest(irs_protocol),
+                                           limits=irs_info['limits'])
+    pool_proof['heldout_metadata_checks'] = check_heldout_metadata(rows, heldout, [irs_audit])
     check_split(rows, read_manifest(template['data']['train_manifest']))
     manifest = root / 'replay-train-rgb.jsonl'
     write_new_jsonl(rows, manifest)
