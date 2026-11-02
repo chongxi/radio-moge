@@ -14,6 +14,34 @@ from scipy.ndimage import binary_erosion, maximum_filter, minimum_filter
 from .geometry_sources import normalized_opencv_intrinsics, pinhole_rays
 
 
+def perspective_camera(camera, height, width):
+    """Read the publisher's direction vectors and HALF-angle pinhole camera.
+
+    look/up are directions, not rows of an already orthonormal rotation matrix.
+    The upstream misc/utils.py normalizes them and constructs axes with cross
+    products. Preserve their nonorthogonality in diagnostics. This conversion
+    uses camera-local Z/layout planes, so no world rotation is applied to depth.
+    """
+    camera = np.asarray(camera, np.float64)
+    if (camera.shape != (12,) or not np.isfinite(camera).all() or camera[11] != 1
+            or min(height, width) < 1
+            or not (0 < camera[9] < np.pi / 2 and 0 < camera[10] < np.pi / 2)):
+        raise ValueError('Unexpected Structured3D perspective camera encoding')
+    lengths = np.linalg.norm(camera[3:9].reshape(2, 3), axis=1)
+    if not np.isfinite(lengths).all() or (lengths <= 1e-12).any():
+        raise ValueError('Structured3D camera directions must be finite and nonzero')
+    look, up = camera[3:6] / lengths[0], camera[6:9] / lengths[1]
+    right = np.cross(look, up)
+    if np.linalg.norm(right) <= 1e-8:
+        raise ValueError('Structured3D camera directions are parallel/degenerate')
+    k = normalized_opencv_intrinsics(width, height, width / 2 / np.tan(camera[9]),
+                                     height / 2 / np.tan(camera[10]), width / 2, height / 2)
+    return k, dict(look_norm=float(lengths[0]), up_norm=float(lengths[1]),
+                   normalized_look_up_dot=float(look @ up),
+                   upstream_cross_axis_length=float(np.linalg.norm(right)),
+                   world_rotation_applied_to_depth=False)
+
+
 def convert_structured3d(raw, normal_rgb, semantic, camera, layout, alpha):
     raw, normal_rgb, semantic = np.asarray(raw), np.asarray(normal_rgb), np.asarray(semantic)
     camera, alpha = np.asarray(camera, np.float64), np.asarray(alpha)
@@ -23,13 +51,8 @@ def convert_structured3d(raw, normal_rgb, semantic, camera, layout, alpha):
             or camera.shape != (12,) or not np.isfinite(camera).all()
             or not (0 < camera[9] < np.pi / 2 and 0 < camera[10] < np.pi / 2)):
         raise ValueError('Unexpected Structured3D native encoding or camera')
-    look, up = camera[3:6], camera[6:9]
-    if (abs(np.linalg.norm(look) - 1) > 1e-4 or abs(np.linalg.norm(up) - 1) > 1e-4
-            or abs(look @ up) > 1e-4):
-        raise ValueError('Structured3D look/up axes are not orthonormal')
     height, width = raw.shape
-    k = normalized_opencv_intrinsics(width, height, width / 2 / np.tan(camera[9]),
-                                     height / 2 / np.tan(camera[10]), width / 2, height / 2)
+    k, camera_stats = perspective_camera(camera, height, width)
     depth = raw.astype(np.float32) / 1000
     native = (raw > 0) & (raw < 65535) & (alpha == 255)
     points = pinhole_rays(k, height, width) * depth[..., None]
@@ -86,6 +109,7 @@ def convert_structured3d(raw, normal_rgb, semantic, camera, layout, alpha):
         layout_verified_pixels=verified_pixels,
         layout_conflicting_pixels=int(conflict.sum()), planes=plane_stats,
         source_needs_review=needs_review, candidate_fraction_before_image_gate=candidate_fraction,
+        camera_directions=camera_stats,
         normal_cosine_quantiles=(np.quantile(cosine[stable], [.01, .5, .99]).tolist()
                                  if stable.any() else None))
     depth[~valid] = 0
