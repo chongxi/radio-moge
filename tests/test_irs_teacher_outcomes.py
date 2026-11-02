@@ -72,6 +72,10 @@ def test_partial_readback_and_changed_or_duplicate_rows_cannot_pass(tmp_path):
     with pytest.raises(ValueError, match='producer readback'):
         run(config, 'cache', 'partial')
     assert not (tmp_path / 'partial').exists()
+    path.write_text(json.dumps(dict(report, verified_cache_members=2)))
+    with pytest.raises(ValueError, match='producer readback'):
+        run(config, 'cache', 'incomplete-readback')
+    assert not (tmp_path / 'incomplete-readback').exists()
     path.write_text(json.dumps(report))
     rejection_path = tmp_path / 'cache/rejections.json'
     row = json.loads(rejection_path.read_text())[0]
@@ -94,6 +98,9 @@ def test_metric_claim_wrong_revision_and_support_mismatch_are_rejected(tmp_path)
     for field, value in (('metric_calibrated', True), ('teacher_revision', 'bad')):
         entry = deepcopy(original)
         entry['geometry_metadata'][field] = value
+        # Keep the content identity self-consistent: rejection must come from
+        # the wrong supervision/revision contract, not only a stale hash.
+        entry['key'] = hashlib.sha256(canonical_json(entry['geometry_metadata'])).hexdigest()
         with pytest.raises(ValueError, match='provenance'):
             teacher_metrics(entry, receipt['policy_sha256'], config['teacher']['revision'])
     entry = deepcopy(original)
