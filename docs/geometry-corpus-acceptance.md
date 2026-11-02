@@ -399,6 +399,24 @@ readback while retaining the GPU lock. Both RGB censuses continue without errors
 in the last observation; the full train/heldout comparison has not run. No full
 corpus admission or production optimizer update has occurred.
 
+`visualize_teacher_preflight.py` now renders every cached view of a completed,
+bounded teacher preflight, with four views per page and hash-bound image/cache
+identities. Display colors use per-image log depth percentiles and explicitly
+do not claim metric GT. Snapshot `code-teacher-qc-v1` at `9e1e9a8` rendered all
+52 IRS preflight views into 13 pages, all of which were inspected. The rendered
+index is not itself a visual pass. The explicit review is
+`irs-teacher-preflight-01/all-view-qc-01/visual-review-01.json`.
+
+That review found no obvious image flip or scene mismatch at contact-sheet
+resolution, while retaining uncertainty for bright windows, reflections, thin
+objects and low-light views. All 52 teacher masks have full support; this must
+not be interpreted as physical pixel accuracy. In particular, Kitchen views
+4/5 and SCLRestaurant views 40/41 have p99-to-median teacher depth ratios around
+16--25 in ambiguous window/reflective regions. They remain explicit review cases
+for the full normalized-depth distribution and final source-quality decision.
+No depth values or masks were modified and no images were automatically excluded.
+This stratified preflight does not measure full-corpus error prevalence.
+
 ## Heldout RGB census and complete native-outcome accounting (20:33 UTC)
 
 `audit_heldout_rgb.py` now reads the 16 inventory-bound validation/test manifests
