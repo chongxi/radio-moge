@@ -401,10 +401,15 @@ identities; their physical scene independence is unknown. IRS's largest family
 contains 22.9 percent of its images and TartanAir's largest family contains
 22.2 percent. Frame count must not be substituted for scene diversity.
 
-Decoded-RGB hashes exist for 499,595 frozen rows (IRS, NYU, Structured3D and
-TartanAir); no repeated decoded hashes were found within that subset. The other
+Stored decoded-RGB hashes exist for 499,595 frozen rows (IRS, NYU, Structured3D
+and TartanAir); no repeated hash values were found within that subset. Follow-up
+code inspection found incompatible conventions: NYU hashes contiguous RGB bytes,
+whereas the three archive sources also prepend width, height and RGB mode. Thus
+the earlier report's `exact_decoded_duplicates` field cannot establish pixel
+uniqueness across those conventions. Future reports use the narrower name
+`stored_decoded_hash_repeats` and explicitly state this limitation. The other
 1,138,314 rows have no decoded-RGB hash in this inventory. This metadata audit
-does not reread their RGB, verify perceptual near-duplicates, classify indoor
+does not reread RGB, verify perceptual near-duplicates, classify indoor
 versus outdoor content, or describe geometry after exclusions. Its stage is
 explicitly `coverage_audit_complete_not_reviewed`, not a passed training gate.
 
@@ -433,6 +438,27 @@ uses the existing GPU lock and pinned model environment. The first producer
 snapshot passed 40 CPU source-selection/coverage/model-gate/admission/loss
 tests; snapshot `code-scannet-review-teacher-v2` (`8e2ed09`) additionally passed
 the three focused tests after its bounded scene-index query correction.
+
+`scripts/audit_corpus_rgb.py` now prepares a separate, read-only RGB census. It
+verifies encoded file hashes, checks each supplied decoded hash under its source
+convention, applies only the frozen quarter-turn orientation, and computes one
+size-bound RGB hash for every source. It records both raw and oriented pixel
+hashes, leaving images and frozen manifests unchanged. Its bounded preflight
+selects large/small/stable-hash scene groups and consecutive first/middle/last
+frame windows plus hash-selected views. A 128-bit horizontal/vertical grayscale
+descriptor retrieves visually similar pairs; collisions are candidates for
+inspection, never automatic exclusions or proof of duplicate scenes.
+
+The full RGB census requires a matching successful identity preflight and uses
+one CPU process with a bounded SQLite cache. It describes exact pixel repeats;
+it does not perform an all-pairs perceptual search over the full corpus. Canonical
+comparison with held-out images remains a separate isolation check. Snapshot
+`code-rgb-audit-v1` (`852cf7a`) passed all 28 RGB/coverage/admission tests in the
+established model environment. An initial run in the native preparation
+environment passed 25 tests but lacked `cv2` and `huggingface_hub` for three
+trainer tests; rerunning in the model environment resolved those dependency
+failures without code changes. The actual RGB census uses the native preparation
+environment, where the RGB tests passed. No actual-model training gate was run.
 
 ## Publication and supervision contract
 
