@@ -1,7 +1,9 @@
 import numpy as np
+import pytest
 
 from radio_moge.geometry_sources import (normalized_opencv_intrinsics, pinhole_rays,
-    range_to_z, scannetpp_nerfstudio_to_colmap_c2w, hypersim_pinhole_frame)
+    range_to_z, scannetpp_nerfstudio_to_colmap_c2w, hypersim_pinhole_frame,
+    hypersim_pose_rotation, check_point_projection)
 
 
 def test_opencv_half_pixel_normalization_and_resize():
@@ -44,3 +46,25 @@ def test_tilt_shift_camera_preserves_rays_without_resampling_rgb():
     depth, valid = range_to_z(np.ones((48, 64)) * 3, rays, np.ones((48, 64), bool))
     assert valid.all()
     np.testing.assert_allclose(np.linalg.norm(rays * depth[..., None], axis=-1), 3, atol=2e-7)
+
+
+def test_hypersim_scaled_orientation_is_not_a_depth_scale():
+    actual, scale = hypersim_pose_rotation(np.eye(3) * .25)
+    np.testing.assert_allclose(actual, np.eye(3))
+    assert scale == .25
+    for bad in (np.diag([1, 1, .5]), np.diag([1, 1, -1]), np.zeros((3, 3))):
+        with pytest.raises(ValueError):
+            hypersim_pose_rotation(bad)
+
+
+def test_projection_check_handles_cancellation_but_rejects_wrong_camera():
+    k = np.array([[.7, 0, .5], [0, .9, .5], [0, 0, 1.]])
+    depth = np.full((3, 5), 450, np.float32)
+    valid = np.ones((3, 5), bool)
+    points = pinhole_rays(k, *depth.shape) * depth[..., None]
+    points[:, 2, 0] += 4e-5  # Negligible FP32 error at almost-zero X, large Z.
+    assert check_point_projection(depth, k, points, valid)['projection_max_scaled_error'] < 1e-6
+    wrong = k.copy()
+    wrong[0, 2] += .01
+    with pytest.raises(ValueError, match='forced projection'):
+        check_point_projection(depth, wrong, points, valid)

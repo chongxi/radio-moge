@@ -71,3 +71,46 @@ def hypersim_pinhole_frame(cam_from_uv):
     if check[2, 2] <= 0 or not np.allclose(check / check[2, 2], np.eye(3), atol=1e-9):
         raise ValueError('RQ camera does not preserve the original pixel rays')
     return k, rotation
+
+
+def hypersim_pose_rotation(orientation):
+    """Remove ONLY a verified uniform positive scale in released pose matrices.
+
+    Some first-frame matrices contain an inherited asset transform scale. This
+    does not scale the published range (which is generated from world distance).
+    Never fit a rotation or metric scale to depth, or repair shear/reflection.
+    """
+    matrix = np.asarray(orientation, np.float64)
+    if matrix.shape != (3, 3) or not np.isfinite(matrix).all():
+        raise ValueError('Invalid camera orientation')
+    scale = np.sqrt(np.trace(matrix.T @ matrix) / 3)
+    if scale <= 1e-12:
+        raise ValueError('Degenerate camera orientation')
+    rotation = matrix / scale
+    if (not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-6, rtol=0)
+            or not np.isclose(np.linalg.det(rotation), 1, atol=1e-6, rtol=0)):
+        raise ValueError('Camera orientation contains shear, anisotropic scale, or reflection')
+    return rotation, float(scale)
+
+
+def check_point_projection(depth, intrinsics, points, valid, tolerance=2e-5):
+    """Check XYZ/Z/K in 3D-relative units, stable near the principal ray.
+
+    Per-coordinate relative error is ill-conditioned when X or Y nearly cancels
+    to zero at a large Z. The vector norm gives the actual relative 3D error.
+    """
+    depth, points, valid = np.asarray(depth), np.asarray(points), np.asarray(valid)
+    if (points.shape != (*depth.shape, 3) or valid.shape != depth.shape
+            or valid.dtype != np.bool_ or not valid.any()
+            or not np.isfinite(points[valid]).all() or not np.isfinite(depth[valid]).all()
+            or not (depth[valid] > 0).all()):
+        raise ValueError('Invalid projected-point comparison support')
+    projected = pinhole_rays(intrinsics, *depth.shape) * depth[..., None]
+    difference = projected[valid] - points[valid].astype(np.float64)
+    scaled = np.linalg.norm(difference, axis=-1) / np.maximum(
+        np.linalg.norm(points[valid].astype(np.float64), axis=-1), 1.)
+    result = dict(projection_max_abs_error_m=float(np.abs(difference).max()),
+                  projection_max_scaled_error=float(scaled.max()))
+    if scaled.max() > tolerance:
+        raise ValueError('Teacher XYZ and cached Z/K violate forced projection: ' + str(result))
+    return result

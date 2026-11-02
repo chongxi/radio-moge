@@ -9,7 +9,8 @@ import numpy as np
 
 from indoor_download import write_json
 from probe_native_depth import Evidence, hdf5_array, hypersim_probe, quantiles
-from radio_moge.geometry_sources import hypersim_pinhole_frame, pinhole_rays, range_to_z
+from radio_moge.geometry_sources import (hypersim_pinhole_frame, pinhole_rays, range_to_z,
+                                         hypersim_pose_rotation)
 
 
 def probe(config, attempt):
@@ -40,6 +41,7 @@ def probe(config, attempt):
         indices = hdf5_array(location / 'camera_keyframe_frame_indices.hdf5').reshape(-1)
         index = np.flatnonzero(indices == row['frame_id']).item()
         pose_r = hdf5_array(location / 'camera_keyframe_orientations.hdf5')[index]
+        pose_r, inherited_pose_scale = hypersim_pose_rotation(pose_r)
         pose_t = hdf5_array(location / 'camera_keyframe_positions.hdf5')[index]
         with (location / 'metadata_scene.csv').open() as file:
             scale = float(next(x for x in csv.DictReader(file)
@@ -52,7 +54,11 @@ def probe(config, attempt):
         error = np.abs(truth[..., 2] - z)
         relative = error[valid] / truth[..., 2][valid]
         report = dict(scene=scene, intrinsics=k.tolist(), frame_rotation=rotation.tolist(),
-                      source_check=source_check, z_vs_world_m=quantiles(error[valid]),
+                      original_probe_without_pose_scale_handling=source_check,
+                      inherited_pose_uniform_scale=inherited_pose_scale,
+                      range_vs_world_without_pose_scale_m=quantiles(np.abs(
+                          np.linalg.norm(world - pose_t, axis=-1) * scale - radial)[valid]),
+                      z_vs_world_m=quantiles(error[valid]),
                       relative_z_error=quantiles(relative), training_admission=False,
                       preserves_original_rgb=True, passes=bool(np.quantile(relative, .99) < .005))
         reports.append(report)

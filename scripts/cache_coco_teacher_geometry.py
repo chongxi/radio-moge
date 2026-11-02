@@ -22,7 +22,7 @@ import torch
 from indoor_download import write_json
 from radio_moge.geometry_cache import (GeometryPackWriter, canonical_json, publish_json,
                                        read_geometry_member, sha_file)
-from radio_moge.geometry_sources import pinhole_rays
+from radio_moge.geometry_sources import check_point_projection
 from radio_moge.upstream import load_moge
 
 
@@ -42,15 +42,21 @@ def source_rows(root):
 def choose_probe_rows(root):
     # Stable low-hash selection, retaining landscape, portrait, and square views.
     bins = {'landscape': [], 'portrait': [], 'square': []}
+    regression = None
     for row in source_rows(root):
         aspect = row['width'] / row['height']
         group = 'landscape' if aspect > 1.05 else 'portrait' if aspect < .95 else 'square'
         bins[group].append(row)
+        if row['source_member'] == 'train2017/000000043393.jpg':
+            regression = row
     result = []
     for group in bins:
         result.extend(sorted(bins[group], key=lambda x: x['sha256'])[:4])
     if len(result) != 12:
         raise ValueError('Incomplete aspect-stratified preflight')
+    if regression is None or regression in result:
+        raise ValueError('Missing or duplicated far-depth numeric regression image')
+    result.append(regression)
     return result
 
 
@@ -62,10 +68,12 @@ def generation_policy(config, checkpoint_hash):
         camera='teacher_estimated_normalized_half_center',
         input='original decoded RGB, original size, no crop/stretch/EXIF transform',
         geometry='float32 camera-Z in teacher nominal meters, NOT calibrated sensor scale',
+        projection_check='3D vector-relative error <= 2e-5, not ill-conditioned coordinate-relative error',
         supervision_constraint='no calibrated-metric GT claim or native-hole filling',
         manifest_sha256=config['manifest_sha256'],
         generator_sha256=sha_file(Path(__file__)),
-        pack_format_sha256=sha_file(Path(__file__).parents[1] / 'src/radio_moge/geometry_cache.py'))
+        pack_format_sha256=sha_file(Path(__file__).parents[1] / 'src/radio_moge/geometry_cache.py'),
+        geometry_helpers_sha256=sha_file(Path(__file__).parents[1] / 'src/radio_moge/geometry_sources.py'))
 
 
 def infer_one(model, row):
@@ -87,18 +95,12 @@ def infer_one(model, row):
     valid = (mask > .5) & np.isfinite(depth) & (depth > 0) & np.isfinite(points).all(-1)
     if not valid.any():
         return None, dict(reason='teacher_has_no_valid_depth', valid_fraction=0.)
-    projected = pinhole_rays(k, *depth.shape) * depth[..., None]
-    difference = np.abs(projected[valid] - points[valid])
-    relative = difference / np.maximum(np.abs(points[valid]), 1.)
-    if relative.max() > 2e-5:
-        raise ValueError('Teacher XYZ and cached Z/K violate forced projection')
-    stats = dict(valid_fraction=float(valid.mean()), projection_max_abs_error_m=float(difference.max()),
-                 projection_max_scaled_error=float(relative.max()),
+    stats = dict(valid_fraction=float(valid.mean()), **check_point_projection(depth, k, points, valid),
                  valid_pixels=int(valid.sum()), total_pixels=int(valid.size))
     return (depth, valid, k), stats
 
 
-def run(config, mode, attempt):
+def run(config, mode, attempt, preflight_name):
     root = Path(config['root'])
     inventory = json.loads((root / 'inventory.json').read_text())
     if (inventory['stage'] != 'inventory_complete'
@@ -120,7 +122,7 @@ def run(config, mode, attempt):
     policy = generation_policy(config, checkpoint_hash)
     policy_hash = hashlib.sha256(canonical_json(policy)).hexdigest()
     if mode == 'generate':
-        preflight = json.loads((root / 'coco-teacher-preflight-01/report.json').read_text())
+        preflight = json.loads((root / preflight_name / 'report.json').read_text())
         if (preflight.get('stage') != 'complete' or not preflight.get('passed')
                 or preflight['policy_sha256'] != policy_hash):
             raise ValueError('Matching verified teacher preflight required')
@@ -181,7 +183,7 @@ def run(config, mode, attempt):
             for entry in receipt['entries']:
                 read_geometry_member(output / 'packs' / receipt['tar'], entry)
                 verified += 1
-        expected = 12 if mode == 'preflight' else config['expected_counts']['coco2017']
+        expected = 13 if mode == 'preflight' else config['expected_counts']['coco2017']
         if status['completed'] + status['rejected'] != expected or verified != status['completed']:
             raise ValueError('Cache did not account for every authorized image')
         status.update(stage='complete', completed_at=time.time(), verified_cache_members=verified,
@@ -202,8 +204,9 @@ if __name__ == '__main__':
     parser.add_argument('mode', choices=('preflight', 'generate'))
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--attempt', required=True)
+    parser.add_argument('--preflight', default='coco-teacher-preflight-02')
     args = parser.parse_args()
-    if Path(args.attempt).name != args.attempt:
+    if Path(args.attempt).name != args.attempt or Path(args.preflight).name != args.preflight:
         parser.error('attempt must be a new directory basename')
     cfg = json.loads(args.config.read_text())
     lock_path = (Path(cfg['root']).parent / 'data-expansion-attention-20261022'
@@ -212,4 +215,4 @@ if __name__ == '__main__':
         raise FileNotFoundError('Established project GPU lock is missing; do not create another lock')
     with lock_path.open('a+') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        run(cfg, args.mode, args.attempt)
+        run(cfg, args.mode, args.attempt, args.preflight)
