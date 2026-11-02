@@ -1,4 +1,6 @@
 import importlib.util
+import hashlib
+import json
 from pathlib import Path
 import sys
 
@@ -36,3 +38,18 @@ def test_colmap_parser_skips_observation_rows(tmp_path):
                     '2 1 0 0 0 4 5 6 1 chosen.JPG\n\n')
     c2w = probe.colmap_pose(path, 'chosen.JPG')
     np.testing.assert_array_equal(c2w[:3, 3], [-4, -5, -6])
+
+
+def test_probe_fallback_binds_full_manifest_and_preserves_incomplete_index(tmp_path):
+    manifest = tmp_path / 'train.jsonl'
+    manifest.write_text(''.join(json.dumps(dict(dataset='scannetpp_dslr', scene=str(i),
+        split='train', official_split='nvs_sem_train')) + '\n' for i in range(3)))
+    temporary = tmp_path / 'inventory.sqlite.incoming'
+    temporary.write_bytes(b'untouched')
+    config = dict(root=str(tmp_path), dataset_root=str(tmp_path), manifest='train.jsonl',
+                  manifest_sha256=hashlib.sha256(manifest.read_bytes()).hexdigest())
+    assert len(probe.source_rows(config)) == 3
+    assert temporary.read_bytes() == b'untouched'
+    manifest.write_text(manifest.read_text() + '\n')
+    with pytest.raises(ValueError, match='manifest changed'):
+        probe.source_rows(config)

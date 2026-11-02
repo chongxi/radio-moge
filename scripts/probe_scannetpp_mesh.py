@@ -24,6 +24,33 @@ def sha_file(path):
         return hashlib.file_digest(file, 'sha256').hexdigest()
 
 
+def source_rows(config, limit=3):
+    root = Path(config['root'])
+    if (root / 'inventory.sqlite').is_file():
+        return selected_rows(root, 'scannetpp_dslr', limit)
+    # A bounded physical audit may run while the full leakage audit is pending.
+    # It cannot approve training or publish a corpus. Verify the complete input
+    # hash and never read the in-progress SQLite database.
+    manifest = Path(config['dataset_root']) / config['manifest']
+    if sha_file(manifest) != config['manifest_sha256']:
+        raise ValueError('Authorized source manifest changed')
+    rows, scenes = [], set()
+    with manifest.open() as file:
+        for line in file:
+            row = json.loads(line)
+            if row['dataset'] != 'scannetpp_dslr' or row['scene'] in scenes:
+                continue
+            if row.get('split') != 'train' or row.get('official_split') != 'nvs_sem_train':
+                raise ValueError('Non-training scene in bounded source probe')
+            scenes.add(row['scene'])
+            rows.append(row)
+            if len(rows) == limit:
+                break
+    if len(rows) != limit:
+        raise ValueError('Insufficient eligible DSLR probe scenes')
+    return rows
+
+
 def colmap_pose(path, name):
     with path.open() as file:
         for line in file:
@@ -85,6 +112,8 @@ def scanner_mesh_check(scene, pose_root, intersector):
 
 
 def dslr_check(row, scene, mesh, intersector, output):
+    if sha_file(Path(row['image'])) != row['sha256']:
+        raise ValueError('DSLR RGB bytes differ from the frozen training manifest')
     known = colmap_pose(scene / 'dslr/colmap/images.txt', row['view'])
     converted = scannetpp_nerfstudio_to_colmap_c2w(row['transform_matrix'])
     pose_error = float(np.max(np.abs(known - converted)))
@@ -121,6 +150,8 @@ def dslr_check(row, scene, mesh, intersector, output):
     return dict(view=row['view'], metric_colmap_pose_max_abs_difference=pose_error,
         render_size=[h, w], valid_fraction=float(valid.mean()), depth_m=quantiles(depth[valid]),
         known_camera=True, training_admission=False,
+        rgb_sha256=row['sha256'], mask_sha256=sha_file(Path(row['mask'])),
+        colmap_images_sha256=sha_file(scene / 'dslr/colmap/images.txt'),
         caution='Mesh reconstruction diagnostic, not direct measured-per-DSLR-pixel truth')
 
 
@@ -133,7 +164,7 @@ def probe(config, attempt):
     result = dict(stage='probing', scenes=[], training_started=False, training_admission=False,
                   no_alignment_fitting=True, sample_not_full_acceptance=True, started_at=time.time())
     write_json(output / 'report.json', result)
-    for row in selected_rows(root, 'scannetpp_dslr', 3):
+    for row in source_rows(config, 3):
         scene = data / 'scannetpp-v2-full/data' / row['scene']
         try:
             mesh_path = scene / 'scans/mesh_aligned_0.05.ply'
