@@ -1,7 +1,7 @@
 import numpy as np
 
 from radio_moge.geometry_sources import (normalized_opencv_intrinsics, pinhole_rays,
-    range_to_z, scannetpp_nerfstudio_to_colmap_c2w)
+    range_to_z, scannetpp_nerfstudio_to_colmap_c2w, hypersim_pinhole_frame)
 
 
 def test_opencv_half_pixel_normalization_and_resize():
@@ -28,3 +28,19 @@ def test_radial_range_conversion_never_fills_invalid_depth():
     depth, valid = range_to_z(radial, rays, np.ones((2, 2), bool))
     np.testing.assert_allclose(depth, [[3, 3], [0, 0]])
     np.testing.assert_array_equal(valid, [[True, True], [False, False]])
+
+
+def test_tilt_shift_camera_preserves_rays_without_resampling_rgb():
+    angle = .25
+    rotation = np.array([[1, 0, 0], [0, np.cos(angle), -np.sin(angle)],
+                         [0, np.sin(angle), np.cos(angle)]])
+    k = np.array([[.8, .01, .4], [0, 1.2, .6], [0, 0, 1.]])
+    grid = np.array([[2, 0, -1], [0, -2, 1], [0, 0, 1.]])
+    matrix = np.diag([1., -1., -1.]) @ rotation.T @ np.linalg.inv(k) @ np.linalg.inv(grid)
+    actual_k, actual_rotation = hypersim_pinhole_frame(matrix * 2)
+    np.testing.assert_allclose(actual_k, k, atol=1e-12)
+    np.testing.assert_allclose(actual_rotation, rotation, atol=1e-12)
+    rays = pinhole_rays(actual_k, 48, 64)
+    depth, valid = range_to_z(np.ones((48, 64)) * 3, rays, np.ones((48, 64), bool))
+    assert valid.all()
+    np.testing.assert_allclose(np.linalg.norm(rays * depth[..., None], axis=-1), 3, atol=2e-7)

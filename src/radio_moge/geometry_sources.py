@@ -41,3 +41,33 @@ def range_to_z(radial, rays, valid):
     depth = np.zeros(radial.shape, np.float32)
     depth[support] = radial[support] * rays[..., 2][support] / norm[support]
     return depth, support
+
+
+def hypersim_pinhole_frame(cam_from_uv):
+    """Exact RQ camera frame for Hypersim tilt-shift matrices, WITHOUT RGB warp.
+
+    The publisher's matrix maps (2u-1, 1-2v, 1) into OpenGL camera rays. A rigid
+    rotation of the camera coordinate frame yields a pinhole K, preserving every
+    image ray and radial distance. Never substitute one universal focal length.
+    Returns normalized K and the rotation from OpenCV-converted publisher axes.
+    """
+    from scipy.linalg import rq
+
+    matrix = np.asarray(cam_from_uv, np.float64)
+    if matrix.shape != (3, 3) or not np.isfinite(matrix).all():
+        raise ValueError('Hypersim camera matrix must be finite 3x3')
+    grid = np.array([[2, 0, -1], [0, -2, 1], [0, 0, 1.]])
+    original_rays = np.diag([1., -1., -1.]) @ matrix @ grid
+    if np.linalg.det(original_rays) <= 1e-10:
+        raise ValueError('Unsupported reflected or singular camera')
+    k, rotation = rq(np.linalg.inv(original_rays))
+    signs = np.diag(np.where(np.diag(k) < 0, -1., 1.))
+    k, rotation = k @ signs, signs @ rotation
+    k /= k[2, 2]
+    if (np.linalg.det(rotation) < .999999 or not np.allclose(rotation @ rotation.T, np.eye(3))
+            or not np.allclose(k[2], [0, 0, 1]) or k[0, 0] <= 0 or k[1, 1] <= 0):
+        raise ValueError('Unable to construct a proper pinhole camera frame')
+    check = k @ rotation @ original_rays
+    if check[2, 2] <= 0 or not np.allclose(check / check[2, 2], np.eye(3), atol=1e-9):
+        raise ValueError('RQ camera does not preserve the original pixel rays')
+    return k, rotation
