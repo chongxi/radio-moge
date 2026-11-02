@@ -46,9 +46,12 @@ def review_scope(root, route, manifest):
             if value['scene'] != item['scene'] or value['stage'] != 'needs_review':
                 raise ValueError('Native review identity changed')
             scene_rows = []
+            # Scene identifiers already include their dataset namespace. Query
+            # that indexed key directly; the extra dataset predicate makes
+            # SQLite rescan all 841k DSLR rows once for every scene. The row's
+            # dataset, scene and split are still checked independently below.
             for ordinal, image, encoded in db.execute('SELECT ordinal,image,row_json FROM images '
-                    'WHERE dataset=? AND scene_group=? ORDER BY ordinal',
-                    ('scannetpp_dslr', 'scannetpp:' + item['scene'])):
+                    'WHERE scene_group=? ORDER BY ordinal', ('scannetpp:' + item['scene'],)):
                 row = json.loads(encoded)
                 if (row['dataset'] != 'scannetpp_dslr' or row['split'] != 'train'
                         or row['official_split'] != 'nvs_sem_train' or row['scene'] != item['scene']
