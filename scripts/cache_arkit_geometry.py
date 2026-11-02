@@ -91,6 +91,11 @@ def load_image(path):
         return np.asarray(file)
 
 
+def rejected_native_image(missing, valid):
+    # Return a Python bool, including when valid.mean() returns a NumPy scalar.
+    return bool(missing or valid.mean() < .05)
+
+
 def convert(row, assets):
     video, turn = str(row['video_id']), row['image_rotation_cw']
     stem = PurePosixPath(row['source_member']).stem
@@ -187,7 +192,8 @@ def run(config, mode, attempt, preflight_name):
                         raise
                     missing = True
                     stats = dict(reason='publisher_asset_not_available_404')
-                if missing or valid.mean() < .05:
+                reject_image = rejected_native_image(missing, None if missing else valid)
+                if reject_image:
                     rejections.append(dict(image=row, reason=stats.get('reason',
                         'insufficient_registered_native_support'), stats=stats))
                     status['rejected'] += 1
@@ -204,7 +210,7 @@ def run(config, mode, attempt, preflight_name):
                     status['completed'] += 1
                 if mode == 'preflight':
                     examples.append(dict(video=row['video_id'], timestamp=row['timestamp'],
-                        rotation_cw=row['image_rotation_cw'], rejected=missing or valid.mean() < .05, **stats))
+                        rotation_cw=row['image_rotation_cw'], rejected=reject_image, **stats))
                 if (status['completed'] + status['rejected']) % 16 == 0:
                     status.update(updated_at=time.time(), videos_seen=len(videos))
                     write_json(output / 'status.json', status)
@@ -241,7 +247,7 @@ if __name__ == '__main__':
     parser.add_argument('mode', choices=('preflight', 'generate'))
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--attempt', required=True)
-    parser.add_argument('--preflight', default='arkit-cache-preflight-01')
+    parser.add_argument('--preflight', default='arkit-cache-preflight-02')
     args = parser.parse_args()
     if any(Path(name).name != name for name in (args.attempt, args.preflight)):
         parser.error('Use a new attempt basename')

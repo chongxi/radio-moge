@@ -1,4 +1,5 @@
 import hashlib
+import json
 from pathlib import Path
 import sys
 
@@ -7,7 +8,7 @@ from PIL import Image
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / 'scripts'))
-from cache_arkit_geometry import convert  # noqa: E402
+from cache_arkit_geometry import convert, rejected_native_image  # noqa: E402
 from radio_moge.arkit_depth import rotate_camera  # noqa: E402
 
 
@@ -52,3 +53,11 @@ def test_mispaired_rgb_and_wrong_timestamp_are_not_admitted(tmp_path):
     row['timestamp'] = 1.235
     with pytest.raises(ValueError, match='timestamp'):
         convert(row, assets)
+
+
+def test_native_outcomes_are_json_serializable_even_when_asset_is_missing():
+    for missing, valid, expected in ((True, None, True),
+            (False, np.zeros((4, 4), bool), True), (False, np.ones((4, 4), bool), False)):
+        result = rejected_native_image(missing, valid)
+        assert result is expected
+        assert json.loads(json.dumps(dict(rejected=result)))['rejected'] is expected
