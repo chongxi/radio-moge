@@ -352,6 +352,45 @@ attempts and matching preflights. `geometry_cache.py` writes checksummed atomic
 tar packs with per-image source/camera/mask provenance and bounded random reads.
 Source assets, candidate caches, and the eventual accepted corpus remain distinct.
 
+## Actual-model preflight tooling (prepared, not yet run)
+
+`scripts/probe_corpus_model.py` now provides the genuine zero-update model gate.
+Its plan references the full accounting report, the four completed nonmodel
+gates (`source_quality`, `coverage`, `heldout_isolation`, `loss_tests`), the exact
+training configuration, and the initial checkpoint by absolute path/SHA256.
+`source_step` must match the checkpoint (232288 for this continuation). Missing
+or stale prerequisites reject execution before model loading. The command also
+requires the existing absolute GPU lock path and acquires it nonblocking; it
+does not create a replacement lock or queue a partially approved model run.
+
+The script selects support/depth extremes and different scenes in every selected
+dataset/label stratum, reads the actual checksummed cache/RGB pairs, and keeps
+their native target grids. It exercises both paired-RGB and diverse replay-RGB
+feature slots with the production geometry loss. It separately differentiates
+geometry through the frozen decoder to the adapter outputs, so a functioning
+feature loss cannot conceal a detached geometry branch. There is no optimizer
+construction or update. Parameter and buffer hashes before/after the complete
+run must match for RADIO, the MoGe encoder/decoder, adapter, and feature scales.
+Teacher/RADIO checkpoint bytes, upstream revisions, training configuration and
+implementation hashes are also bound to the evidence.
+
+The structural configuration validator has an explicit observational mode;
+the trainer never uses it and still requires the sealed acceptance report.
+All four nonmodel gates can now be checked independently without inventing an
+accepted training seal. Final acceptance additionally requires the actual-model
+report as before. Implementation binding now includes the joint adapter,
+feature objective, model loader/configuration and their local dependencies.
+
+Snapshot `code-model-probe-v2` at commit `a783953` passed 57 CPU tests in the
+established model environment. These include tiny-model backward checks through
+the actual loss functions, buffer mutation and detached decoder rejection,
+mandatory prerequisite gates, training and RGB replay regression tests.
+The test-only loss fixture reduces alignment resolution/patch count for speed;
+the actual-model command uses the pinned production settings. These tests are
+tooling validation only: they are not the actual-model gate or corpus admission.
+No actual model run has been started, because full corpus/source acceptance is
+still incomplete. Running bulk generators retain their original code snapshots.
+
 ## Publication and supervision contract
 
 Every input image needs an outcome: verified native cache, explicitly identified
