@@ -25,7 +25,11 @@ def inventory_rows(db):
         yield row
 
 
-def probe_rows(db, groups):
+def probe_rows(db):
+    # inventory.json source_groups are download/work units (e.g. ARKit video
+    # IDs), not the scene/visit families used for leakage and coverage.
+    groups = [dict(dataset=d, group=g, images=n) for d, g, n in db.execute(
+        'SELECT dataset,scene_group,COUNT(*) FROM images GROUP BY dataset,scene_group ORDER BY 1,2')]
     result = []
     for group in choose_groups(groups):
         values = []
@@ -143,7 +147,7 @@ def run(config, mode, attempt, preflight):
     counts, examples = Counter(), []
     try:
         with readonly_db(index_ref['path']) as inventory:
-            rows = probe_rows(inventory, source['source_groups']) if mode == 'preflight' else inventory_rows(inventory)
+            rows = probe_rows(inventory) if mode == 'preflight' else inventory_rows(inventory)
             expected = len(rows) if mode == 'preflight' else source['images']
             for row in rows:
                 error, info = None, {}

@@ -132,3 +132,16 @@ def test_failed_preflight_retains_error_and_prevents_full_census(tmp_path):
     assert preflight['failed_images'] == 3 and preflight['visuals'] == []
     with pytest.raises(ValueError, match='successful RGB identity preflight'):
         run(config, 'census', 'blocked', 'probe')
+
+
+def test_scene_sampling_does_not_confuse_download_work_units_with_scene_groups(tmp_path):
+    config = census_fixture(tmp_path)
+    path = tmp_path / 'inventory.json'
+    source = json.loads(path.read_text())
+    for i, group in enumerate(source['source_groups']):
+        group['group'] = str(41048262 + i)  # Video/task IDs do not identify scene_group rows.
+    path.write_text(json.dumps(source))
+    report = run(config, 'preflight', 'probe', 'unused')
+    assert report['processed'] == 3 and report['failed_images'] == 0
+    samples = json.loads((tmp_path / 'probe/samples.json').read_text())
+    assert {r['group'] for r in samples} == {'hypersim:scene', 'coco2017:scene', 'nyuv2:scene'}
