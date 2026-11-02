@@ -92,7 +92,7 @@ def camera_assets(assets, row):
     return files, proofs
 
 
-def run(config, mode, attempt, preflight_name):
+def run(config, mode, attempt, preflight_name, camera_audit_name):
     root = Path(config['root'])
     inventory = json.loads((root / 'inventory.json').read_text())
     tilt = json.loads((root / 'hypersim-tilt-probe-02/report.json').read_text())
@@ -108,12 +108,23 @@ def run(config, mode, attempt, preflight_name):
         matrices = {row['scene_name']: np.array([[float(row[f'M_cam_from_uv_{i}{j}'])
                      for j in range(3)] for i in range(3)]) for row in csv.DictReader(file)}
     script_root = Path(__file__).parents[1]
+    camera_audit_path = root / camera_audit_name / 'report.json'
+    camera_audit = json.loads(camera_audit_path.read_text())
+    if (camera_audit['stage'] != 'complete'
+            or camera_audit['manifest_sha256'] != config['manifest_sha256']
+            or camera_audit['inventory_sha256'] != inventory['inventory_sha256']
+            or camera_audit['frames'] != config['expected_counts']['hypersim']
+            or camera_audit['pose_code_sha256'] != sha_file(
+                script_root / 'src/radio_moge/geometry_sources.py')):
+        raise ValueError('Matching full-scope native camera census required')
     policy = dict(dataset='hypersim', label_kind='synthetic_renderer',
         manifest_sha256=config['manifest_sha256'], camera_metadata_sha256=sha_file(metadata_path),
         conversion='range_to_Z_in_exact_RQ_pinhole_frame_no_RGB_warp',
         pixel_gate='XYZ agrees with independent world positions within 2x storage quantization + 0.1mm',
         minimum_image_valid_fraction=.05, native_holes_filled=False, original_RGB_preserved=True,
         source_dtypes_preserved_for_quantization_bounds=True,
+        camera_audit_sha256=sha_file(camera_audit_path),
+        native_pose_quarantine='Census-listed shear/anisotropic/reflection frames excluded, never repaired',
         script_sha256=sha_file(Path(__file__)), code_sha256={name: sha_file(script_root / name)
             for name in ('src/radio_moge/hypersim_depth.py', 'src/radio_moge/geometry_sources.py',
                          'src/radio_moge/geometry_cache.py', 'scripts/indoor_download.py')})
@@ -138,17 +149,41 @@ def run(config, mode, attempt, preflight_name):
     try:
         with sqlite3.connect(f'file:{root / "inventory.sqlite"}?mode=ro', uri=True) as db:
             db.execute('PRAGMA cache_size=-32768')
-            for row in source_rows(db, groups, mode == 'preflight'):
+            records = source_rows(db, groups, mode == 'preflight')
+            expected = config['expected_counts']['hypersim']
+            expected_pose_rejections = camera_audit['pose_rejected']
+            if mode == 'preflight':
+                records = list(records)
+                known = {row['sha256'] for row in records}
+                # Explicit regression cases: quarantine known non-rigid source poses.
+                for rejected in camera_audit['rejections'][:3]:
+                    if rejected['image']['sha256'] not in known:
+                        records.append(rejected['image'])
+                        known.add(rejected['image']['sha256'])
+                expected = len(records)
+                expected_pose_rejections = sum(row['frame_id'] in camera_audit['cameras'][
+                    f'{row["group"].split(":")[1]}/{row["camera"]}']['rejected_frames'] for row in records)
+            for row in records:
                 scene, camera = row['group'].split(':')[1], row['camera']
                 pair = (scene, camera)
                 if pair not in cameras:
                     cameras[pair] = camera_assets(assets, row)
                 camera_data, camera_proofs = cameras[pair]
+                camera_record = camera_audit['cameras'][f'{scene}/{camera}']
+                if camera_record['source_proofs'] != camera_proofs:
+                    raise ValueError('Camera sources differ from completed census')
                 indices = camera_data['camera_keyframe_frame_indices.hdf5'].reshape(-1)
                 match = np.flatnonzero(indices == row['frame_id'])
                 if len(match) != 1:
                     raise ValueError('Non-unique source camera frame')
                 index = match.item()
+                if row['frame_id'] in camera_record['rejected_frames']:
+                    rejections.append(dict(image=row, reason='census_quarantined_native_pose',
+                        camera_audit_sha256=policy['camera_audit_sha256'], source_proofs=camera_proofs))
+                    status['rejected'] += 1
+                    status['updated_at'] = time.time()
+                    write_json(output / 'status.json', status)
+                    continue
                 stem = f'{scene}/images/scene_{camera}_geometry_hdf5/frame.{row["frame_id"]:04d}'
                 range_path, range_proof = assets.get(row['source_url'], stem + '.depth_meters.hdf5')
                 world_path, world_proof = assets.get(row['source_url'], stem + '.position.hdf5')
@@ -197,12 +232,15 @@ def run(config, mode, attempt, preflight_name):
             for entry in receipt['entries']:
                 read_geometry_member(tar, entry)
                 verified += 1
-        expected = 15 if mode == 'preflight' else config['expected_counts']['hypersim']
         if status['completed'] + status['rejected'] != expected or verified != status['completed']:
             raise ValueError('Native cache did not account for the expected scope')
         status.update(stage='complete', completed_at=time.time(), examples=example_stats,
                       verified_cache_members=verified,
-                      passed=mode == 'preflight' and not rejections and not status['source_review_images'])
+                      expected_scope=expected, expected_pose_rejections=expected_pose_rejections,
+                      camera_audit_sha256=policy['camera_audit_sha256'],
+                      passed=(mode == 'preflight' and status['completed'] >= 12
+                          and status['rejected'] == expected_pose_rejections
+                          and not status['source_review_images']))
         write_json(output / 'status.json', status)
         publish_json(output / 'report.json', status)
         print(json.dumps({k: v for k, v in status.items() if k != 'examples'}), flush=True)
@@ -217,8 +255,9 @@ if __name__ == '__main__':
     parser.add_argument('mode', choices=('preflight', 'generate'))
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--attempt', required=True)
-    parser.add_argument('--preflight', default='hypersim-cache-preflight-02')
+    parser.add_argument('--preflight', default='hypersim-cache-preflight-03')
+    parser.add_argument('--camera-audit', default='hypersim-camera-audit-01')
     args = parser.parse_args()
-    if Path(args.attempt).name != args.attempt or Path(args.preflight).name != args.preflight:
+    if any(Path(name).name != name for name in (args.attempt, args.preflight, args.camera_audit)):
         parser.error('attempt must be a new directory basename')
-    run(json.loads(args.config.read_text()), args.mode, args.attempt, args.preflight)
+    run(json.loads(args.config.read_text()), args.mode, args.attempt, args.preflight, args.camera_audit)
