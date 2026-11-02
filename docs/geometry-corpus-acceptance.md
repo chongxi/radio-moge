@@ -186,6 +186,65 @@ to one CPU by process affinity, including native Embree/TBB work.
   pseudo-candidate generation now uses the established Torch 2.8/cu128 model
   environment and project GPU lock. Native review and source-aware relative loss
   routing remain mandatory before admission.
+- The candidate reader now supports different RGB/depth grids. Calibration-only
+  camera rotation recenters the selected RGB viewport, including Hypersim cameras
+  with principal points outside the image. RGB is filtered/warped; **depth is
+  never interpolated**. Each loss cell selects one original observation, retains
+  its native integer index and exact projected UV, and transforms its metric XYZ
+  rigidly (or explicitly reflects X for a horizontal flip). The predicted field
+  is sampled at that UV. Labels are neither filled nor duplicated. Loss-grid
+  resolution also accounts for native angular density after crop/zoom; the first
+  visual review exposed unnecessary checkerboard gaps when only the original
+  array size was used as a cap. The old probe is preserved and a new one verifies
+  the corrected decimation, without changing any running cache producer.
+- `corpus-loss-probe-03` verified **213 real cache entries from seven sources,
+  each with and without seeded augmentation (426 cases)**. Its 36 CUDA loss
+  cases use the full pinned global/local4/local16/edge/scale parameters. Targets
+  and predicted masks were perturbed to verify exact loss invariance; gradients
+  were finite and nonzero. Teacher-pseudo labels are normalized to relative
+  geometry and produce no metric-scale gradient. Native metric scale uses the
+  detached upstream alignment scale. Sparse/empty support is explicit, and
+  edge pairs exclude holes and depth jumps. Source-review flags fail closed.
+  The latest combined unit suite passed 25 tests, including packed reader,
+  camera/flip/crop, loss, pack integrity, and FARO diagnostic fixtures.
+  **This is a loss-only diagnostic with analytic differentiable predictions,
+  not a student/teacher model forward or full-corpus admission.** No optimizer
+  was constructed or stepped. The trainer integration, accepted-manifest gate,
+  complete coverage review, and actual locked zero-update model preflight remain.
+- CUDA probe 01 failed a bitwise-repeat assertion: unchanged inputs also changed
+  local16 by 5.82e-11 in a controlled repeat. The same sampled predictions were
+  bitwise equal, and deterministic forward algorithms made every masked-label
+  comparison exactly equal. The diagnostic now separates deterministic forward
+  equality from finite CUDA backward checks; it does **not** claim deterministic
+  GPU backward or relax the masking threshold. Failed probe 01 and completed
+  pre-density-fix probe 02 remain available. Probe 03's maximum native-to-target
+  relative point error was 5.95e-8 (float32 coordinate storage), not an estimate
+  of physical depth accuracy.
+- A new ARKit/FARO diagnostic scanned 12 training videos from distinct visits,
+  covering all four orientations. Only three of those videos had exact frozen
+  RGB/highres-depth timestamps; nine frames were compared. Across the frozen
+  manifest, 85,601 frames in 1,663 videos are in the publisher's upsampling
+  subset, but this is **not** a count of available exact highres pairs. The
+  [official downloader](https://github.com/apple/ARKitScenes/blob/main/download_data.py)
+  restricts highres depth to that subset. Its
+  [raw documentation](https://github.com/apple/ARKitScenes/blob/main/raw/README.md)
+  also states that it was filtered using lowres/highres disagreement, so the
+  sample is selection-biased. The diagnostic reports two pixel-origin mappings
+  without fitting either to depth; exact highres K remains unresolved. Within
+  stable reference regions, frame median differences ranged roughly 4--39 mm,
+  and some frames still have substantial >5 cm disagreement and large tails.
+  High confidence alone therefore does not complete ARKit acceptance. Preserve
+  `arkit-faro-quality-probe-01`; review visibility/calibration and broader
+  sensor consistency before admitting native labels. It is not permission to
+  apply a fitted bias correction or relabel AppleDepth as FARO GT.
+- The running Hypersim producer has encountered a further source-consistency
+  issue in `ai_009_003`: many frames fail the independent world-position check.
+  At the 11:50 UTC snapshot there were 100 review flags and four published sparse
+  candidate entries carrying `source_needs_review:true`; most other affected
+  frames were rejected for insufficient verified support. These four cached
+  entries are **not accepted**: the new reader rejects the flag, and final corpus
+  accounting must quarantine/fallback/review all such images. Do not infer
+  quality from the running `completed` counter or relax the quantization bound.
 
 Running jobs use separate code snapshots. Do not edit their source or policies
 in place. Failed probes/caches stay available; corrections require explicit new
