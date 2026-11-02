@@ -352,6 +352,53 @@ attempts and matching preflights. `geometry_cache.py` writes checksummed atomic
 tar packs with per-image source/camera/mask provenance and bounded random reads.
 Source assets, candidate caches, and the eventual accepted corpus remain distinct.
 
+## Hypersim complete outcomes and reviewed fallback scope (21:20 UTC)
+
+The Hypersim producer has completed all 59,344 inputs and verified all 58,739
+cached members by full readback. `hypersim-outcomes-01/report.json` then bound
+every frozen input to exactly one receipt or rejection: 55,663 unflagged cache
+members, 3,076 flagged cache members, and 605 rejected images. Rejections comprise
+32 non-rigid camera poses and 573 insufficient-support cases. The source-review
+counter includes 372 already rejected images; the distinct unresolved scope is
+3,681 images across 60 scenes. The outcome audit preserves every source flag and
+does not itself approve the unflagged members or verify physical depth accuracy.
+
+`hypersim-review-teacher-routing-20261102.json` binds that exact unresolved scope
+to separate, whole-image MoGe-V2 teacher candidates. The native arrays, poses,
+masks and source artifacts remain unchanged. These candidates use only the
+original frozen RGB and carry `teacher_pseudo`, estimated-camera and nonmetric
+provenance, including the original native failure reason. They are alternatives
+for final per-image routing, not repaired native GT or native-hole filling.
+
+Snapshot `code-hypersim-review-teacher-v1` at commit `8b42fff` selects the first
+and last image in each scene/failure-reason stratum: 116 views covering all 60
+scenes. All 116 input identities, decoded RGB hashes, dimensions and orientations
+passed the bounded input check. The teacher preflight is queued behind the
+existing GPU lock; inference and visual review have not yet completed. Bulk
+generation requires both a matching numeric pass and a hash-bound visual review
+covering every scene. Its 3,076 replacements for flagged native candidates must
+never be counted as additional unique training images.
+
+The scope/producer and existing loss regression suite passed 22 tests in 2.33 s
+in the established model environment. Evidence is recorded in
+`hypersim-review-teacher-tooling-tests-01.json`. This is distinct from the earlier
+22-test heldout/outcome suite and is not the actual student-model gate.
+
+The original feature-only initialization is the archived
+`model-archive-feature-final232288-20261101/final.pt`, 2,661,040,151 bytes, SHA256
+`3d3920bcaf89b294ba8e3d5016797d8121a9dbd4a1d938f050661ad4e23c66ef`.
+Its bytes and metadata were rechecked against the archive record: source step
+232288, cursor 409480, joint-attention width 2048 with four blocks and qk-norm.
+`initial-feature-checkpoint-inspection-01.json` preserves the exact model,
+adapter and source-training configuration. No model was constructed, no tensor
+values were revalidated, and no forward/backward or optimizer update occurred.
+Final training configuration and all actual-model prerequisites remain pending.
+
+IRS has generated all 133,879 teacher candidates and is performing full pack
+readback while retaining the GPU lock. Both RGB censuses continue without errors
+in the last observation; the full train/heldout comparison has not run. No full
+corpus admission or production optimizer update has occurred.
+
 ## Heldout RGB census and complete native-outcome accounting (20:33 UTC)
 
 `audit_heldout_rgb.py` now reads the 16 inventory-bound validation/test manifests
