@@ -35,6 +35,7 @@ from .evaluate import evaluate, synchronize
 from .decoder import geometry_points_with_grad, postprocess
 from .losses import FeatureStatistics, feature_loss_total, geometry_losses, weighted_loss
 from .gt_geometry import GT_LOSS_KEYS, ground_truth_losses
+from .official_gt import OFFICIAL_GT_KEYS, OFFICIAL_GT_WEIGHTS, official_ground_truth_losses
 from .gt_data import GroundTruthImages, geometry_digest, validate_gt_records
 from .planes import FLATNESS_MODES, PlaneConfig, detect_planes, plane_losses
 from .system import build_system
@@ -105,17 +106,28 @@ def validate_config(config):
         raise ValueError("Loss weights must be finite and nonnegative")
     gt = config.get('geometry_supervision')
     if gt:
-        if gt != {'target': 'ground_truth', 'camera': 'known_intrinsics'}:
+        protocol = dict(gt)
+        objective = protocol.pop('objective', 'metric_custom')
+        if (protocol != {'target': 'ground_truth', 'camera': 'known_intrinsics'}
+                or objective not in ('metric_custom', 'moge2_core')):
             raise ValueError('Unsupported GT geometry supervision protocol')
         if data.get('compact_transport'):
             raise ValueError('GT pairs require the paired loader, not RGB-only compact transport')
-        if config['loss'].get('gt_depth', 0) <= 0 or config['loss'].get('gt_points', 0) <= 0:
-            raise ValueError('GT training requires positive metric gt_depth and gt_points anchors')
+        if objective == 'metric_custom':
+            if config['loss'].get('gt_depth', 0) <= 0 or config['loss'].get('gt_points', 0) <= 0:
+                raise ValueError('GT training requires positive metric gt_depth and gt_points anchors')
+            if any(config['loss'].get(k, 0) for k in OFFICIAL_GT_KEYS):
+                raise ValueError('Official GT weights require the moge2_core objective')
+        else:
+            if any(config['loss'].get(k, 0) for k in GT_LOSS_KEYS):
+                raise ValueError('Official and custom GT objectives must not be mixed')
+            if any(config['loss'].get(k) != v for k, v in OFFICIAL_GT_WEIGHTS.items()):
+                raise ValueError('moge2_core requires pinned official type-B geometry weights')
         if any(config['loss'].get(k, 0) for k in
                ('points', 'mask', 'scale', 'gradient', 'normal',
                 'plane_flatness', 'plane_normal', 'plane_anchor')):
             raise ValueError('GT geometry cannot silently mix teacher pseudo-geometry losses')
-    elif any(config['loss'].get(k, 0) for k in GT_LOSS_KEYS):
+    elif any(config['loss'].get(k, 0) for k in (*GT_LOSS_KEYS, *OFFICIAL_GT_KEYS)):
         raise ValueError('GT loss weights require explicit geometry_supervision')
     if config.get('plane_flatness_mode', 'teacher_axis') not in FLATNESS_MODES:
         raise ValueError('Unknown plane flatness mode')
@@ -743,12 +755,19 @@ def train(
                     gt_target = {k: v.to(accelerator.device, non_blocking=True)
                                  for k, v in cpu_batch.items() if k != 'image'}
                     predicted_raw = system.decoder(prediction, image.shape[-2:])
-                    losses.update(ground_truth_losses(predicted_raw, gt_target))
+                    official = config['geometry_supervision'].get('objective') == 'moge2_core'
+                    if official:
+                        losses.update(official_ground_truth_losses(
+                            predicted_raw, gt_target, config['models'].get('moge_source'),
+                            seed=settings['seed'] + cursor))
+                    else:
+                        losses.update(ground_truth_losses(predicted_raw, gt_target))
                     losses['feature_weighted'] = sum(losses[k] * config['loss'].get(k, 0)
                                                      for k in ('spatial', 'summary', 'cosine',
                                                                'summary_cosine'))
                     losses['geometry_weighted'] = sum(losses[k] * config['loss'].get(k, 0)
-                                                      for k in GT_LOSS_KEYS)
+                                                      for k in (OFFICIAL_GT_KEYS if official
+                                                                else GT_LOSS_KEYS))
                 elif geometry_enabled:
                     with torch.no_grad():
                         target_raw = system.decoder(target, image.shape[-2:])
