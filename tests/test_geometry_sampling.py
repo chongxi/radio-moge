@@ -23,7 +23,7 @@ def test_offcenter_camera_rectifies_exact_rays_without_changing_metric_length():
     assert valid.sum() > 300
     exact = (pinhole_rays(k, 72, 96) * 3).reshape(-1, 3)[target['native_index'][valid]]
     np.testing.assert_allclose(target['points'][valid], exact @ r.T, atol=4e-7)
-    np.testing.assert_allclose(np.linalg.norm(target['points'][valid], axis=1),
+    np.testing.assert_allclose(np.linalg.norm(target['points'][valid].astype(np.float64), axis=1),
                                np.linalg.norm(exact, axis=1), rtol=1e-7)
     projected = target['points'][valid] @ view['intrinsics'].T
     np.testing.assert_allclose(projected[:, :2] / projected[:, 2:],
@@ -48,7 +48,9 @@ def test_multigrid_does_not_upsample_duplicate_or_fill_native_depth():
     ids = a['native_index'][a['valid']]
     assert len(ids) == len(np.unique(ids)) <= mask.sum()
     assert mask.ravel()[ids].all()
-    np.testing.assert_array_equal(a['points'][a['valid'], 2], np.full(len(ids), 2.5))
+    native = (pinhole_rays(kd, 48, 64) * 2.5).reshape(-1, 3)[ids]
+    np.testing.assert_allclose(a['points'][a['valid']],
+                               native @ view['camera_transform'].T, atol=2e-7)
 
 
 def test_rgb_and_geometry_share_crop_rotation_flip_homography():

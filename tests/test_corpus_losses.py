@@ -10,7 +10,9 @@ from radio_moge.official_gt import OFFICIAL_GT_KEYS, official_functions
 
 
 def fixture(mode='metric_native', device='cpu'):
-    h, w = 24, 32
+    # Binary-exact center UVs make this a test of missing-label masking, not
+    # grid_sample's non-binary subpixel rounding. Separate test covers subpixels.
+    h, w = 32, 32
     k = torch.tensor([[.75, 0, .5], [0, 1., .5], [0, 0, 1.]], device=device)
     v, u = torch.meshgrid((torch.arange(h, device=device) + .5) / h,
                           (torch.arange(w, device=device) + .5) / w, indexing='ij')

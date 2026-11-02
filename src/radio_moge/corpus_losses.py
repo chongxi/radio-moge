@@ -79,7 +79,7 @@ def corpus_geometry_losses(raw, targets, moge_source=None, seed=0):
             mask = target['valid'].bool()
             truth = target['points'].detach().float()
             if (truth.shape != (*mask.shape, 3) or not torch.isfinite(truth[mask]).all()
-                    or not (truth[mask, 2] > 0).all()):
+                    or not (truth[..., 2][mask] > 0).all()):
                 raise ValueError('Invalid supported geometry')
             ids = target['native_index'][mask]
             if (ids < 0).any() or len(ids) != len(torch.unique(ids)):
