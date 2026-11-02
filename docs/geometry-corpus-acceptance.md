@@ -141,6 +141,50 @@ to one CPU by process affinity, including native Embree/TBB work.
   the official toolbox mixes pixel-origin conventions, clips at 10 m, and writes
   the original sensor's Z after RGB projection. Do not claim exact RGB-camera Z
   merely from reading the `rawDepths` field or guess an unverified correction.
+  New six-pair raw-file reproduction covers three frozen training office scenes.
+  The official MAT explicitly aliases `office_0000` to raw `nyu_office_0/`;
+  enforce the same MAT record, not guessed filename equality. The first failed
+  alias check is preserved. Reproduction 02 matches depth support exactly; five
+  depth maps match within float32 precision, and one has a maximum 0.393 mm
+  discrepancy. **RGB reproduction does not match**: MAE 6.04--12.71/255 after
+  literal toolbox undistortion (raw RGB is worse). Two four-panel sheets were
+  inspected. Do not approve RGB/depth registration or invent an image-fitted
+  correction; investigate processing/version/raw-frame correspondence first.
+- TartanAir V1 now has a native left-camera-Z candidate producer, using exact
+  paired right depth and RGB. It requires both-eye local stability, the published
+  `x_right=x_left-80/Z` geometry, Z agreement, and per-pixel photometric support.
+  Its 0.1--200 m domain is **our explicit task-range selection**, not a publisher
+  invalid-value definition. Finite sky-sphere depths are not admitted. Preflight
+  covers first/last images in all 24 source bundles: 47 cached and fully reread,
+  one rejected for only 2.06% support. Six day/night/interior/vegetated/underwater/
+  desert contact sheets were inspected. There are 12 environment names but only
+  11 leakage groups: factory day/night variants are not independent environments.
+  Bulk generation of all 229,924 inputs is running from `code-tartanair-v1`.
+- The GPU-only ScanNet++ visibility filter **failed** the unchanged 2 mm maximum
+  CPU-parity requirement on all 32 views in 16 scenes. Keep that failure visible;
+  percentile agreement and GPU-only edge erosion were insufficient. The new
+  path verifies **every candidate pixel** by independent CPU closest-hit mesh
+  intersection, excludes missing/mismatched hits, and stores CPU camera-Z. It
+  passed all 32 mapping/visibility checks; this is software consistency, not an
+  independent physical accuracy certificate. A separate full pack preflight has
+  six verified views and four expected scene-review exclusions across five
+  scenes. Three new cache contact sheets were inspected. The producer also binds
+  original undistorted K, Nerfstudio/COLMAP poses, source audit and anonymity mask
+  hashes. Full generation requires the completed 820-scene source audit; it has
+  **not** started yet. These remain `laser_mesh_derived`, not direct DSLR laser
+  measurements; the final corpus source/coverage/loss gates are still closed.
+- COCO teacher generation is complete: 39,997/39,997 entries were reread and
+  checksum-verified, zero rejections. The generate-mode report intentionally
+  has `passed:false` and `training_admission:false`; neither means preflight
+  failure, nor may it be turned into automatic corpus acceptance.
+- IRS has an explicit, separate teacher-candidate routing record. Its unresolved
+  native labels are retained for review; teacher caches do not overwrite them,
+  fill native holes, claim measured scale, or select final training supervision.
+  Preflight covers both eyes and first/last frames across all 13 families:
+  52/52 reread, no rejections, four contact sheets inspected. Full 133,879-image
+  pseudo-candidate generation now uses the established Torch 2.8/cu128 model
+  environment and project GPU lock. Native review and source-aware relative loss
+  routing remain mandatory before admission.
 
 Running jobs use separate code snapshots. Do not edit their source or policies
 in place. Failed probes/caches stay available; corrections require explicit new
