@@ -79,7 +79,7 @@ def render(audit_path, output):
     publish_json(output / 'index.json', dict(stage='visual_evidence_rendered_not_reviewed',
         audit=audit_ref, selection=audit['review_candidates'], rendered_images=len(records),
         records=records, pages=pages, all_selected_views_included=True,
-        selection='Top two relative p99 tails and least-support two per family/eye; not random prevalence',
+        selection_method='Top two relative p99 tails and least-support two per family/eye; not random prevalence',
         display='Original RGB, per-image relative log depth, unchanged support; display-only resizing',
         pack_payload_hashes_rechecked=False, selected_member_payloads_rechecked=True,
         generator=file_ref(Path(__file__)), display_generator=file_ref(Path(__file__).with_name(
