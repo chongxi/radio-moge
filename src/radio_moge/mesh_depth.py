@@ -6,6 +6,50 @@ Never antialias depth or fill missing triangles. Importing does not touch a GPU.
 import numpy as np
 import torch
 
+from radio_moge.geometry_sources import pinhole_rays
+
+
+def verify_cpu_intersections(intersector, intrinsics, c2w, candidate_depth, candidate_valid):
+    """Verify EVERY candidate ray, using nearest CPU mesh hits, not a sample.
+
+    GPU visibility alone did not meet the strict 2mm parity requirement. Only
+    mutually supported hits within that unchanged tolerance survive. Cache the
+    CPU intersection's Z, not interpolated/averaged or filled depth. This checks
+    software visibility, not independent physical accuracy of the source mesh.
+    Reuse one intersector/BVH per scene.
+    """
+    depth, valid = np.asarray(candidate_depth), np.asarray(candidate_valid)
+    pose = np.asarray(c2w, np.float64)
+    if (depth.ndim != 2 or valid.shape != depth.shape or valid.dtype != np.bool_
+            or not np.isfinite(depth[valid]).all() or not (depth[valid] > 0).all()
+            or pose.shape != (4, 4) or not np.isfinite(pose).all()
+            or not np.allclose(pose[3], [0, 0, 0, 1])
+            or not np.allclose(pose[:3, :3].T @ pose[:3, :3], np.eye(3), atol=1e-5)
+            or np.linalg.det(pose[:3, :3]) < .9999):
+        raise ValueError('Valid candidate depth/support and calibrated rigid pose required')
+    indices = np.flatnonzero(valid)
+    result, support = np.zeros(depth.size, np.float32), np.zeros(depth.size, bool)
+    checked, mismatched, max_error = 0, 0, None
+    if len(indices):
+        rays = pinhole_rays(intrinsics, *depth.shape).reshape(-1, 3)[indices] @ pose[:3, :3].T
+        origins = np.broadcast_to(pose[:3, 3], rays.shape).copy()
+        points, hits, _ = intersector.intersects_location(origins, rays, multiple_hits=False)
+        if len(np.unique(hits)) != len(hits):
+            raise ValueError('Nearest-hit query returned duplicate pixel support')
+        z = ((points - pose[:3, 3]) @ pose[:3, :3])[:, 2]
+        error = np.abs(z - depth.ravel()[indices[hits]])
+        good = np.isfinite(z) & (z > .01) & (z < 100) & (error <= .002)
+        support[indices[hits[good]]] = True
+        result[indices[hits[good]]] = z[good]
+        checked, mismatched = len(hits), int((~good).sum())
+        max_error = float(error[good].max()) if good.any() else None
+    quality = dict(cpu_rays_checked=len(indices), cpu_hits=checked,
+        cpu_missing_hits=len(indices) - checked, rejected_inconsistent_hits=mismatched,
+        verified_pixels=int(support.sum()), maximum_accepted_gpu_cpu_error_m=max_error,
+        maximum_allowed_gpu_cpu_error_m=.002, final_depth='CPU nearest-hit camera Z',
+        independent_physical_depth_accuracy_checked=False)
+    return result.reshape(depth.shape), support.reshape(depth.shape), quality
+
 
 def conservative_visibility(depth, valid, shifted):
     """Remove unsupported/unstable neighborhoods and subpixel visibility changes.

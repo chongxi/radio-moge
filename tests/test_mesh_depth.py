@@ -3,7 +3,7 @@ import pytest
 import torch
 
 from radio_moge.geometry_sources import pinhole_rays
-from radio_moge.mesh_depth import CudaMeshDepth, conservative_visibility
+from radio_moge.mesh_depth import CudaMeshDepth, conservative_visibility, verify_cpu_intersections
 
 
 @pytest.fixture
@@ -67,3 +67,25 @@ def test_cuda_conservative_visibility_preserves_planar_depth(rasterizer):
     assert support.mean() > .7
     np.testing.assert_array_equal(original[support], depth[support])
     assert np.all(depth[~support] == 0)
+
+
+def test_all_candidate_rays_checked_and_mismatch_never_repaired():
+    import trimesh
+    from trimesh.ray.ray_pyembree import RayMeshIntersector
+
+    mesh = trimesh.Trimesh(vertices=[[-10, -10, 3], [10, -10, 3], [10, 10, 3], [-10, 10, 3]],
+                          faces=[[0, 1, 2], [0, 2, 3]], process=False)
+    k = np.array([[1, 0, .5], [0, 1, .5], [0, 0, 1]])
+    original = np.full((16, 24), 3., np.float32)
+    original[8, 9] = 3.01
+    candidate = np.ones_like(original, bool)
+    candidate[2, 3] = False
+    depth, support, stats = verify_cpu_intersections(RayMeshIntersector(mesh), k, np.eye(4),
+                                                     original, candidate)
+    assert stats['cpu_rays_checked'] == candidate.sum()
+    assert stats['rejected_inconsistent_hits'] == 1
+    assert not support[8, 9] and not support[2, 3]
+    assert np.all(depth[support] == 3) and np.all(depth[~support] == 0)
+    empty_depth, empty_mask, empty = verify_cpu_intersections(RayMeshIntersector(mesh), k,
+        np.eye(4), original, np.zeros_like(candidate))
+    assert empty['cpu_rays_checked'] == 0 and not empty_mask.any() and not empty_depth.any()

@@ -13,6 +13,7 @@ import time
 import numpy as np
 import torch
 import trimesh
+from trimesh.ray.ray_pyembree import RayMeshIntersector
 
 from indoor_download import write_json
 from probe_cuda_mesh_depth import compare, cpu_depth
@@ -20,7 +21,7 @@ from probe_native_depth import quantiles
 from probe_scannetpp_mesh import colmap_pose
 from radio_moge.geometry_cache import sha_file
 from radio_moge.geometry_sources import normalized_opencv_intrinsics
-from radio_moge.mesh_depth import CudaMeshDepth
+from radio_moge.mesh_depth import CudaMeshDepth, verify_cpu_intersections
 
 
 def selected(root):
@@ -40,13 +41,14 @@ def selected(root):
                 yield row
 
 
-def probe(config, attempt):
+def probe(config, attempt, verify_cpu=False):
     root = Path(config['root'])
     output = root / attempt
     output.mkdir(exist_ok=False)
     result = dict(stage='running', started_at=time.time(), training_admission=False,
         training_started=False, optimizer_updates=0, torch=torch.__version__,
         cuda=torch.version.cuda, manifest_sha256=config['manifest_sha256'],
+        cpu_verification_of_every_candidate=verify_cpu,
         code_sha256=sha_file(Path(__file__).parents[1] / 'src/radio_moge/mesh_depth.py'),
         thresholds=dict(retained_cpu_support_fraction=1., retained_max_error_m=.002,
                         retained_p99_error_m=.001, minimum_retained_pixels=1000), records=[])
@@ -60,6 +62,7 @@ def probe(config, attempt):
                 del renderer, mesh
                 mesh = trimesh.load_mesh(mesh_path, process=False)
                 renderer = CudaMeshDepth(mesh.vertices, mesh.faces)
+                intersector = RayMeshIntersector(mesh)
                 active, mesh_hash = row['scene'], sha_file(mesh_path)
             pose = colmap_pose(scene / 'dslr/colmap/images.txt', row['view'])
             k = normalized_opencv_intrinsics(*row['camera_width_height_fx_fy_cx_cy'])
@@ -83,6 +86,15 @@ def probe(config, attempt):
                 retained_error_m=retained, worst_pixel_yx=[int(x) for x in worst],
                 worst_depths_cpu_gpu_m=[float(reference[worst]), float(depth[worst])],
                 render_mask_seconds=seconds, passed=passed)
+            if verify_cpu:
+                start = time.monotonic()
+                verified, support, verification = verify_cpu_intersections(intersector, k, pose, depth, valid)
+                verified_error = np.abs(verified - reference)[support]
+                record.update(gpu_only_passed=passed, verification=verification,
+                    verified_error_vs_full_cpu_m=quantiles(verified_error),
+                    cpu_verification_seconds=time.monotonic() - start,
+                    passed=bool(support.sum() >= 1000 and not (support & ~cpu_valid).any()
+                                and verified_error.max() <= 1e-5))
             result['records'].append(record)
             write_json(output / 'report.json', result)
             print(json.dumps(record), flush=True)
@@ -101,7 +113,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', required=True, type=Path)
     parser.add_argument('--attempt', required=True)
+    parser.add_argument('--verify-cpu', action='store_true')
     args = parser.parse_args()
     if Path(args.attempt).name != args.attempt:
         parser.error('Use a new attempt basename')
-    probe(json.loads(args.config.read_text()), args.attempt)
+    probe(json.loads(args.config.read_text()), args.attempt, args.verify_cpu)
