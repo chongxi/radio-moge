@@ -126,6 +126,12 @@ to one CPU by process affinity, including native Embree/TBB work.
   ARKit cache preflight 01 wrote 24 pack entries but failed final report JSON
   serialization of a NumPy Boolean; preserve it and use a new tested attempt,
   never treat its stale `generating_cache` status as a live job.
+  Preflight 03 subsequently verified 24/24 entries across those 12 videos, with
+  zero rejections; depth/mask/K and RGB-ray transforms exactly match preflight 02.
+  Four upright RGB/depth/mask sheets spanning all quarter turns were inspected.
+  The full 197,542-image native cache now runs from a frozen snapshot, using one
+  ordered inventory pass and one network request at a time. Each rejected image
+  still needs explicit fallback/exclusion in the final corpus accounting.
 - COCO pseudo caching uses the pinned teacher at 2,500 tokens, preserves original
   image dimensions, and saves its explicit support. XYZ/Z/K consistency uses
   vector-relative 3D error: coordinate-relative error is ill-conditioned near
