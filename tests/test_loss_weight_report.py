@@ -23,3 +23,6 @@ def test_paired_report_respects_metric_directions(tmp_path):
     assert result['feature']['metrics']['spatial/cosine']['sources']['nyuv2']['scenes_improved'] == 2
     assert result['nyu']['metrics']['gt_student/abs_rel']['macro_difference'] < 0
     assert result['laser']['metrics']['rmse']['macro_difference'] < 0
+    assert 'postprocess_failures' not in result['laser']
+    assert result['laser']['camera_protocol'].startswith('Known measured intrinsics')
+    assert result['nyu']['postprocess_failures'] == {'baseline': 0, 'candidate': 0}

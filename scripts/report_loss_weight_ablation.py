@@ -74,6 +74,10 @@ def compare(a, b, records):
     laser = paired_report([dict(r, image=r['id']) for r in laser_left],
                           [dict(r, image=r['id']) for r in laser_right], laser_records,
                           metrics=['abs_rel', 'rmse', 'plane_rmse_m'], repeats=4000)
+    # Known-camera evaluation does not run the unknown-camera postprocessor or
+    # emit its failure flag. Missing flags must not be reported as failures.
+    laser.pop('postprocess_failures')
+    laser['camera_protocol'] = 'Known measured intrinsics; unknown-camera postprocessor not used.'
     return dict(feature=feature, nyu=depth, laser=laser)
 
 
