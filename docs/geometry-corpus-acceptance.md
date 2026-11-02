@@ -123,7 +123,7 @@ to one CPU by process affinity, including native Embree/TBB work.
   consistency. It labels AppleDepth LiDAR separately from FARO mesh rendering.
   Photometric registration is not an independent physical depth-accuracy test;
   cross-sensor quality and the native-grid loss loader are still acceptance work.
-  ARKit cache preflight 01 wrote 24 packs entries but failed final report JSON
+  ARKit cache preflight 01 wrote 24 pack entries but failed final report JSON
   serialization of a NumPy Boolean; preserve it and use a new tested attempt,
   never treat its stale `generating_cache` status as a live job.
 - COCO pseudo caching uses the pinned teacher at 2,500 tokens, preserves original

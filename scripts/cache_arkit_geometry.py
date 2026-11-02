@@ -64,13 +64,19 @@ class NativeBundle:
 
 def rows(db, probe, preflight):
     video_sql = "json_extract(row_json,'$.video_id')"
-    videos = [r[0] for r in db.execute(f'SELECT DISTINCT {video_sql} FROM images '
-                                      "WHERE dataset='arkitscenes' ORDER BY 1")]
-    if preflight:
-        selected = {r['video'] for r in probe['records'] if r['stage'] == 'diagnostic_complete'}
-        videos = [v for v in videos if v in selected]
-        if len(videos) != 12:
-            raise ValueError('Require the twelve four-orientation registered camera probes')
+    if not preflight:
+        # One ordered scan, NOT a repeated 197k-row JSON scan for all 3,789 videos.
+        for encoded, path in db.execute('SELECT row_json,image FROM images '
+                f"WHERE dataset='arkitscenes' ORDER BY {video_sql}, ordinal"):
+            row = json.loads(encoded)
+            if row['split'] != 'train' or row['dataset'] != 'arkitscenes':
+                raise ValueError('Only frozen training frames allowed')
+            row['image'] = path
+            yield row
+        return
+    videos = sorted({r['video'] for r in probe['records'] if r['stage'] == 'diagnostic_complete'})
+    if len(videos) != 12:
+        raise ValueError('Require the twelve four-orientation registered camera probes')
     for video in videos:
         values = db.execute(f'SELECT row_json,image FROM images WHERE dataset=? '
                              f'AND {video_sql}=? ORDER BY ordinal', ('arkitscenes', video)).fetchall()
@@ -238,7 +244,9 @@ def run(config, mode, attempt, preflight_name):
         print(json.dumps({k: v for k, v in status.items() if k != 'examples'}), flush=True)
     except BaseException as error:
         status.update(stage='failed', error=type(error).__name__, message=str(error)[:1000])
-        write_json(output / 'status.json', status)
+        # Even an auxiliary report serialization error must leave terminal state.
+        write_json(output / 'status.json', {k: v for k, v in status.items()
+                                            if type(v) in (str, int, float, bool)})
         raise
 
 
@@ -247,7 +255,7 @@ if __name__ == '__main__':
     parser.add_argument('mode', choices=('preflight', 'generate'))
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--attempt', required=True)
-    parser.add_argument('--preflight', default='arkit-cache-preflight-02')
+    parser.add_argument('--preflight', default='arkit-cache-preflight-03')
     args = parser.parse_args()
     if any(Path(name).name != name for name in (args.attempt, args.preflight)):
         parser.error('Use a new attempt basename')

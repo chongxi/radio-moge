@@ -1,5 +1,6 @@
 import hashlib
 import json
+import sqlite3
 from pathlib import Path
 import sys
 
@@ -8,7 +9,7 @@ from PIL import Image
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / 'scripts'))
-from cache_arkit_geometry import convert, rejected_native_image  # noqa: E402
+from cache_arkit_geometry import convert, rejected_native_image, rows  # noqa: E402
 from radio_moge.arkit_depth import rotate_camera  # noqa: E402
 
 
@@ -61,3 +62,17 @@ def test_native_outcomes_are_json_serializable_even_when_asset_is_missing():
         result = rejected_native_image(missing, valid)
         assert result is expected
         assert json.loads(json.dumps(dict(rejected=result)))['rejected'] is expected
+
+
+def test_full_cache_uses_one_ordered_scan_without_changing_video_frame_order():
+    db = sqlite3.connect(':memory:')
+    db.execute('CREATE TABLE images (ordinal INTEGER,row_json TEXT,image TEXT,dataset TEXT)')
+    for ordinal, video in enumerate(('20', '10', '20', '10')):
+        row = dict(dataset='arkitscenes', split='train', video_id=video, ordinal=ordinal)
+        db.execute('INSERT INTO images VALUES (?,?,?,?)',
+                   (ordinal, json.dumps(row), str(ordinal) + '.png', 'arkitscenes'))
+    queries = []
+    db.set_trace_callback(queries.append)
+    actual = list(rows(db, {}, False))
+    assert [(r['video_id'], r['ordinal']) for r in actual] == [('10', 1), ('10', 3), ('20', 0), ('20', 2)]
+    assert len(queries) == 1
