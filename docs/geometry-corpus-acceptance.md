@@ -10,6 +10,29 @@ small 81-view GT pilot is not sufficient acceptance for the expanded corpus.
 heldout metadata without reading evaluation depth. Its success is **not** depth
 acceptance and cannot start training. Native assets remain immutable.
 
+## Hypersim combined accounting and live status (23:27 UTC)
+
+`hypersim-review-teacher-cache-01` completed 3,680 pseudo candidates and their
+full producer readback, with the one evidenced constant-RGB rejection.
+`hypersim-combined-routes-01/report.json` now accounts for all 59,344 frozen
+Hypersim inputs exactly once: 55,663 unflagged native candidates, 3,680 teacher
+candidates, and one reviewed input exclusion. The teacher candidates replace
+3,076 flagged native entries and 604 native rejections; the original native
+flags remain recorded. The pure-white exclusion also applies to eventual RGB
+replay. This receipt-based reconciliation does not constitute source acceptance
+or another full array readback. Its route and producer-report hashes were
+rechecked after the interrupted chat resumed.
+
+Snapshot `code-hypersim-routes-v1` at `02293a3` passed 17 focused tests before
+the actual audit. At 23:27 UTC, primary candidate counters totalled 651,950 of
+1,637,909 (39.80%), including recovered Structured3D and ScanNet++ subsets once
+and excluding separately tracked review replacements. The ScanNet++ review
+teacher job is running (2,016 of 35,783), and the training RGB census has read
+621,312 images with zero failures. Heldout RGB is complete at 190,954 manifest
+memberships; full train/heldout comparison still awaits the training census.
+Source quality, final coverage and the real model zero-update gate remain
+incomplete; production optimizer updates remain zero.
+
 ## Source review and unresolved checks
 
 | Source / training images | Label candidate | Required checks before admission |
