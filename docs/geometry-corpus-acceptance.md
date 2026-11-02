@@ -302,6 +302,50 @@ tests passed 21 cases, including corruption rejection, immutable recovery,
 direction-vector regressions, and cross-batch occlusion. No production
 optimizer update or corpus admission was performed.
 
+At the 17:05 UTC follow-up, both recovery and restart gates were complete:
+
+- Structured3D's camera census covered all 134,749 frozen images, with zero
+  invalid direction records and two records outside the obsolete raw
+  orthonormality requirement. Preflight 02 produced and reread 58 entries;
+  its other two rows are upstream errata. All 56 old/new common entries have
+  bitwise identical depth, masks and K. Eight contact sheets, including both
+  failure regressions, were inspected. The recovered 27,008-entry subset and
+  the new 107,741-row remainder are distinct artifacts and policies.
+  `structured3d-native-cache-02` is running with explicit recovered-row skipping.
+- Mesh visibility probe 03 passed all 34 views, including the first/last views
+  of the 17,326,972-face scene. ScanNet++ cache preflight 02 produced eight
+  verified entries and four expected source-review exclusions. All six old/new
+  common entries have identical masks, K and accepted CPU depth. All eight
+  sheets were inspected. Recovery reread 49,152 entries; the new 792,279-row
+  remainder runs as `scannetpp-native-cache-02`. The 25 source-review scenes
+  remain quarantined. Neither GPU/CPU agreement nor visual alignment claims
+  independent per-pixel laser accuracy.
+- Each preflight directory contains `array-parity-review-01.json` and
+  `visual-review-01.json`, binding the comparison and reviewed sheets by hash.
+  Reprocessed old rejections appear in the new remainder counters; they are
+  not extra images beyond the frozen scope.
+
+`hypersim-source-mismatch-probe-01` separately diagnosed 29 cached images:
+25 flagged examples from 13 scenes and four unflagged controls. All native
+reconstructions reproduced the cached depth, mask, K and statistics exactly.
+Every inconsistent positive-support pixel in these flagged examples still
+passed the distance-norm check under the existing storage-quantization bound.
+This is possible because the [publisher's generator](https://github.com/apple/ml-hypersim/blob/main/code/python/tools/generate_hdf5_from_vrimg.py)
+derives `depth_meters` from world-position distance before independently storing
+both arrays in float16. Norm agreement therefore does not independently verify
+the pixel's camera ray. The diagnostic separates norm and angular residuals;
+it does not change the production gate.
+
+Sixteen mismatch sheets were inspected, covering all 13 selected flagged
+scenes and three controls. In 12 flagged scenes the displayed errors are
+localized around windows, curtains, glazing or exterior backgrounds. This
+visual association does not prove a specific renderer or optical cause.
+`ai_009_003` differs: frames 66/67 lose approximately 94.6/95.0 percent of
+support, with median angular errors around 1.31 degrees in rejected regions.
+Its broad mismatch remains unresolved; no focal length or pose was fitted.
+All source-review flags remain in force. This diagnostic only samples closed
+candidate receipts and does not account for rejected or uncommitted rows.
+
 Running jobs use separate code snapshots. Do not edit their source or policies
 in place. Failed probes/caches stay available; corrections require explicit new
 attempts and matching preflights. `geometry_cache.py` writes checksummed atomic
