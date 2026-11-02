@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "root": "/home/buildhub/shared/radio-moge/chongxi/geometry-corpus-20261102",
+  "dataset_root": "/home/buildhub/shared/radio-moge/datasets",
+  "manifest": "attention-scannetpp-snapshot-v5-20261101/train.jsonl",
+  "manifest_sha256": "a9b2b7469c894d7bb760f4de1eea957c4e64e7d7fead7fab0fc196a8b03e8031",
+  "expected_counts": {
+    "arkitscenes": 197542,
+    "hypersim": 59344,
+    "nyuv2": 1043,
+    "coco2017": 39997,
+    "tartanair": 229924,
+    "structured3d": 134749,
+    "irs": 133879,
+    "scannetpp_dslr": 841431
+  },
+  "authorization": {
+    "scope_confirmed": true,
+    "date_utc": "2026-11-02",
+    "offline_labels_for_all_training_images": true,
+    "native_depth_requires_dataset_specific_verification": true,
+    "teacher_fallback_must_be_marked_pseudo": true,
+    "training_after_complete_data_loss_and_coverage_acceptance": true,
+    "training_before_acceptance": false,
+    "huggingface_upload": false
+  },
+  "teacher": {
+    "repo": "Ruicheng/moge-2-vitl-normal",
+    "revision": "cb0e8bbd6b1e243589717c78e750b1ba4c093acf",
+    "code_commit": "74fbce054ebed49800de42d0ad0e83495065719a"
+  },
+  "acceptance_gates": [
+    "all_manifest_rows_accounted_for_with_verified_cache_or_explicit_rejection",
+    "no_unresolved_source_or_conversion_failures",
+    "every_dataset_documentation_and_paper_reviewed",
+    "native_synthetic_and_pseudo_sources_kept_distinct",
+    "rgb_depth_camera_alignment_and_units_verified_per_source",
+    "no_hole_filling_or_invalid_pixel_supervision",
+    "cache_content_hashes_and_provenance_verified",
+    "training_validation_test_leakage_checks_pass",
+    "mask_invariance_and_gradient_loss_tests_pass",
+    "dataset_scene_range_and_valid_pixel_coverage_review_pass",
+    "stratified_visual_and_geometric_quality_review_pass",
+    "frozen_training_config_and_zero_update_preflight_pass"
+  ]
+}
