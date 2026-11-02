@@ -5,7 +5,7 @@ import pytest
 import torch
 
 from radio_moge.corpus_admission import (build_accounting, file_ref, readonly_db,
-                                        validate_pre_model_evidence)
+                                        implementation_hashes, validate_pre_model_evidence)
 from radio_moge.corpus_model_probe import module_digest, observe_model, select_probe_entries
 from radio_moge.losses import FeatureStatistics
 from radio_moge.official_gt import OFFICIAL_GT_WEIGHTS
@@ -64,6 +64,11 @@ def test_digest_includes_bfloat16_parameters_and_buffers():
     before = module_digest(module)
     module.counter.add_(1)
     assert module_digest(module) != before
+
+
+def test_model_gate_binds_feature_objective_and_actual_joint_adapter_code():
+    assert {'losses.py', 'adapters.py', 'architecture_screen.py', 'spatial_heads.py',
+            'upstream.py', 'config.py'} <= set(implementation_hashes())
 
 
 @pytest.mark.upstream

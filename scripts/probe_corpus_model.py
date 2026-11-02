@@ -12,10 +12,11 @@ from pathlib import Path
 import subprocess
 import time
 
+from huggingface_hub import hf_hub_download
 import torch
 
 from indoor_download import write_json
-from radio_moge.config import load_config, MOGE_COMMIT, RADIO_COMMIT
+from radio_moge.config import load_config, MOGE_COMMIT, RADIO_COMMIT, RADIO_REVISION
 from radio_moge.corpus_admission import (checked_path, file_ref, readonly_db,
     training_contract_hash, validate_pre_model_evidence)
 from radio_moge.corpus_data import collate_corpus
@@ -99,6 +100,12 @@ def run(plan_path, output):
         if subprocess.check_output(['git', '-C', str(path), 'status', '--porcelain'], text=True).strip():
             raise ValueError('Pinned upstream source has uncommitted modifications')
         revisions[name] = dict(path=str(path), commit=revision)
+    models = config['models']
+    weights = dict(
+        moge=file_ref(models.get('moge_checkpoint') or hf_hub_download(
+            models['moge_repo'], 'model.pt', revision=models['moge_revision'], local_files_only=True)),
+        radio=file_ref(models.get('radio_checkpoint') or hf_hub_download(
+            'nvidia/C-RADIOv4-H', 'c-radio_v4-h_half.pth.tar', revision=RADIO_REVISION, local_files_only=True)))
     output.mkdir(parents=True, exist_ok=False)
     publish_json(output / 'plan.json', plan)
     selection_path = output / 'selection.json'
@@ -140,7 +147,8 @@ def run(plan_path, output):
         _, final_hashes = validate_pre_model_evidence(plan['accounting_report'], plan['checks'])
         if hashes != final_hashes:
             raise ValueError('Implementation changed during the model probe')
-        for ref in [plan_ref, plan['training_config'], plan['initial_checkpoint'], replay_ref, *heldout_refs]:
+        for ref in [plan_ref, plan['training_config'], plan['initial_checkpoint'], replay_ref,
+                    *heldout_refs, *weights.values()]:
             checked_path(ref)
         del result['rows']
         report = dict(result, gate='model_zero_update', stage='complete', passed=True,
@@ -149,12 +157,12 @@ def run(plan_path, output):
             index_sha256=accounting['index']['sha256'], manifest_sha256=accounting['manifest_sha256'],
             training_contract_sha256=training_contract_hash(config), implementation_sha256=hashes,
             initial_checkpoint=plan['initial_checkpoint'], initial_source_step=plan['source_step'],
-            cases=status['completed_cases'], source_revisions=revisions,
+            cases=status['completed_cases'], source_revisions=revisions, backbone_checkpoints=weights,
             torch=str(torch.__version__), cuda=torch.version.cuda,
             peak_allocated_bytes=torch.cuda.max_memory_allocated(),
             evidence=[plan_ref, plan['training_config'], file_ref(selection_path), file_ref(rows_path),
                       file_ref(Path(__file__)), file_ref(Path(__file__).parents[1] /
-                          'src/radio_moge/corpus_model_probe.py'), replay_ref, *heldout_refs])
+                          'src/radio_moge/corpus_model_probe.py'), replay_ref, *heldout_refs, *weights.values()])
         publish_json(output / 'report.json', report)
         status.update(stage='complete', completed_at=time.time())
         write_json(output / 'status.json', status)

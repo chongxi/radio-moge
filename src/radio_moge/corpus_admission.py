@@ -64,7 +64,9 @@ def implementation_hashes():
     directory = Path(__file__).parent
     names = ('corpus_admission.py', 'corpus_data.py', 'geometry_sampling.py',
              'corpus_losses.py', 'geometry_cache.py', 'official_gt.py', 'train.py',
-             'data.py', 'feature_replay.py', 'decoder.py', 'system.py')
+             'data.py', 'feature_replay.py', 'decoder.py', 'system.py', 'losses.py',
+             'adapters.py', 'architecture_screen.py', 'spatial_heads.py',
+             'feature_refinement.py', 'upstream.py', 'config.py', 'tracking.py')
     return {name: sha_file(directory / name) for name in names}
 
 
