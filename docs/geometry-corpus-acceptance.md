@@ -64,6 +64,13 @@ metric COLMAP poses before rendering. `fetch_scannetpp_scanner_poses.py` obtains
 the missing registration metadata in a new supplement, without modifying the
 existing dataset or printing private authentication material.
 
+Native-format probes use a separate `prep-venv` with
+`requirements/geometry-prep.txt`; the existing training/preview environment is
+unchanged. The preparation environment inherits the host Torch installation;
+model inference, training and loss parity checks must instead use the established
+model environment and record its actual version. Mesh raycasting is restricted
+to one CPU by process affinity, including native Embree/TBB work.
+
 ## Publication and supervision contract
 
 Every input image needs an outcome: verified native cache, explicitly identified

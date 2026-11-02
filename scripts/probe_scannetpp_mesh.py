@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import time
 
@@ -153,6 +154,9 @@ def probe(config, attempt):
 
 
 if __name__ == '__main__':
+    # Also constrain native Embree/TBB work; OpenMP env vars alone are insufficient.
+    if hasattr(os, 'sched_getaffinity'):
+        os.sched_setaffinity(0, {min(os.sched_getaffinity(0))})
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--attempt', default='scannetpp-mesh-probe-01')

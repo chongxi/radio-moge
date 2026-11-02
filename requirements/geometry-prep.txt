@@ -1,0 +1,12 @@
+# Native-label preparation only. Do not use this environment for model comparison.
+numpy==2.2.6
+scipy==1.16.3
+Pillow==11.3.0
+requests==2.32.4
+PyYAML==6.0.3
+h5py==3.15.1
+OpenEXR==3.4.4
+trimesh==5.2.0
+embreex==4.4.0.post1
+rtree==1.4.1
+pytest==8.4.2
