@@ -41,6 +41,8 @@ from .planes import FLATNESS_MODES, PlaneConfig, detect_planes, plane_losses
 from .system import build_system
 from .tracking import ExperimentTracker, preserve_rng
 from .selection import validate_selections, selection_winners
+from .feature_replay import (validate_feature_replay, load_replay_records, make_replay_loader,
+                             is_replay_batch, replay_feature_losses)
 
 
 def make_loader(records, config, start, count, calibration=False):
@@ -86,6 +88,7 @@ def lr_factor(step, total, warmup):
 
 def validate_config(config):
     validate_selections(config.get('evaluation', {}).get('checkpoint_metrics', {}))
+    validate_feature_replay(config)
     train, data = config["train"], config["data"]
     if train["precision"] not in {"no", "bf16"}:
         raise ValueError("Supported precision modes: no, bf16")
@@ -287,6 +290,8 @@ def train(
         check_split(records, extra_records)
         check_split(validation, extra_records)
         dataset_validation[name] = extra_records
+    replay_records = load_replay_records(
+        config, [validation, geometry_validation, *dataset_validation.values()])
     probe_path = config['data'].get('train_probe_manifest')
     train_probe = read_manifest(probe_path) if probe_path else []
     if train_probe and not {r['image'] for r in train_probe} <= {r['image'] for r in records}:
@@ -306,6 +311,8 @@ def train(
         digests['train_probe'] = manifest_digest(train_probe)
     for name, extra_records in dataset_validation.items():
         digests['dataset/' + name] = manifest_digest(extra_records)
+    if replay_records:
+        digests['feature_replay'] = manifest_digest(replay_records)
     output = Path(config["output_dir"])
     output.mkdir(parents=True, exist_ok=True)
     if any(output.iterdir()) and not resume:
@@ -511,6 +518,7 @@ def train(
         "train_images": len(records),
         "validation_images": len(validation),
         "dataset_validation_images": {k: len(v) for k, v in dataset_validation.items()},
+        "feature_replay_images": len(replay_records),
         "code_revision": config.get("code_revision"),
         "execution_revision": execution_revision or (state or {}).get("execution_revision"),
         "runtime_limits": limits,
@@ -615,6 +623,9 @@ def train(
         iterator = None
     else:
         iterator = iter(loader)
+    replay_iterator = (iter(make_replay_loader(
+        replay_records, config, cursor, max(0, total - step) * accumulation))
+        if replay_records else None)
 
     def synchronize_update():
         if gpu_prefetch:
@@ -751,6 +762,18 @@ def train(
                 with amp():
                     prediction = adapter(features)
                 losses = statistics.loss(prediction, target)
+                if replay_iterator is not None:
+                    gt_features = {f'gt_feature_{key}': value.detach() for key, value in losses.items()}
+                    replay_slot = is_replay_batch(cursor)
+                    if replay_slot:
+                        replay_image = next(replay_iterator).to(accelerator.device, non_blocking=True)
+                        if replay_image.shape != image.shape:
+                            raise ValueError('Replay must preserve feature batch size and resolution')
+                        losses = replay_feature_losses(
+                            system, adapter, statistics, replay_image, raw_adapter.indices, amp,
+                            config['feature_replay']['seed'] + cursor // 2)
+                    losses.update(gt_features)
+                    losses['feature_replay_fraction'] = losses['spatial'].new_tensor(float(replay_slot))
                 if config.get('geometry_supervision'):
                     gt_target = {k: v.to(accelerator.device, non_blocking=True)
                                  for k, v in cpu_batch.items() if k != 'image'}

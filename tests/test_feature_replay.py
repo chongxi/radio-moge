@@ -1,0 +1,130 @@
+from contextlib import nullcontext
+from copy import deepcopy
+import json
+from pathlib import Path
+
+import pytest
+import torch
+
+from radio_moge.data import read_manifest
+from radio_moge.feature_replay import (is_replay_batch, load_replay_records, make_replay_loader,
+                                       replay_feature_losses)
+from radio_moge.losses import FeatureStatistics
+from radio_moge.train import train, validate_config
+from test_gt_geometry import gt_config
+from test_training import tiny_system
+
+
+def replay_config(tmp_path):
+    config = gt_config(tmp_path)
+    # config_for already created disjoint train/val RGB images.
+    records = read_manifest(tmp_path / 'train.jsonl')
+    for row in records:
+        row.update(dataset='rgb', group='rgb-train', split='train')
+    manifest = tmp_path / 'replay.jsonl'
+    manifest.write_text(''.join(json.dumps(row) + '\n' for row in records))
+    config['feature_replay'] = dict(manifest=str(manifest), fraction=.5, seed=100043)
+    config['train'].update(steps=3, accumulation=2, log_every=1)
+    return config
+
+
+def test_replay_admission_and_budget_constraints(tmp_path):
+    config = replay_config(tmp_path)
+    validate_config(config)
+    records = load_replay_records(config, [])
+    with pytest.raises(ValueError, match='leakage'):
+        load_replay_records(config, [records[:1]])
+    for change in ('odd', 'no_gt', 'fraction', 'buckets'):
+        bad = deepcopy(config)
+        if change == 'odd':
+            bad['train']['accumulation'] = 3
+        elif change == 'no_gt':
+            bad.pop('geometry_supervision')
+        elif change == 'fraction':
+            bad['feature_replay']['fraction'] = 1.
+        else:
+            bad['data']['buckets'].append([48, 32])
+        with pytest.raises(ValueError, match='replay'):
+            validate_config(bad)
+    for extra in ({'split': 'val'}, {'depth': records[0]['image']}):
+        row = dict(records[0], **extra)
+        Path(config['feature_replay']['manifest']).write_text(json.dumps(row) + '\n')
+        with pytest.raises(ValueError, match='train-only RGB'):
+            load_replay_records(config, [])
+
+
+def test_replay_stream_has_half_the_slots_and_resumes_exactly(tmp_path):
+    config = replay_config(tmp_path)
+    records = load_replay_records(config, [])
+    full = list(make_replay_loader(records, config, 0, 12))
+    resumed = list(make_replay_loader(records, config, 4, 8))
+    assert len(full) == 6 and len(resumed) == 4
+    assert sum(is_replay_batch(i) for i in range(12)) == 6
+    for left, right in zip(full[2:], resumed, strict=True):
+        torch.testing.assert_close(left, right, rtol=0, atol=0)
+
+
+def test_replay_feature_branch_preserves_rng_and_never_calls_decoder():
+    system, adapter = tiny_system()
+    statistics = FeatureStatistics(6, 6)
+    image = torch.rand(1, 3, 32, 48)
+    before = torch.get_rng_state().clone()
+    decoder_calls = []
+    hook = system.decoder.register_forward_hook(lambda *args: decoder_calls.append(True))
+    losses = replay_feature_losses(system, adapter, statistics, image, adapter.indices,
+                                   nullcontext, seed=17)
+    torch.testing.assert_close(torch.get_rng_state(), before, rtol=0, atol=0)
+    sum(losses.values()).backward()
+    assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in adapter.parameters())
+    assert not decoder_calls
+    assert all(p.grad is None for name in ('radio', 'encoder', 'decoder')
+               for p in getattr(system, name).parameters())
+    hook.remove()
+
+
+def test_replay_training_preserves_gt_stream_and_exact_resume(tmp_path, monkeypatch):
+    import importlib
+    trainer = importlib.import_module('radio_moge.train')
+    config = replay_config(tmp_path)
+    actual = trainer.ground_truth_losses
+    seen = []
+
+    def capture(raw, target):
+        seen.append({k: v.clone() for k, v in target.items()})
+        return actual(raw, target)
+
+    monkeypatch.setattr(trainer, 'ground_truth_losses', capture)
+    baseline = deepcopy(config)
+    baseline.pop('feature_replay')
+    baseline['output_dir'] = str(tmp_path / 'control')
+    control = torch.load(train(baseline, system_adapter=tiny_system()), weights_only=True)
+    gt_control = seen[:]
+    seen.clear()
+    config['output_dir'] = str(tmp_path / 'mixed')
+    full_path = train(config, system_adapter=tiny_system())
+    full = torch.load(full_path, weights_only=True)
+    assert len(gt_control) == len(seen) == 6
+    for left, right in zip(gt_control, seen, strict=True):
+        for key in left:
+            torch.testing.assert_close(left[key], right[key], rtol=0, atol=0)
+    torch.testing.assert_close(control['rng']['torch'], full['rng']['torch'], rtol=0, atol=0)
+    assert any(not torch.equal(value, full['adapter'][key]) for key, value in control['adapter'].items())
+    logs = [json.loads(line) for line in (full_path.parent / 'train.jsonl').read_text().splitlines()]
+    assert all(row['feature_replay_fraction'] == .5 for row in logs)
+    assert all(row['total'] == pytest.approx(row['feature_weighted'] + row['geometry_weighted'])
+               for row in logs)
+    split = deepcopy(config)
+    split['output_dir'] = str(tmp_path / 'resume')
+    partial = train(split, stop_after=1, system_adapter=tiny_system())
+    resumed = torch.load(train(split, resume=partial, system_adapter=tiny_system()), weights_only=True)
+    assert full['cursor'] == resumed['cursor'] == 6
+    for key, value in full['adapter'].items():
+        torch.testing.assert_close(value, resumed['adapter'][key], rtol=0, atol=0)
+    torch.testing.assert_close(full['rng']['torch'], resumed['rng']['torch'], rtol=0, atol=0)
+    # Additional RGB provenance participates in exact-resume validation.
+    manifest = Path(config['feature_replay']['manifest'])
+    rows = [json.loads(line) for line in manifest.read_text().splitlines()]
+    rows[0]['source_changed'] = True
+    manifest.write_text(''.join(json.dumps(row) + '\n' for row in rows))
+    with pytest.raises(ValueError, match='identical config and manifests'):
+        train(split, resume=partial, system_adapter=tiny_system())
