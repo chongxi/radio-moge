@@ -633,6 +633,28 @@ geometry = head.infer(features, image_rgb_0_to_1)
 # final also contains the existing teacher adapter outputs when enabled.
 ```
 
+`head.indices` lists the intermediate RADIO blocks the exported adapter needs
+(`[7, 15, 23, 31]` for joint-attention heads; empty for final-layer MLPs), and
+`head.buckets` lists the training `(height, width)` resolutions. The export
+supports every adapter kind, including `joint_attention`.
+
+#### Depth inference test
+
+`radio_moge.infer` runs this deployment path end to end: one RADIO pass
+(standing in for the perception module) feeds the exported head. Each input is
+center-cropped to the nearest-aspect training bucket (or `--bucket HxW`), with
+bf16 autocast as in training. It writes `depth/<name>.npz` (metric depth,
+mask, normalized intrinsics), `vis/<name>.jpg` (RGB | depth | GT depth | signed
+pred/GT ratio, blue = too near, red = too far), `results.jsonl` and `summary.json`:
+
+```bash
+# Plain images, a manifest with ground truth, or reproduce an earlier export:
+.venv/bin/python -m radio_moge.infer --head geometry-head.pt --images photos/ --output out/
+.venv/bin/python -m radio_moge.infer --head geometry-head.pt \
+  --manifest /home/buildhub/shared/radio-moge/datasets/nyuv2-labeled-s42/test.jsonl --output out/
+.venv/bin/python -m radio_moge.infer --head geometry-head.pt --reference <dir of *.npz> --output out/
+```
+
 For final MLP adapters use the normalized **backbone** spatial output, not a
 SigLIP/DINO adapter output. Do not externally normalize images again: RADIO owns
 its conditioner. Input images/features must describe the same crop, orientation

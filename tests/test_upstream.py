@@ -230,3 +230,97 @@ def test_radio_intermediates_match_final_in_one_pass():
     assert len(multi.intermediates) == 4
     torch.testing.assert_close(direct.spatial, multi.spatial)
     torch.testing.assert_close(direct.summary, multi.summary)
+
+
+def test_bucket_choice_follows_aspect_ratio():
+    from radio_moge.infer import DEFAULT_BUCKETS, choose_bucket, parse_bucket
+
+    assert choose_bucket(640, 480, DEFAULT_BUCKETS) == (480, 640)
+    assert choose_bucket(1920, 1080, DEFAULT_BUCKETS) == (400, 640)
+    assert choose_bucket(480, 640, DEFAULT_BUCKETS) == (640, 480)
+    assert parse_bucket("400x640") == (400, 640)
+
+
+def test_joint_export_and_deployment_inference(moge, tmp_path, monkeypatch):
+    import json
+    from argparse import Namespace
+
+    import numpy as np
+    from PIL import Image
+    from test_training import TinyRadio
+    from radio_moge import infer
+    from radio_moge.adapters import build_adapter
+    from radio_moge.attention_tricks import attention_candidates
+
+    model, config = moge
+    spec = next(x for x in attention_candidates() if x["variant"] == "qknorm" and x["seed"] == 43)
+    spec = dict(spec, width=32, blocks=2, heads=4, summary_cleaning="per-token-zero-channel")
+    adapter = build_adapter(kind="joint_attention", spec=spec, initialization_seed=43,
+                            spatial_dim=8, summary_dim=8, target_dim=32, target_summary_dim=32)
+    original = GeometryHead(adapter, MoGeDecoder(model)).eval()
+    moge_path = tmp_path / "moge.pt"
+    torch.save({"model_config": config, "model": model.state_dict()}, moge_path)
+    buckets = [[32, 48], [48, 32]]
+    checkpoint = tmp_path / "training.pt"
+    torch.save({"config": {"models": {"moge_checkpoint": str(moge_path)},
+                           "data": {"buckets": buckets}, "train": {"precision": "no"}},
+                "model_config": config, "adapter_config": adapter.config,
+                "adapter": adapter.state_dict(), "revisions": {}, "step": 7}, checkpoint)
+    head_path = tmp_path / "head.pt"
+    export(checkpoint, head_path)
+
+    from moge.model.modules.dinov2.hub import backbones
+
+    def forbidden_encoder(**kwargs):
+        raise AssertionError("Deployment tried to instantiate an encoder")
+
+    monkeypatch.setattr(backbones, "dinov2_vitl14", forbidden_encoder)
+    loaded = GeometryHead.load(head_path, device="cpu")
+    assert loaded.indices == (7, 15, 23, 31)
+    assert loaded.buckets == [(32, 48), (48, 32)] and loaded.precision == "no"
+    assert loaded.artifact_info["training_step"] == 7
+    radio = TinyRadio().eval().requires_grad_(False)
+    rgb = np.random.default_rng(5).integers(0, 255, (32, 48, 3), dtype=np.uint8)
+    image = torch.from_numpy(rgb).permute(2, 0, 1)[None].float() / 255
+    features = extract_radio(radio, image, loaded.indices)
+    with torch.no_grad():
+        expected, actual = original(features, (32, 48)), loaded(features, (32, 48))
+    for key in expected:
+        torch.testing.assert_close(expected[key], actual[key])
+
+    # The pipeline must reproduce a saved training-path result on the same RGB.
+    reference = postprocess(expected, image)
+    reference_dir = tmp_path / "reference"
+    reference_dir.mkdir()
+    np.savez(reference_dir / "scene.npz", rgb=rgb,
+             sensor_depth=np.full((32, 48), 2.0, np.float32),
+             student_depth=reference["depth"][0].numpy(),
+             student_mask=reference["mask"][0].numpy().astype(bool))
+    monkeypatch.setattr(infer, "load_radio", lambda cfg, device: radio)
+    common = dict(head=str(head_path), images=None, manifest=None, reference=None,
+                  bucket=None, limit=None, device="cpu")
+    summary = infer.run(Namespace(**dict(common, reference=str(reference_dir),
+                                         output=str(tmp_path / "ref-out"))))
+    assert summary["images"] == 1 and summary["ref_worst_max_abs_diff_m"] < 1e-5
+    assert "gt/abs_rel" in summary["mean"]
+
+    # Plain images pick the nearest training bucket; manifests add ground truth.
+    images = tmp_path / "images"
+    images.mkdir()
+    rng = np.random.default_rng(6)
+    Image.fromarray(rng.integers(0, 255, (40, 64, 3), dtype=np.uint8)).save(images / "wide.png")
+    Image.fromarray(rng.integers(0, 255, (64, 40, 3), dtype=np.uint8)).save(images / "tall.png")
+    out = tmp_path / "image-out"
+    summary = infer.run(Namespace(**dict(common, images=[str(images)], output=str(out))))
+    rows = [json.loads(line) for line in (out / "results.jsonl").read_text().splitlines()]
+    assert {r["name"]: tuple(r["bucket_hw"]) for r in rows} == {
+        "0000_tall": (48, 32), "0001_wide": (32, 48)}
+    assert all((out / "depth" / f"{r['name']}.npz").is_file() for r in rows)
+    assert all((out / "vis" / f"{r['name']}.jpg").is_file() for r in rows)
+    np.save(tmp_path / "depth.npy", np.full((40, 64), 3.0, np.float32))
+    manifest = tmp_path / "manifest.jsonl"
+    manifest.write_text(json.dumps({"image": str(images / "wide.png"),
+                                    "depth": str(tmp_path / "depth.npy")}) + "\n")
+    summary = infer.run(Namespace(**dict(common, manifest=str(manifest),
+                                         output=str(tmp_path / "gt-out"))))
+    assert summary["images"] == 1 and "gt/abs_rel" in summary["mean"]
