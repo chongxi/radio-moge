@@ -30,7 +30,8 @@ def selected(root):
         scenes = [r[0] for r in db.execute(query)]
         chosen = {scenes[i] for i in np.linspace(0, len(scenes) - 1, 12).astype(int)}
         # Preserve the first parity probe, and include two source-review scenes.
-        chosen.update(('00777c41d4', '00a231a370', '0271889ec0', '033d0b9343', '04c23ccd1d'))
+        chosen.update(('00777c41d4', '00a231a370', '0271889ec0', '033d0b9343', '04c23ccd1d',
+                       '0fe8539661'))  # 17.3M-face regression from the failed bulk attempt.
         for scene in sorted(chosen):
             values = db.execute("SELECT row_json FROM images WHERE dataset='scannetpp_dslr' "
                 "AND json_extract(row_json,'$.scene')=? ORDER BY ordinal", (scene,)).fetchall()

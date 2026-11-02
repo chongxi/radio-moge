@@ -77,15 +77,17 @@ def conservative_visibility(depth, valid, shifted):
 
 
 class CudaMeshDepth:
-    def __init__(self, vertices, faces, device='cuda', near=.01, far=100.):
+    def __init__(self, vertices, faces, device='cuda', near=.01, far=100., max_faces_per_pass=1048576):
         import nvdiffrast.torch as dr
         vertices, faces = np.asarray(vertices), np.asarray(faces)
         if (vertices.ndim != 2 or vertices.shape[1] != 3 or not np.isfinite(vertices).all()
                 or faces.ndim != 2 or faces.shape[1] != 3 or faces.dtype.kind not in 'iu'
                 or not len(faces) or faces.min() < 0 or faces.max() >= len(vertices)
-                or not 0 < near < far):
+                or not 0 < near < far or type(max_faces_per_pass) is not int
+                or not 1 <= max_faces_per_pass <= 1048576):
             raise ValueError('Invalid finite mesh or clip bounds')
         self.dr, self.device, self.near, self.far = dr, device, near, far
+        self.max_faces_per_pass = max_faces_per_pass
         self.context = dr.RasterizeCudaContext(device=device)
         self.vertices = torch.as_tensor(np.array(vertices, np.float32), device=device)
         self.faces = torch.as_tensor(np.array(faces, np.int32), device=device)
@@ -108,14 +110,25 @@ class CudaMeshDepth:
         a, b = ((self.far + self.near) / (self.far - self.near),
                 -2 * self.far * self.near / (self.far - self.near))
         clip = torch.stack((2 * uvz[:, 0] - z, z - 2 * uvz[:, 1], a * z + b, z), -1)
-        rast, _ = self.dr.rasterize(self.context, clip[None].contiguous(), self.faces,
-                                    resolution=(height, width), grad_db=False)
-        depth, _ = self.dr.interpolate(cam[:, 2:3][None].contiguous(), rast, self.faces)
-        # Nvdiffrast's first array row is the bottom of the GL image.
-        depth = depth[0, :, :, 0].flip(0)
-        triangles = rast[0, :, :, 3].flip(0).to(torch.int64) - 1
-        valid = ((triangles >= 0) & torch.isfinite(depth)
-                 & (depth > self.near) & (depth < self.far))
+        # Bound rasterizer work/triangle IDs for very large source meshes.
+        # Every triangle is rendered. Merge by nearest camera Z, preserving
+        # cross-chunk occlusion; never average depths or discard a mesh subset.
+        depth = torch.full((height, width), float('inf'), device=self.device)
+        triangles = torch.full((height, width), -1, dtype=torch.int64, device=self.device)
+        positions, attributes = clip[None].contiguous(), cam[:, 2:3][None].contiguous()
+        for start in range(0, len(self.faces), self.max_faces_per_pass):
+            faces = self.faces[start:start + self.max_faces_per_pass]
+            rast, _ = self.dr.rasterize(self.context, positions, faces,
+                                        resolution=(height, width), grad_db=False)
+            value, _ = self.dr.interpolate(attributes, rast, faces)
+            # Nvdiffrast's first array row is the bottom of the GL image.
+            value = value[0, :, :, 0].flip(0)
+            face_ids = rast[0, :, :, 3].flip(0).to(torch.int64) - 1
+            good = ((face_ids >= 0) & torch.isfinite(value)
+                    & (value > self.near) & (value < self.far) & (value < depth))
+            depth = torch.where(good, value, depth)
+            triangles = torch.where(good, face_ids + start, triangles)
+        valid = triangles >= 0
         depth = torch.where(valid, depth, 0)
         return depth.cpu().numpy(), valid.cpu().numpy(), triangles.cpu().numpy()
 
@@ -132,5 +145,7 @@ class CudaMeshDepth:
         support = conservative_visibility(depth, valid, shifted)
         quality = dict(initial_valid_pixels=int(valid.sum()), retained_pixels=int(support.sum()),
             retained_fraction=float(support.mean()), depth_filled_or_averaged=False,
+            mesh_faces=len(self.faces), max_faces_per_pass=self.max_faces_per_pass,
+            raster_passes_per_ray_grid=(len(self.faces) + self.max_faces_per_pass - 1) // self.max_faces_per_pass,
             visibility_policy='5x5 stable (.02+.02Z m); four quarter-pixel rays (.005+.01Z m)')
         return np.where(support, depth, 0), support, triangles, quality

@@ -18,9 +18,16 @@ from PIL import Image
 import requests
 
 from indoor_download import atomic_write, write_json
+from radio_moge.cache_recovery import recovered_rows
 from radio_moge.geometry_cache import (GeometryPackWriter, canonical_json, publish_json,
                                        read_geometry_member, sha_file)
 from radio_moge.structured3d_depth import convert_structured3d, is_erratum, parse_errata
+
+
+PREFLIGHT_REGRESSIONS = (
+    'Structured3D/scene_01181/2D_rendering/2163/perspective/empty/0/rgb_rawlight.png',
+    'Structured3D/scene_01181/2D_rendering/2163/perspective/empty/1/rgb_rawlight.png',
+)
 
 
 def metadata(root, name):
@@ -50,7 +57,10 @@ def rows(db, preflight):
         query = f'SELECT row_json,image FROM images WHERE dataset=? AND {archive_sql}=? ORDER BY ordinal'
         values = db.execute(query, ('structured3d', archive)).fetchall()
         if preflight:
-            values = [values[index] for index in sorted({0, len(values) - 1})]
+            indices = {0, len(values) - 1}
+            indices.update(i for i, (encoded, _) in enumerate(values)
+                           if json.loads(encoded)['source_member'] in PREFLIGHT_REGRESSIONS)
+            values = [values[index] for index in sorted(indices)]
         for encoded, image in values:
             row = json.loads(encoded)
             if row['dataset'] != 'structured3d' or row['split'] != 'train':
@@ -64,7 +74,7 @@ def image_array(data):
         return np.asarray(image)
 
 
-def run(config, mode, attempt, preflight_name):
+def run(config, mode, attempt, preflight_name, recovery_name=None):
     root, data = Path(config['root']), Path(config['dataset_root'])
     inventory = json.loads((root / 'inventory.json').read_text())
     if (inventory['manifest_sha256'] != config['manifest_sha256']
@@ -75,9 +85,13 @@ def run(config, mode, attempt, preflight_name):
     errata_text, errata_proof = metadata(root, 'errata.txt')
     errata = parse_errata(errata_text)
     source_root = Path(__file__).parents[1]
+    recovered, recovery_ref = recovered_rows(root, recovery_name, 'structured3d', config['manifest_sha256'])
+    if mode == 'preflight' and recovered:
+        raise ValueError('Preflight must inspect its complete selection, without recovered-row skipping')
     policy = dict(dataset='structured3d', manifest_sha256=config['manifest_sha256'],
         label_kind='synthetic_renderer', upstream_errata=errata_proof,
         conversion='native uint16 camera Z millimeters to float32 meters; original integer pixel K',
+        camera_directions='publisher look/up directions; normalized/cross-constructed, not a stored rotation matrix',
         normal_convention='native camera x-right/y-up/z-forward to OpenCV Y-down; fixed, not fitted',
         mask='native nonzero/nonsaturated/opaque; 5x5 stable; normal agreement 15deg; semantics; layout',
         conservative_exclusions='all upstream errata scenes/rooms, window/mirror, border/occlusion uncertainty',
@@ -85,16 +99,24 @@ def run(config, mode, attempt, preflight_name):
         minimum_image_valid_fraction=.05, native_holes_filled=False, original_RGB_preserved=True,
         script_sha256=sha_file(Path(__file__)), code_sha256={name: sha_file(source_root / name) for name in (
             'src/radio_moge/structured3d_depth.py', 'src/radio_moge/geometry_sources.py',
-            'src/radio_moge/geometry_cache.py', 'scripts/indoor_download.py')})
+            'src/radio_moge/geometry_cache.py', 'src/radio_moge/cache_recovery.py',
+            'scripts/indoor_download.py')})
     policy_hash = hashlib.sha256(canonical_json(policy)).hexdigest()
     if mode == 'generate':
         previous = json.loads((root / preflight_name / 'report.json').read_text())
         if not previous['passed'] or previous['policy_sha256'] != policy_hash:
             raise ValueError('Matching full conversion/pack preflight required')
+        census = json.loads((root / 'structured3d-camera-census-01/report.json').read_text())
+        if (census['stage'] != 'complete' or census['rejected'] != 0
+                or census['completed'] != config['expected_counts']['structured3d']
+                or census['manifest_sha256'] != config['manifest_sha256']
+                or census['parser_sha256'] != sha_file(source_root / 'src/radio_moge/structured3d_depth.py')):
+            raise ValueError('Matching full perspective camera census required')
     status = dict(stage='generating_cache', mode=mode, completed=0, rejected=0,
                   source_review_images=0, archives_verified=0, started_at=time.time(),
                   training_admission=False, training_started=False, optimizer_updates=0,
-                  policy_sha256=policy_hash)
+                  policy_sha256=policy_hash, recovered_subset=recovery_ref, recovered_skipped=0)
+    (output / 'rejected').mkdir()
     writer = GeometryPackWriter(output / 'packs', policy, max_entries=128)
     archive, active, archive_stats = None, None, {}
     rejections, examples = [], []
@@ -102,9 +124,14 @@ def run(config, mode, attempt, preflight_name):
         with sqlite3.connect(f'file:{root / "inventory.sqlite"}?mode=ro', uri=True) as db:
             db.execute('PRAGMA cache_size=-32768')
             for row in rows(db, mode == 'preflight'):
+                if row['sha256'] in recovered:
+                    status['recovered_skipped'] += 1
+                    continue
                 if is_erratum(row, errata):
-                    rejections.append(dict(image=row, reason='upstream_errata_scene_or_room',
-                                           source_proofs=[errata_proof]))
+                    rejection = dict(image=row, reason='upstream_errata_scene_or_room',
+                                     source_proofs=[errata_proof])
+                    rejections.append(rejection)
+                    publish_json(output / 'rejected' / (row['sha256'] + '.json'), rejection)
                     status['rejected'] += 1
                     continue
                 name = row['source_archive']
@@ -146,7 +173,10 @@ def run(config, mode, attempt, preflight_name):
                     json.loads(native['layout.json']), rgba[..., 3])
                 status['source_review_images'] += int(stats['source_needs_review'])
                 if valid.mean() < .05:
-                    rejections.append(dict(image=row, reason='insufficient_verified_support', stats=stats))
+                    rejection = dict(image=row, reason='insufficient_verified_support', stats=stats,
+                                     source_proofs=proofs)
+                    rejections.append(rejection)
+                    publish_json(output / 'rejected' / (row['sha256'] + '.json'), rejection)
                     status['rejected'] += 1
                 else:
                     provenance = dict(image_sha256=row['sha256'], dataset='structured3d',
@@ -179,8 +209,9 @@ def run(config, mode, attempt, preflight_name):
             for entry in receipt['entries']:
                 read_geometry_member(tar, entry)
                 verified += 1
-        expected = 58 if mode == 'preflight' else config['expected_counts']['structured3d']
-        if status['completed'] + status['rejected'] != expected or verified != status['completed']:
+        expected = 60 if mode == 'preflight' else config['expected_counts']['structured3d'] - len(recovered)
+        if (status['completed'] + status['rejected'] != expected or verified != status['completed']
+                or status['recovered_skipped'] != len(recovered)):
             raise ValueError('Native cache does not account for the frozen scope')
         status.update(stage='complete', completed_at=time.time(), expected_scope=expected,
             verified_cache_members=verified, examples=examples, archives=archive_stats,
@@ -202,7 +233,8 @@ if __name__ == '__main__':
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--attempt', required=True)
     parser.add_argument('--preflight', default='structured3d-cache-preflight-01')
+    parser.add_argument('--recovered', help='Explicit verified subset to skip; only for generation')
     args = parser.parse_args()
     if any(Path(name).name != name for name in (args.attempt, args.preflight)):
         parser.error('Use a new attempt basename')
-    run(json.loads(args.config.read_text()), args.mode, args.attempt, args.preflight)
+    run(json.loads(args.config.read_text()), args.mode, args.attempt, args.preflight, args.recovered)

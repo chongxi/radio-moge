@@ -20,6 +20,7 @@ import trimesh
 from trimesh.ray.ray_pyembree import RayMeshIntersector
 
 from indoor_download import write_json
+from radio_moge.cache_recovery import recovered_rows
 from radio_moge.geometry_cache import (GeometryPackWriter, canonical_json, publish_json,
                                        read_geometry_member, sha_file)
 from radio_moge.geometry_sources import (normalized_opencv_intrinsics,
@@ -27,7 +28,8 @@ from radio_moge.geometry_sources import (normalized_opencv_intrinsics,
 from radio_moge.mesh_depth import CudaMeshDepth, verify_cpu_intersections
 
 
-PREFLIGHT_SCENES = ('00777c41d4', '00a231a370', '0271889ec0', '033d0b9343', '04c23ccd1d')
+PREFLIGHT_SCENES = ('00777c41d4', '00a231a370', '0271889ec0', '033d0b9343', '04c23ccd1d',
+                    '0fe8539661')
 
 
 def colmap_poses(path):
@@ -100,11 +102,13 @@ def rows(db, preflight):
                 yield row
 
 
-def run(config, mode, attempt, preflight_name):
+def run(config, mode, attempt, preflight_name, visibility_name='mesh-visibility-probe-02', recovery_name=None):
     root, data = Path(config['root']), Path(config['dataset_root'])
     inventory = json.loads((root / 'inventory.json').read_text())
     audit_root = root / 'scannetpp-source-audit-01'
-    visibility_path = root / 'mesh-visibility-probe-02/report.json'
+    if Path(visibility_name).name != visibility_name:
+        raise ValueError('Visibility probe must be an attempt basename')
+    visibility_path = root / visibility_name / 'report.json'
     visibility = json.loads(visibility_path.read_text())
     if (inventory['manifest_sha256'] != config['manifest_sha256']
             or sha_file(root / 'inventory.sqlite') != inventory['inventory_sha256']
@@ -114,6 +118,9 @@ def run(config, mode, attempt, preflight_name):
             or visibility['code_sha256'] != sha_file(Path(__file__).parents[1] / 'src/radio_moge/mesh_depth.py')):
         raise ValueError('Frozen inventory and exact all-ray verification preflight required')
     source_root = Path(__file__).parents[1]
+    recovered, recovery_ref = recovered_rows(root, recovery_name, 'scannetpp_dslr', config['manifest_sha256'])
+    if mode == 'preflight' and recovered:
+        raise ValueError('Preflight must inspect its complete selection')
     policy = dict(dataset='scannetpp_dslr', manifest_sha256=config['manifest_sha256'],
         label_kind='laser_mesh_derived', not_direct_per_dslr_pixel_measurements=True,
         conversion='CPU nearest-hit camera Z meters on 640-wide pinhole ray grid, no fitting/filling',
@@ -123,9 +130,11 @@ def run(config, mode, attempt, preflight_name):
         anonymization='native mask==255, float area support, 2-pixel erosion on output grid',
         visibility='GPU 5x5/quarter-pixel stability AND EVERY candidate verified by CPU closest hit',
         gpu_cpu_max_difference_m=.002, minimum_image_valid_fraction=.05,
+        large_mesh_handling='all faces in <=1048576-face passes, nearest-Z merge; full CPU parity unchanged',
         script_sha256=sha_file(Path(__file__)), code_sha256={name: sha_file(source_root / name) for name in (
             'src/radio_moge/mesh_depth.py', 'src/radio_moge/geometry_sources.py',
-            'src/radio_moge/geometry_cache.py', 'scripts/indoor_download.py')})
+            'src/radio_moge/geometry_cache.py', 'src/radio_moge/cache_recovery.py',
+            'scripts/indoor_download.py')})
     policy_hash = hashlib.sha256(canonical_json(policy)).hexdigest()
     if mode == 'generate':
         previous = json.loads((root / preflight_name / 'report.json').read_text())
@@ -139,7 +148,7 @@ def run(config, mode, attempt, preflight_name):
     (output / 'rejected').mkdir()
     status = dict(stage='generating_cache', mode=mode, completed=0, rejected=0,
         scenes_seen=0, started_at=time.time(), training_admission=False, training_started=False,
-        optimizer_updates=0, policy_sha256=policy_hash)
+        optimizer_updates=0, policy_sha256=policy_hash, recovered_subset=recovery_ref, recovered_skipped=0)
     write_json(output / 'status.json', status)
     writer = GeometryPackWriter(output / 'packs', policy, max_entries=256)
     active, renderer, intersector, mesh = None, None, None, None
@@ -148,6 +157,9 @@ def run(config, mode, attempt, preflight_name):
         with sqlite3.connect(f'file:{root / "inventory.sqlite"}?mode=ro', uri=True) as db:
             db.execute('PRAGMA cache_size=-32768')
             for row in rows(db, mode == 'preflight'):
+                if row['sha256'] in recovered:
+                    status['recovered_skipped'] += 1
+                    continue
                 if (row['dataset'] != 'scannetpp_dslr' or row['split'] != 'train'
                         or row['official_split'] != 'nvs_sem_train' or row['group'] != 'scannetpp:' + row['scene']):
                     raise ValueError('Only frozen eligible training scenes allowed')
@@ -232,12 +244,13 @@ def run(config, mode, attempt, preflight_name):
             for entry in receipt['entries']:
                 read_geometry_member(tar, entry)
                 verified += 1
-        expected = 10 if mode == 'preflight' else config['expected_counts']['scannetpp_dslr']
-        if status['completed'] + status['rejected'] != expected or verified != status['completed']:
+        expected = 12 if mode == 'preflight' else config['expected_counts']['scannetpp_dslr'] - len(recovered)
+        if (status['completed'] + status['rejected'] != expected or verified != status['completed']
+                or status['recovered_skipped'] != len(recovered)):
             raise ValueError('Candidate cache did not account for full frozen scope')
         status.update(stage='complete', completed_at=time.time(), expected_scope=expected,
             examples=examples, verified_cache_members=verified,
-            passed=bool(mode == 'preflight' and status['completed'] == 6
+            passed=bool(mode == 'preflight' and status['completed'] == 8
                         and len(rejections) == 4 and all(r['reason'] == 'source_scene_pending_review'
                                                        for r in rejections)))
         write_json(output / 'status.json', status)
@@ -258,7 +271,10 @@ if __name__ == '__main__':
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--attempt', required=True)
     parser.add_argument('--preflight', default='scannetpp-cache-preflight-01')
+    parser.add_argument('--visibility-probe', default='mesh-visibility-probe-02')
+    parser.add_argument('--recovered', help='Explicit verified subset to skip; only for generation')
     args = parser.parse_args()
     if any(Path(name).name != name for name in (args.attempt, args.preflight)):
         parser.error('Use a new attempt basename')
-    run(json.loads(args.config.read_text()), args.mode, args.attempt, args.preflight)
+    run(json.loads(args.config.read_text()), args.mode, args.attempt, args.preflight,
+        args.visibility_probe, args.recovered)

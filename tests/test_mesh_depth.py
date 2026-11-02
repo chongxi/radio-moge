@@ -89,3 +89,22 @@ def test_all_candidate_rays_checked_and_mismatch_never_repaired():
     empty_depth, empty_mask, empty = verify_cpu_intersections(RayMeshIntersector(mesh), k,
         np.eye(4), original, np.zeros_like(candidate))
     assert empty['cpu_rays_checked'] == 0 and not empty_mask.any() and not empty_depth.any()
+
+
+def test_chunked_visibility_keeps_nearest_hits_across_face_batches():
+    pytest.importorskip('nvdiffrast.torch')
+    if not torch.cuda.is_available():
+        pytest.skip('CUDA rasterizer test requires a GPU')
+    vertices = np.array([[-1, -1, 4], [1, -1, 4], [0, 1, 4],
+                         [-.3, -.3, 2], [.3, -.3, 2], [0, .3, 2]])
+    k = np.array([[1, 0, .5], [0, 1, .5], [0, 0, 1]])
+    faces = np.array([[0, 1, 2], [3, 4, 5]])
+    unchunked = CudaMeshDepth(vertices, faces).render(k, np.eye(4), 32, 48)
+    for order in (faces, faces[::-1].copy()):
+        depth, valid, ids = CudaMeshDepth(vertices, order, max_faces_per_pass=1).render(
+            k, np.eye(4), 32, 48)
+        np.testing.assert_array_equal(valid, unchunked[1])
+        np.testing.assert_allclose(depth, unchunked[0], atol=1e-6)
+        assert (np.isclose(depth, 2) & valid).any() and (np.isclose(depth, 4) & valid).any()
+        near_id = int(np.flatnonzero(order[:, 0] == 3)[0])
+        assert np.all(ids[np.isclose(depth, 2)] == near_id)
