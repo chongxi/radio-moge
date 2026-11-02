@@ -71,6 +71,43 @@ model inference, training and loss parity checks must instead use the establishe
 model environment and record its actual version. Mesh raycasting is restricted
 to one CPU by process affinity, including native Embree/TBB work.
 
+## Implemented preparation checks (not corpus acceptance)
+
+- The completed inventory has 820 ScanNet++ scenes actually represented by DSLR
+  training images. Scanner-pose supplementation covered 822 eligible downloaded
+  scenes; these are different counts. ARKit's 1,478 groups are **visits**, covering
+  3,789 videos, not 1,478 videos. COCO's groups are image IDs, not verified scenes.
+- `audit_scannetpp_corpus_sources.py` inspects every frozen DSLR scene and every
+  available raw panorama, with systematic ray samples. Scenes with substantial
+  scan/mesh disagreement are retained as `needs_review`, never silently admitted.
+- CUDA mesh rasterization has independent CPU ray-intersection comparisons. Very
+  rare visibility/triangle-edge disagreements remain even when central error
+  quantiles pass; the current rasterizer probe is not a per-pixel quality mask.
+- Hypersim tilt-shift matrices are converted to an exact pinhole coordinate frame
+  by RQ decomposition, without warping RGB or substituting a universal focal.
+  Some released first-frame pose matrices contain uniform asset scale (observed
+  0.25). Remove only verified uniform scale, tolerate at most 1e-5 decimal-metadata
+  orthogonality residual, and independently check the world geometry. The
+  [publisher's exporter](https://github.com/apple/ml-hypersim/blob/main/code/python/tools/generate_hdf5_from_vrimg.py)
+  computes range from world distance and stores range/position as FP16; pose scale
+  must not rescale metric range. Per-pixel acceptance accounts for actual storage
+  quantization rather than incorrectly demanding sub-ULP agreement.
+- COCO pseudo caching uses the pinned teacher at 2,500 tokens, preserves original
+  image dimensions, and saves its explicit support. XYZ/Z/K consistency uses
+  vector-relative 3D error: coordinate-relative error is ill-conditioned near
+  zero X/Y at a large Z. The original seven-image failed cache attempt is kept;
+  corrected preflight includes its far-depth regression image.
+- NYU source-byte equality is verified, but final geometry acceptance is pending:
+  the official toolbox mixes pixel-origin conventions, clips at 10 m, and writes
+  the original sensor's Z after RGB projection. Do not claim exact RGB-camera Z
+  merely from reading the `rawDepths` field or guess an unverified correction.
+
+Running jobs use separate code snapshots. Do not edit their source or policies
+in place. Failed probes/caches stay available; corrections require explicit new
+attempts and matching preflights. `geometry_cache.py` writes checksummed atomic
+tar packs with per-image source/camera/mask provenance and bounded random reads.
+Source assets, candidate caches, and the eventual accepted corpus remain distinct.
+
 ## Publication and supervision contract
 
 Every input image needs an outcome: verified native cache, explicitly identified
