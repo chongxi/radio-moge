@@ -17,6 +17,7 @@ import numpy as np
 from .geometry_cache import (HEX64, canonical_json, publish_json,
                              read_geometry_member, sha_file)
 from .geometry_sampling import camera_matrix, source_supervision
+from .corpus_coverage import geometry_coverage
 
 
 SOURCE_CHECKS = ('documentation_and_paper', 'units_and_camera', 'valid_support',
@@ -66,7 +67,7 @@ def implementation_hashes():
              'corpus_losses.py', 'geometry_cache.py', 'official_gt.py', 'train.py',
              'data.py', 'feature_replay.py', 'decoder.py', 'system.py', 'losses.py',
              'adapters.py', 'architecture_screen.py', 'spatial_heads.py',
-             'feature_refinement.py', 'upstream.py', 'config.py', 'tracking.py')
+             'feature_refinement.py', 'upstream.py', 'config.py', 'tracking.py', 'corpus_coverage.py')
     return {name: sha_file(directory / name) for name in names}
 
 
@@ -127,7 +128,7 @@ def build_accounting(plan, output):
             sha256 TEXT NOT NULL UNIQUE, dataset TEXT NOT NULL, scene_group TEXT NOT NULL,
             row_json TEXT NOT NULL, disposition TEXT NOT NULL DEFAULT 'unresolved',
             pack TEXT, entry_json TEXT, decision_json TEXT, label_kind TEXT,
-            valid_fraction REAL, median_depth REAL);
+            valid_fraction REAL, median_depth REAL, coverage_json TEXT);
         CREATE INDEX by_group ON images(scene_group);
         CREATE INDEX by_dataset ON images(dataset);
         CREATE TABLE packs (path TEXT PRIMARY KEY, sha256 TEXT NOT NULL,
@@ -205,18 +206,20 @@ def build_accounting(plan, output):
                     if meta.get('source_needs_review', False):
                         quarantine[dataset] += 1
                         continue
-                    source_supervision(meta)
+                    supervision = source_supervision(meta)
                     if meta['label_kind'] not in review['label_kinds'] or valid.sum() < 32:
                         raise ValueError('Unreviewed label kind or insufficient observations')
                     if disposition != 'unresolved':
                         raise ValueError('Duplicate image selection; explicit routing is required')
                     if not np.isclose(valid.mean(), entry['valid_fraction'], rtol=0, atol=1e-12):
                         raise ValueError('Cached valid-support statistic differs')
+                    coverage_stats = geometry_coverage(depth, valid, supervision)
                     db.execute('UPDATE images SET disposition=?,pack=?,entry_json=?,decision_json=?, '
-                               'label_kind=?,valid_fraction=?,median_depth=? WHERE ordinal=?',
+                               'label_kind=?,valid_fraction=?,median_depth=?,coverage_json=? WHERE ordinal=?',
                                ('selected', str(tar), canonical_json(entry).decode(),
                                 canonical_json(candidate['review']).decode(), meta['label_kind'],
-                                float(valid.mean()), float(np.median(depth[valid])), ordinal))
+                                float(valid.mean()), float(np.median(depth[valid])),
+                                canonical_json(coverage_stats).decode(), ordinal))
                     selected[dataset] += 1
                 db.commit()
             if verified != index['count']:
@@ -250,6 +253,7 @@ def build_accounting(plan, output):
             db.execute('INSERT INTO samples VALUES (?,?)', (sample, ordinal))
         coverage = [dict(dataset=d, label_kind=k, images=n, groups=g,
                          min_valid_fraction=lo, mean_valid_fraction=mean,
+                         median_depth_units='teacher_nominal_uncalibrated' if k == 'teacher_pseudo' else 'meters_camera_z',
                          min_image_median_depth=zlo, max_image_median_depth=zhi)
                     for d, k, n, g, lo, mean, zlo, zhi in db.execute('''
                         SELECT dataset,label_kind,COUNT(*),COUNT(DISTINCT scene_group),
