@@ -18,7 +18,9 @@ def digest(path):
         return hashlib.file_digest(file, 'sha256').hexdigest()
 
 
-def audit(root):
+def audit(root, output=None):
+    if output is not None and Path(output).exists():
+        raise FileExistsError('Use a new audit output; never overwrite prior evidence')
     state = json.loads((root / 'preparation.json').read_text())
     assert state['stage'] == 'prepared'
     split = state['split']
@@ -99,11 +101,14 @@ def audit(root):
               'manifest_sha256': digest(manifest), 'independent_original_pixel_checks': True,
               'all_output_hashes_verified': True, 'official_permanent_splits_preserved': True,
               'source_not_modified': True, 'rows': reports}
-    atomic_json(result, root / 'data-verification.json')
+    atomic_json(result, Path(output) if output is not None else root / 'data-verification.json')
     print(json.dumps({k: v for k, v in result.items() if k != 'rows'}), flush=True)
+    return result
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('root', type=Path)
-    audit(parser.parse_args().root)
+    parser.add_argument('--output', type=Path, help='New evidence file outside the source dataset')
+    args = parser.parse_args()
+    audit(args.root, args.output)
