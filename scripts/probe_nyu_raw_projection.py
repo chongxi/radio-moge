@@ -6,7 +6,7 @@ are published, and no held-out frame values are opened.
 """
 import argparse
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import sqlite3
 import time
 
@@ -18,6 +18,19 @@ from indoor_download import RemoteZip, write_json
 from probe_native_depth import Evidence, quantiles
 from radio_moge.geometry_cache import sha_file
 from radio_moge.nyu_projection import reproduce_projected_depth, reproduce_undistorted_rgb
+
+
+def validate_reference(row, mat_scene, names):
+    paths = {key: PurePosixPath(value) for key, value in names.items()}
+    if (row['group'] != 'nyuv2:' + mat_scene or row['split'] != 'train'
+            or any(p.is_absolute() or len(p.parts) != 2 or '..' in p.parts for p in paths.values())
+            or paths['rgb'].parent != paths['depth'].parent
+            or not paths['rgb'].name.startswith('r-') or not paths['depth'].name.startswith('d-')):
+        raise ValueError('Raw references do not match the exact authorized MAT pair')
+    # Publisher explicitly maps e.g. scenes=office_0000 to raw nyu_office_0/.
+    # Use that same verified MAT record, never infer a new scene by filename.
+    return dict(published_scene=mat_scene, raw_scene_directory=str(paths['rgb'].parent),
+                raw_names=names, alias_is_explicit_same_mat_record=True)
 
 
 def audit(config, attempt):
@@ -48,10 +61,11 @@ def audit(config, attempt):
             for row in rows:
                 index = int(row['id'].split('_')[-1]) - 1
                 native = {}
-                for kind, key in (('rgb', 'rawRgbFilenames'), ('depth', 'rawDepthFilenames')):
-                    name = ''.join(chr(int(x)) for x in mat[mat[key][0, index]][:].ravel())
-                    if row['group'] != 'nyuv2:' + name.split('/')[0]:
-                        raise ValueError('Raw frame path does not belong to the frozen training scene')
+                names = {kind: ''.join(chr(int(x)) for x in mat[mat[key][0, index]][:].ravel())
+                         for kind, key in (('rgb', 'rawRgbFilenames'), ('depth', 'rawDepthFilenames'))}
+                mat_scene = ''.join(chr(int(x)) for x in mat[mat['scenes'][0, index]][:].ravel())
+                pair_identity = validate_reference(row, mat_scene, names)
+                for kind, name in names.items():
                     found = None
                     for part in range(2):
                         if len(archives) <= part:
@@ -83,7 +97,7 @@ def audit(config, attempt):
                 expected = np.asarray(mat['rawDepths'][index]).T
                 support = (projected > 0) & (expected > 0)
                 difference = np.abs(projected - expected)
-                record = dict(id=row['id'], scene=row['group'],
+                record = dict(id=row['id'], scene=row['group'], pair_identity=pair_identity,
                     raw_sensor_codes=quantiles(raw_depth), rgb_exact_fraction=float((rgb == expected_rgb).mean()),
                     rgb_mae_u8=float(np.abs(rgb.astype(float) - expected_rgb).mean()),
                     depth_support_agreement=float(((projected > 0) == (expected > 0)).mean()),
