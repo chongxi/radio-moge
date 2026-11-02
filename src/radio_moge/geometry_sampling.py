@@ -130,9 +130,23 @@ def select_observations(depth, valid, k_depth, view):
         raise ValueError('Nonfinite/nonpositive supported native depth')
     dh, dw = depth.shape
     oh, ow = view['output_shape']
-    scale = min(1., dh / oh, dw / ow)
+    kd = camera_matrix(k_depth)
+    # A crop/zoom can contain far fewer native rays than the full source grid.
+    # Cap the loss resolution by its actual calibrated angular sampling density,
+    # not only by the original array dimensions. Otherwise a zoom creates a
+    # checkerboard of empty cells and destroys adjacent edge pairs. This only
+    # DECIMATES observations; it never fills those empty cells or duplicates GT.
+    inverse = kd @ np.linalg.inv(view['camera_transform']) @ np.linalg.inv(view['intrinsics'])
+    densities = []
+    for v in (0., .5, 1.):
+        for u in (0., .5, 1.):
+            q = inverse @ [u, v, 1.]
+            jac = (inverse[:2, :2] * q[2] - q[:2, None] * inverse[2, :2]) / q[2]**2
+            jac = np.diag([dw, dh]) @ jac @ np.diag([1 / ow, 1 / oh])
+            densities.append(np.linalg.svd(jac, compute_uv=False).min())
+    scale = min(1., dh / oh, dw / ow, min(densities))
     lh, lw = max(2, int(np.floor(oh * scale))), max(2, int(np.floor(ow * scale)))
-    rays = pinhole_rays(camera_matrix(k_depth), dh, dw)
+    rays = pinhole_rays(kd, dh, dw)
     ids = np.flatnonzero(valid)
     points = (rays.reshape(-1, 3)[ids] * depth.ravel()[ids, None]) @ view['camera_transform'].T
     projected = points @ view['intrinsics'].T

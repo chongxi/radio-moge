@@ -84,6 +84,18 @@ def test_support_is_fixed_and_empty_stays_empty():
         select_observations(depth, mask, k, view)
 
 
+def test_zoom_does_not_inflate_loss_grid_beyond_native_angular_density():
+    k = np.array([[.8, 0, .5], [0, 1.05, .5], [0, 0, 1.]])
+    depth = np.full((192, 256), 2., np.float32)
+    valid = np.ones(depth.shape, bool)
+    a = select_observations(depth, valid, k, centered_view(k, (480, 640), (400, 640)))
+    b = select_observations(depth, valid, k, centered_view(k, (480, 640), (400, 640), zoom=2))
+    assert b['valid'].shape[0] < a['valid'].shape[0] * .6
+    assert b['valid'].shape[1] < a['valid'].shape[1] * .6
+    assert b['valid'].mean() > .99
+    assert b['valid'].sum() <= valid.sum()
+
+
 def test_provenance_scale_and_unresolved_review_are_fail_closed():
     pseudo = dict(label_kind='teacher_pseudo', camera_kind='teacher_estimated',
                   metric_calibrated=False, teacher_revision='pinned')
