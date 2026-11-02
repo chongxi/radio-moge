@@ -391,6 +391,49 @@ tooling validation only: they are not the actual-model gate or corpus admission.
 No actual model run has been started, because full corpus/source acceptance is
 still incomplete. Running bulk generators retain their original code snapshots.
 
+## Coverage audit and isolated ScanNet teacher candidates
+
+`inventory-coverage-audit-01` scanned all 1,637,909 frozen rows and bound the
+inventory/report hashes. It records 1,478 ARKit visits, 365 Hypersim scenes,
+336 NYU scenes, 820 ScanNet scenes, 2,997 Structured3D scenes, 13 IRS environment
+families and 11 TartanAir environment families. COCO's 39,997 groups are image
+identities; their physical scene independence is unknown. IRS's largest family
+contains 22.9 percent of its images and TartanAir's largest family contains
+22.2 percent. Frame count must not be substituted for scene diversity.
+
+Decoded-RGB hashes exist for 499,595 frozen rows (IRS, NYU, Structured3D and
+TartanAir); no repeated decoded hashes were found within that subset. The other
+1,138,314 rows have no decoded-RGB hash in this inventory. This metadata audit
+does not reread their RGB, verify perceptual near-duplicates, classify indoor
+versus outdoor content, or describe geometry after exclusions. Its stage is
+explicitly `coverage_audit_complete_not_reviewed`, not a passed training gate.
+
+The accounting reader now records valid-pixel depth histograms during each
+selected cache member's existing integrity readback. Native calibrated depth
+uses meter bins. Teacher depth uses ratios to each image's valid-depth median;
+its nominal scale never enters a metric coverage claim. Both pixel-weighted
+and image-weighted histograms are reported, along with valid support. The final
+accounting-mode audit must run after every frozen row has an outcome and must
+be reviewed with source/scene balance, near-duplicate sampling, image content
+and post-augmentation loss participation. Snapshot `code-coverage-audit-v1`
+(`c932840`) passed 62 CPU coverage/model-probe/admission/training/replay/loss
+tests. This is tooling validation, not completion of those corpus reviews.
+
+The complete ScanNet source audit identifies 25 unresolved scenes containing
+35,783 frozen training images. `scannetpp-review-teacher-routing-20261102.json`
+binds that exact subset and its original source reports. The new producer
+`scripts/cache_scannetpp_review_teacher.py` prepares separate, nonmetric MoGe-V2
+candidates from unchanged RGB with the original anonymity mask. It neither
+repairs native geometry nor clears source-review flags. Only mask value 255,
+with conservative erosion, can intersect teacher support; it adds no pixels
+or interpolated support. Each scene contributes its first and last view to a
+50-image preflight. Bulk generation additionally requires a matching numerical
+preflight and a hash-bound visual review covering all 25 scenes. All inference
+uses the existing GPU lock and pinned model environment. The first producer
+snapshot passed 40 CPU source-selection/coverage/model-gate/admission/loss
+tests; snapshot `code-scannet-review-teacher-v2` (`8e2ed09`) additionally passed
+the three focused tests after its bounded scene-index query correction.
+
 ## Publication and supervision contract
 
 Every input image needs an outcome: verified native cache, explicitly identified
