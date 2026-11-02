@@ -92,6 +92,40 @@ to one CPU by process affinity, including native Embree/TBB work.
   computes range from world distance and stores range/position as FP16; pose scale
   must not rescale metric range. Per-pixel acceptance accounts for actual storage
   quantization rather than incorrectly demanding sub-ULP agreement.
+- A full Hypersim camera census covered all 59,344 training frames in 613 camera
+  trajectories. It quarantined 32 first-frame matrices with non-rigid or reflected
+  axes. The observed ai_001_006/cam_01 matrix has a 0.054 orthogonality residual,
+  not numerical roundoff. Native cache attempt 01 stopped after 1,191 entries and
+  remains untouched. Census-bound preflight 03 verified 15 good cache entries and
+  rejected three regression cases; its 15 depth/mask/K arrays exactly match
+  preflight 02. New bulk attempt 02 uses the unchanged geometric tolerance and
+  explicitly accounts for quarantined frames. They need separate fallback or
+  exclusion, not guessed pose repair.
+- Structured3D now binds the [upstream errata](https://github.com/bertjiazheng/Structured3D/blob/master/metadata/errata.txt),
+  checks native archive/member hashes and frozen RGB identity, and uses original
+  uint16-mm Z, float FOV intrinsics, semantic support, native normals, and matching
+  visible structural planes. Window/mirror, saturation, holes, discontinuities,
+  and uncertain boundaries are excluded. Normals alone cannot verify units: an
+  image lacking at least 100 metric-plane-verified pixels is fully quarantined.
+  Preflight 01 inspected both end samples of all 29 represented archives: 56
+  cache/roundtrip successes, two upstream-errata room exclusions, no unresolved
+  sample review flags. Four stratified empty/full contact sheets were inspected.
+  This is a conversion preflight, not full 134,749-image corpus acceptance.
+- ARKit native measurements remain at the original 256x192 grid (or its exact
+  quarter-turn), never upsampled into extra measurements. The official
+  [point-generation code](https://github.com/apple/ARKitScenes/blob/main/threedod/benchmark_scripts/utils/tenFpsDataLoader.py)
+  uses integer-pixel camera-Z backprojection. Native and VGA normalized K differ
+  by half-pixel terms; store both cameras and their ray-grid transform. Twelve
+  exact-timestamp, four-orientation RGB-stream probes gave mean absolute errors
+  0.0054--0.0144 on a 0--1 scale; deliberately flipped/shifted controls were worse.
+  Four source-space registration sheets were inspected. Native caching requires
+  confidence 2, stable depth, exact timestamps, and per-pixel calibrated RGB
+  consistency. It labels AppleDepth LiDAR separately from FARO mesh rendering.
+  Photometric registration is not an independent physical depth-accuracy test;
+  cross-sensor quality and the native-grid loss loader are still acceptance work.
+  ARKit cache preflight 01 wrote 24 packs entries but failed final report JSON
+  serialization of a NumPy Boolean; preserve it and use a new tested attempt,
+  never treat its stale `generating_cache` status as a live job.
 - COCO pseudo caching uses the pinned teacher at 2,500 tokens, preserves original
   image dimensions, and saves its explicit support. XYZ/Z/K consistency uses
   vector-relative 3D error: coordinate-relative error is ill-conditioned near
