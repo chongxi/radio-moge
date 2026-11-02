@@ -43,7 +43,7 @@ def geometry_coverage(depth, valid, supervision):
 
 
 def metadata_coverage(db, *, accounting=False, write_group=None):
-    """Full metadata counts, group concentration and exact decoded-RGB repeats.
+    """Full metadata counts, group concentration and stored hash-value repeats.
 
     Exact repeats are not perceptual near-duplicate detection. Group labels are
     source-specific and never promoted to a claim of independent scenes.
@@ -103,9 +103,14 @@ def metadata_coverage(db, *, accounting=False, write_group=None):
         duplicates['cross_dataset_clusters'] += int(sources > 1)
         if len(duplicates['examples']) < 20:
             duplicates['examples'].append(dict(decoded_rgb_sha256=checksum, rows=count, datasets=sources))
-    duplicates['scope'] = 'all frozen rows, including exclusions; metadata hashes only, no RGB reread'
+    duplicates['scope'] = 'all frozen rows, including exclusions; literal stored hash values only'
+    duplicates['cross_source_conventions_verified'] = False
+    duplicates['pixel_identity_verified'] = False
+    duplicates['limitation'] = ('NYU stores SHA256 of raw RGB bytes; the archive sources include '
+        'a width/height/RGB prefix. Unequal stored hashes do not establish different pixels. '
+        'Canonical RGB rereading is required for comparisons across these conventions.')
     return dict(source_counts=source_counts, groups=concentration, decoded_hash_coverage=image_hashes,
-        exact_decoded_duplicates=duplicates, perceptual_near_duplicates_checked=False,
+        stored_decoded_hash_repeats=duplicates, perceptual_near_duplicates_checked=False,
         indoor_outdoor_image_content_checked=False)
 
 

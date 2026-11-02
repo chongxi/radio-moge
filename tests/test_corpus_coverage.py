@@ -51,9 +51,11 @@ def test_group_concentration_and_pixel_duplicates_are_not_independence_claims(tm
     assert values['hypersim']['fully_excluded_groups'] == 1
     assert values['hypersim']['effective_group_count'] == 1
     assert 'unknown' in values['coco2017']['group_meaning']
-    assert result['exact_decoded_duplicates']['clusters'] == 1
-    assert result['exact_decoded_duplicates']['excess_rows'] == 2
-    assert result['exact_decoded_duplicates']['cross_dataset_clusters'] == 1
+    assert result['stored_decoded_hash_repeats']['clusters'] == 1
+    assert result['stored_decoded_hash_repeats']['excess_rows'] == 2
+    assert result['stored_decoded_hash_repeats']['cross_dataset_clusters'] == 1
+    assert not result['stored_decoded_hash_repeats']['pixel_identity_verified']
+    assert not result['stored_decoded_hash_repeats']['cross_source_conventions_verified']
     assert not result['perceptual_near_duplicates_checked']
     assert sum(sum(v['counts'].values()) for v in groups) == 5
 
