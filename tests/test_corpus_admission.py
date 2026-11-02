@@ -80,10 +80,11 @@ def admission_fixture(tmp_path, *, flagged=False, missing=False):
     return root, plan, rows
 
 
-def synthetic_seal(root, accounting, config):
+def synthetic_seal(root, accounting, config, checkpoint=None):
     """Fake proof statements ONLY for exercising integrity/negative unit tests."""
-    checkpoint = root / 'test-checkpoint.bytes'
-    checkpoint.write_bytes(b'Not a model; unit test fixture only')
+    if checkpoint is None:
+        checkpoint = root / 'test-checkpoint.bytes'
+        checkpoint.write_bytes(b'Not a model; unit test fixture only')
     ref = file_ref(root / 'account/report.json')
     evidence = [file_ref(root / 'synthetic-proof.json')]
     checks = {}
@@ -252,3 +253,57 @@ def test_train_rejects_candidate_before_constructing_system(tmp_path, monkeypatc
     config['feature_replay'] = None
     with pytest.raises(ValueError, match='RGB replay'):
         validate_config(config)
+
+
+def test_corpus_trainer_routes_list_targets_replay_and_exact_resume(tmp_path, monkeypatch):
+    """Tiny CPU model + test-only loss: train-loop wiring, NOT real-model approval."""
+    import torch
+    from radio_moge.corpus_losses import sample_predictions, target_tensors
+    from radio_moge.losses import FeatureStatistics
+    from radio_moge.official_gt import OFFICIAL_GT_KEYS, OFFICIAL_GT_WEIGHTS
+    from radio_moge.train import train
+    from test_training import config_for, tiny_system
+
+    root, plan, _ = admission_fixture(tmp_path)
+    accounting = build_accounting(plan, root / 'account')
+    config = config_for(tmp_path)
+    config['data']['train_manifest'] = str(root / 'train.jsonl')
+    config['geometry_supervision'] = dict(target='offline_corpus', camera='provenance_aware',
+                                          objective='moge2_core')
+    config['feature_replay'] = dict(manifest=str(root / 'train.jsonl'), fraction=.5, seed=100043)
+    config['loss'] = dict(spatial=1., summary=1., cosine=1., summary_cosine=1., **OFFICIAL_GT_WEIGHTS)
+    config['train'].update(steps=2, accumulation=2)
+    config['output_dir'] = str(root / 'tiny-run')
+    system, adapter = tiny_system()
+    checkpoint = root / 'tiny-initial.pt'
+    torch.save(dict(adapter_config=adapter.config, adapter=adapter.state_dict(),
+        model_config=system.model_config, config=deepcopy(config), step=123,
+        statistics=FeatureStatistics(6, 6).state_dict()), checkpoint)
+    synthetic_seal(root, accounting, config, checkpoint)
+    seen = []
+
+    def test_only_loss(raw, targets, source, seed):
+        assert isinstance(targets, list) and len(targets) == 2
+        seen.append((seed, [(t['cache_key'], t['native_index'].copy()) for t in targets]))
+        per_image = []
+        for i, value in enumerate(targets):
+            target = target_tensors(value, raw['points'].device)
+            sampled = sample_predictions(raw['points'][i], target)
+            per_image.append((sampled[target['valid']] - target['points'][target['valid']]).square().mean())
+        loss = torch.stack(per_image).mean()
+        return {key: loss if key == 'gt_global' else loss * 0 for key in OFFICIAL_GT_KEYS}
+
+    monkeypatch.setattr('radio_moge.train.corpus_geometry_losses', test_only_loss)
+    first = train(config, init=checkpoint, stop_after=1, system_adapter=(system, adapter))
+    partial = torch.load(first, weights_only=True)
+    assert partial['cursor'] == 2 and partial['step'] == 1
+    final = train(config, resume=first, system_adapter=tiny_system())
+    state = torch.load(final, weights_only=True)
+    assert state['cursor'] == 4 and state['step'] == 2
+    assert len(seen) == 4
+    assert [x[0] for x in seen] == list(range(config['train']['seed'], config['train']['seed'] + 4))
+    assert any(not torch.equal(v, partial['adapter'][k]) for k, v in state['adapter'].items())
+    logs = [json.loads(line) for line in (final.parent / 'train.jsonl').read_text().splitlines()]
+    assert len(logs) == 2 and all(row['feature_replay_fraction'] == .5 for row in logs)
+    assert all(row['total'] == pytest.approx(row['feature_weighted'] + row['geometry_weighted']) for row in logs)
+    assert state['data_digests']['geometry'] == state['data_digests']['train']
