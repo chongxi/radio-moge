@@ -29,8 +29,9 @@ def audit(config, attempt):
     write_json(evidence.root / 'report.json', result)
     try:
         with sqlite3.connect(f'file:{root / "inventory.sqlite"}?mode=ro', uri=True) as db:
-            groups = [r[0] for r in db.execute("SELECT DISTINCT scene_group FROM images "
-                "WHERE dataset='nyuv2' AND scene_group LIKE 'nyuv2:office_%' ORDER BY 1 LIMIT 3")]
+            groups = [r[0] for r in db.execute("SELECT scene_group FROM images "
+                "WHERE dataset='nyuv2' AND scene_group LIKE 'nyuv2:office_%' "
+                "GROUP BY scene_group HAVING COUNT(*)>=2 ORDER BY 1 LIMIT 3")]
             rows = [json.loads(r[0]) for group in groups for r in db.execute(
                 'SELECT row_json FROM images WHERE scene_group=? ORDER BY ordinal LIMIT 2', (group,))]
         if len(groups) != 3 or len(rows) != 6 or any(r['split'] != 'train' for r in rows):
