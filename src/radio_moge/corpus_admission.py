@@ -275,7 +275,22 @@ def build_accounting(plan, output):
         raise
 
 
-def validate_final_evidence(accounting_ref, checks, config):
+def checked_gate_evidence(name, ref, accounting_ref, accounting):
+    value = checked_json(ref)
+    if (value.get('gate') != name or value.get('stage') != 'complete'
+            or value.get('passed') is not True
+            or value.get('accounting_report_sha256') != accounting_ref['sha256']
+            or value.get('index_sha256') != accounting['index']['sha256']
+            or value.get('manifest_sha256') != accounting['manifest_sha256']
+            or not value.get('evidence')):
+        raise ValueError(f'Final {name} gate is incomplete or bound to other data')
+    for item in value['evidence']:
+        checked_path(item)
+    return value
+
+
+def validate_pre_model_evidence(accounting_ref, checks):
+    """Verify all nonmodel gates without issuing or imitating a training seal."""
     accounting = checked_json(accounting_ref)
     if (accounting.get('stage') != 'accounting_verified_not_accepted'
             or accounting.get('training_admission') is not False or accounting.get('unresolved') != 0
@@ -298,31 +313,31 @@ def validate_final_evidence(accounting_ref, checks, config):
         checked_json(source['generation_report'])
         validate_source_review(checked_json(source['review']), source['dataset'],
                                source['policy_sha256'], accounting['manifest_sha256'])
-    if set(checks) != set(FINAL_CHECKS):
-        raise ValueError('All final source, coverage, leakage, loss and model gates are required')
-    evidence = {}
-    for name in FINAL_CHECKS:
-        value = checked_json(checks[name])
-        if (value.get('gate') != name or value.get('stage') != 'complete'
-                or value.get('passed') is not True
-                or value.get('accounting_report_sha256') != accounting_ref['sha256']
-                or value.get('index_sha256') != accounting['index']['sha256']
-                or value.get('manifest_sha256') != accounting['manifest_sha256']
-                or not value.get('evidence')):
-            raise ValueError(f'Final {name} gate is incomplete or bound to other data')
-        for ref in value['evidence']:
-            checked_path(ref)
-        evidence[name] = value
+    names = set(FINAL_CHECKS) - {'model_zero_update'}
+    if set(checks) != names:
+        raise ValueError('All source, coverage, leakage and loss gates are required before model preflight')
+    evidence = {name: checked_gate_evidence(name, checks[name], accounting_ref, accounting)
+                for name in names}
     if (evidence['source_quality'].get('unresolved') != 0
             or evidence['source_quality'].get('reviewed_images') != accounting['total_images']
             or evidence['coverage'].get('reviewed_counts') != accounting['expected_counts']
             or evidence['heldout_isolation'].get('overlaps') != 0):
         raise ValueError('Quality, coverage and heldout review must cover the entire frozen scope')
     hashes = implementation_hashes()
-    for name in ('loss_tests', 'model_zero_update'):
-        if evidence[name].get('implementation_sha256') != hashes:
-            raise ValueError('Loss/model tests refer to a different implementation')
-    model = evidence['model_zero_update']
+    if evidence['loss_tests'].get('implementation_sha256') != hashes:
+        raise ValueError('Loss/model tests refer to a different implementation')
+    checked_path(accounting['index'])
+    return accounting, hashes
+
+
+def validate_final_evidence(accounting_ref, checks, config):
+    if set(checks) != set(FINAL_CHECKS):
+        raise ValueError('All final source, coverage, leakage, loss and model gates are required')
+    accounting, hashes = validate_pre_model_evidence(
+        accounting_ref, {name: ref for name, ref in checks.items() if name != 'model_zero_update'})
+    model = checked_gate_evidence('model_zero_update', checks['model_zero_update'], accounting_ref, accounting)
+    if model.get('implementation_sha256') != hashes:
+        raise ValueError('Loss/model tests refer to a different implementation')
     if (model.get('optimizer_updates') != 0 or model.get('actual_model_forward_backward') is not True
             or model.get('frozen_backbones_unchanged') is not True
             or model.get('adapter_unchanged') is not True
@@ -330,7 +345,6 @@ def validate_final_evidence(accounting_ref, checks, config):
             or model.get('training_contract_sha256') != training_contract_hash(config)):
         raise ValueError('Actual unchanged-model zero-update preflight is required')
     checked_path(model['initial_checkpoint'])
-    checked_path(accounting['index'])
     return accounting, model, hashes
 
 

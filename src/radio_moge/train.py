@@ -92,7 +92,13 @@ def lr_factor(step, total, warmup):
     return 0.05 + 0.95 * (1 + math.cos(math.pi * progress)) / 2
 
 
-def validate_config(config):
+def validate_config(config, *, corpus_preflight=False):
+    """Check structure; only open_training_gate can admit actual corpus training.
+
+    The observational model preflight has no seal yet. Its explicit mode accepts
+    the offline protocol while still requiring all the same training settings.
+    The trainer never sets this flag.
+    """
     validate_selections(config.get('evaluation', {}).get('checkpoint_metrics', {}))
     validate_feature_replay(config)
     train, data = config["train"], config["data"]
@@ -115,19 +121,22 @@ def validate_config(config):
         raise ValueError("Loss weights must be finite and nonnegative")
     gt = config.get('geometry_supervision')
     corpus = data.get('geometry_corpus')
+    corpus_mode = corpus is not None or corpus_preflight
     if corpus is not None:
         if (not isinstance(corpus, dict) or set(corpus) != {'path', 'sha256'}
                 or not isinstance(corpus['path'], str) or not Path(corpus['path']).is_absolute()
                 or not isinstance(corpus['sha256'], str)
-                or not re.fullmatch('[0-9a-f]{64}', corpus['sha256'])
-                or gt != {'target': 'offline_corpus', 'camera': 'provenance_aware',
+                or not re.fullmatch('[0-9a-f]{64}', corpus['sha256'])):
+            raise ValueError('Offline corpus requires a sealed gate, provenance-aware core loss and RGB replay')
+    if corpus_mode:
+        if (gt != {'target': 'offline_corpus', 'camera': 'provenance_aware',
                           'objective': 'moge2_core'}
                 or config.get('feature_replay') is None):
             raise ValueError('Offline corpus requires a sealed gate, provenance-aware core loss and RGB replay')
     if gt:
         protocol = dict(gt)
         objective = protocol.pop('objective', 'metric_custom')
-        expected = ({'target': 'offline_corpus', 'camera': 'provenance_aware'} if corpus else
+        expected = ({'target': 'offline_corpus', 'camera': 'provenance_aware'} if corpus_mode else
                     {'target': 'ground_truth', 'camera': 'known_intrinsics'})
         if (protocol != expected
                 or objective not in ('metric_custom', 'moge2_core')):
