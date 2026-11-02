@@ -227,8 +227,13 @@ def load_candidate(pack_path, entry, output_shape=(400, 640), seed=0, augment=Fa
                                  180: Image.Transpose.ROTATE_180,
                                  270: Image.Transpose.ROTATE_90}[rotation])
     rgb = np.array(image)
-    rgb_shape = (row['height'], row['width'])
-    if tuple(rgb.shape[:2]) != rgb_shape:
+    rgb_shape = tuple(rgb.shape[:2])
+    # Some original NYU rows have no dimension fields. The bytes are still
+    # checksum-bound; derive dimensions from those exact bytes, never from a
+    # guessed resize or a native depth array. If either frozen field exists,
+    # both must match. Explicit multigrid metadata is checked independently below.
+    if (('height' in row or 'width' in row)
+            and rgb_shape != (row.get('height'), row.get('width'))):
         raise ValueError('Frozen RGB dimensions differ after orientation')
     if 'rgb_intrinsics_normalized' in metadata:
         kr = camera_matrix(metadata['rgb_intrinsics_normalized'])

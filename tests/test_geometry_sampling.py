@@ -143,3 +143,16 @@ def test_actual_packed_reader_checks_orientation_and_is_deterministic(tmp_path, 
     Image.fromarray(np.zeros((24, 32, 3), np.uint8)).save(entry['image']['image'])
     with pytest.raises(ValueError, match='bytes changed'):
         load_candidate(pack, entry)
+
+
+def test_hash_bound_rgb_without_original_dimension_fields_is_not_resized(tmp_path):
+    pack, entry = packed_fixture(tmp_path)
+    a = load_candidate(pack, entry, (20, 32))
+    entry['image'].pop('height')
+    entry['image'].pop('width')
+    b = load_candidate(pack, entry, (20, 32))
+    np.testing.assert_array_equal(a[0], b[0])
+    np.testing.assert_array_equal(a[1]['points'], b[1]['points'])
+    entry['image']['width'] = 32  # Partial frozen dimension metadata is invalid.
+    with pytest.raises(ValueError, match='dimensions differ'):
+        load_candidate(pack, entry)
