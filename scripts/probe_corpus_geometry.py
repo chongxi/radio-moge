@@ -59,7 +59,17 @@ def probe_loss(target, device, seed):
                mask=torch.zeros((1, h, w), device=device))
     cpu_before = torch.get_rng_state().clone()
     cuda_before = torch.cuda.get_rng_state().clone() if device == 'cuda' else None
-    values = corpus_geometry_losses(raw, [target], seed=seed)
+    # CUDA scatter reductions in the pinned local loss can differ by one ULP
+    # even for UNCHANGED inputs. Compare exact masks with deterministic forward
+    # reductions; do not weaken the equality criterion or mistake repeat noise
+    # for an invalid-label contribution. grid_sample backward is separately
+    # checked for finite gradients (not claimed bitwise deterministic).
+    was_deterministic = torch.are_deterministic_algorithms_enabled()
+    try:
+        torch.use_deterministic_algorithms(True)
+        values = corpus_geometry_losses(raw, [target], seed=seed)
+    finally:
+        torch.use_deterministic_algorithms(was_deterministic)
     sum(values[key] for key in OFFICIAL_GT_KEYS).backward()
     gradient = raw['points'].grad
     if not torch.isfinite(gradient).all() or not gradient.abs().sum() > 0:
@@ -76,15 +86,20 @@ def probe_loss(target, device, seed):
     changed['points'][~target['valid']] = np.nan
     changed['query_uv'][~target['valid']] = np.inf
     raw['mask'].fill_(1)
-    repeat = corpus_geometry_losses(raw, [changed], seed=seed)
-    maximum_difference = max(float((values[key] - repeat[key]).abs()) for key in OFFICIAL_GT_KEYS)
+    try:
+        torch.use_deterministic_algorithms(True)
+        repeat = corpus_geometry_losses(raw, [changed], seed=seed)
+    finally:
+        torch.use_deterministic_algorithms(was_deterministic)
+    maximum_difference = max(float((values[key] - repeat[key]).detach().abs()) for key in OFFICIAL_GT_KEYS)
     if maximum_difference != 0:
         raise ValueError('Invalid labels or predicted mask changed the geometry objective')
     return dict(losses={key: float(value.detach()) for key, value in values.items()},
                 point_gradient_l1=float(gradient.abs().sum()),
                 scale_gradient=None if scale_grad is None else float(scale_grad),
                 masked_label_max_abs_loss_difference=maximum_difference,
-                caller_rng_preserved=True, optimizer_updates=0)
+                caller_rng_preserved=True, deterministic_forward_for_exact_mask_comparison=True,
+                backward_finite_tested_not_bitwise_determinism=True, optimizer_updates=0)
 
 
 def probe(root, attempt, device):
