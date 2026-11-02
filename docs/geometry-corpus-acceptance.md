@@ -246,6 +246,62 @@ to one CPU by process affinity, including native Embree/TBB work.
   accounting must quarantine/fallback/review all such images. Do not infer
   quality from the running `completed` counter or relax the quantization bound.
 
+### Recovery and Structured3D format review, 2026-11-02
+
+The 16:20 UTC check found two stopped producers: Structured3D at 27,023
+candidate entries and ScanNet++ at 49,220. These are counters before a failed
+run's final verification, not accepted or fully committed cache counts.
+The Structured3D failure is at
+`scene_01181/2D_rendering/2163/perspective/empty/0`. Its unit-length look/up
+directions have dot product -0.000112038, just beyond our old 1e-4 requirement.
+The [publisher parser](https://github.com/bertjiazheng/Structured3D/blob/master/misc/utils.py)
+normalizes direction vectors and constructs camera axes with cross products;
+the file does not provide a precomputed orthonormal rotation matrix. The new
+parser validates finite, nonzero, nonparallel directions and records their
+original angular discrepancy. Camera-local depth and layout comparisons do
+not apply a world rotation, so this corrects an input assumption without
+changing depth values, fitting a pose, or relaxing the 5 mm plane gate.
+
+The [format contract](https://github.com/bertjiazheng/Structured3D/blob/master/data_organization.md)
+specifies uint16 millimeters (zero is missing), half-FOV angles in radians,
+and normal encoding `128 * (1 + n)`. This corpus contains perspective images;
+panorama geometry must not share this conversion. Keep floating-point focal
+lengths and the original integer-pixel origin. In
+`structured3d-failure-regression-01`, the failed view and two neighboring
+training views were checked against structural planes using the same semantic,
+normal, and polygon support for each depth convention. Camera-Z/mm gave median
+plane residuals 0.325--0.472 mm and maxima 1.191--1.303 mm. Treating the same
+numbers as radial range gave medians 113--193 mm. These are synthetic internal
+consistency checks, not independent physical measurements. Half-pixel variants
+were also retained; the small residuals alone do not uniquely prove pixel
+origin. The declared origin follows the documented projection convention.
+All three RGB/depth/mask sheets were inspected: window support is absent,
+depth boundaries align visually, and holes remain unfilled.
+
+`structured3d-camera-census-01` checks every frozen perspective camera record.
+New cache preflight 02 retains both ends of all 29 archives plus two failure
+regression views (60 images). Neither the census nor the targeted diagnostic
+is full depth-quality acceptance. A new full generation requires both the
+complete census and the matching conversion preflight.
+
+ScanNet++ stopped at the transition to `0fe8539661`, whose mesh contains
+17,326,972 faces. The new renderer bounds each rasterization pass to 1,048,576
+faces, renders every face, and merges by nearest camera Z. CPU verification of
+every retained ray and the 2 mm agreement gate remain. The large scene is now
+included in visibility probe 03 and the cache preflight; its outcome must be
+checked before generating new candidates. This remains a candidate fix until
+the real-scene probes pass.
+
+Explicit recovery rereads each member of each closed tar/receipt pair into a
+new, separately identified subset. Original failed attempts and uncommitted
+tails remain untouched; incomplete tails and previous rejected rows are
+reprocessed by the new remainder run. The recovered subset keeps its original
+conversion policy and provenance. Final accounting must include both subsets
+without duplicates, and still requires source quality review. The new scoped
+tests passed 21 cases, including corruption rejection, immutable recovery,
+direction-vector regressions, and cross-batch occlusion. No production
+optimizer update or corpus admission was performed.
+
 Running jobs use separate code snapshots. Do not edit their source or policies
 in place. Failed probes/caches stay available; corrections require explicit new
 attempts and matching preflights. `geometry_cache.py` writes checksummed atomic
