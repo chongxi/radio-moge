@@ -19,14 +19,14 @@ from radio_moge.corpus_admission import checked_json, checked_path, file_ref, re
 from radio_moge.geometry_cache import canonical_json, publish_json
 
 
-def teacher_metrics(entry, policy_hash, revision):
+def teacher_metrics(entry, policy_hash, revision, dataset='irs'):
     meta, row = entry['geometry_metadata'], entry['image']
     if (meta['label_kind'] != 'teacher_pseudo' or meta['camera_kind'] != 'teacher_estimated'
-            or meta['metric_calibrated'] is not False or meta['dataset'] != 'irs'
+            or meta['metric_calibrated'] is not False or meta['dataset'] != dataset
             or meta['teacher_revision'] != revision or meta['policy_sha256'] != policy_hash
             or meta['image_sha256'] != row['sha256'] or meta['depth_convention'] != 'camera_z'
             or hashlib.sha256(canonical_json(meta)).hexdigest() != entry['key']):
-        raise ValueError('IRS teacher provenance differs from the pinned candidate policy')
+        raise ValueError('Teacher provenance differs from the pinned candidate policy')
     quantiles = np.asarray(entry['depth_quantiles_m'], dtype=np.float64)
     h, w = meta['shape']
     pixels = meta['valid_pixels']
@@ -35,7 +35,7 @@ def teacher_metrics(entry, policy_hash, revision):
             or (h, w) != (row['height'], row['width'])
             or type(pixels) is not int or not 0 < pixels <= h * w
             or not math.isclose(entry['valid_fraction'], pixels / (h * w), rel_tol=0, abs_tol=1e-12)):
-        raise ValueError('IRS receipt support or quantiles are invalid')
+        raise ValueError('Teacher receipt support or quantiles are invalid')
     return (pixels / (h * w), float(quantiles[1] / quantiles[2]),
             float(quantiles[3] / quantiles[2]), float(quantiles[4] / quantiles[2]))
 
