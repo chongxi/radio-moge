@@ -69,12 +69,16 @@ def colmap_pose(path, name):
     raise ValueError('DSLR frame missing from metric COLMAP poses')
 
 
-def scanner_mesh_check(scene, pose_root, intersector):
+def scanner_mesh_check(scene, pose_root, intersector, scan_limit=2, stride=64):
     pose_path = pose_root / 'data' / scene.name / 'scans/scanner_poses.json'
     poses = np.asarray(json.loads(pose_path.read_text()), float)
     scans = sorted((scene / 'panocam/depth').glob('*.png'), key=lambda p: int(p.stem))
     result = []
-    for path in scans[:2]:
+    if scan_limit is not None:
+        scans = scans[:scan_limit]
+    if stride < 1 or not scans:
+        raise ValueError('A positive sampling stride and actual raw scans are required')
+    for path in scans:
         arrays, proofs = {}, {}
         for key, folder in (('range', 'depth'), ('azim', 'azim'), ('elev', 'elev'), ('mask', 'anon_mask')):
             asset = scene / 'panocam' / folder / path.name
@@ -82,7 +86,7 @@ def scanner_mesh_check(scene, pose_root, intersector):
                 arrays[key] = np.array(file)
             proofs[key] = dict(path=str(asset), sha256=sha_file(asset))
         h, w = arrays['range'].shape
-        ys, xs = np.meshgrid(np.arange(2, h - 2, 64), np.arange(2, w - 2, 64), indexing='ij')
+        ys, xs = np.meshgrid(np.arange(2, h - 2, stride), np.arange(2, w - 2, stride), indexing='ij')
         ys, xs = ys.ravel(), xs.ravel()
         radial = arrays['range'][ys, xs].astype(float) / 1000
         valid = (radial > .05) & (radial < 65.535) & (arrays['mask'][ys, xs] == 255)
