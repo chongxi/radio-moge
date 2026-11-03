@@ -2133,3 +2133,41 @@ nonmodel plan SHA:
 `35512867b54243873dfe879354b46cdd22d8073368e7f3cfa34aa384529b170b`.
 The launch wrapper is running the actual archived-model gate under the original
 GPU lock; optimizer admission still requires that gate to pass.
+
+
+### Six-source continuation is actually running
+
+The new actual-model gate completed **72 forward/backward cases across seven
+source/label strata**. All 72 produced finite nonzero adapter gradients; 71
+produced geometry gradients. The previously understood empty COCO crop 287969
+kept its paired feature branch and skipped geometry. Every stratum, including
+all ten ScanNet cases, produced nonzero geometry gradients. Adapter, feature
+statistics and all frozen backbones were unchanged by the zero-update probe.
+Model report SHA:
+`bd7b7c359aeea840d4c616ea203311e75fc3c0f359d24fe5344e8dbdf227dd57`.
+
+A new seal and immutable runtime config were issued:
+`59218a6c3e152f4c5258d9e8b8ab9ee58987d288ff708ed5e1c78826dbea50b8`
+and `47d57f659f0c08551e987f14589214885957f3e20d7c42c6110e5bde61e18f29`.
+The independent trainer's actual initial checkpoint was read on CPU: adapter,
+all **100 Adam states at step 2000**, RNG and feature statistics are bitwise
+equal to the parent. The new stream cursor is zero; replay and every validation
+digest are unchanged. Initial-state proof SHA:
+`1bfd897618ff53b31884cbf935ac5bcfacb3b7ff6d34bedb0debf7e4defe3308`.
+
+`reviewed-stage3-training-01` has produced real optimizer updates. The first
+20 records (steps **2001–2020**) are finite, with positive gradients and
+nonzero update norms at steps 2010 and 2020. Its W&B run is
+[4edbd06f](https://forge.coreweave.com/wandb/brainsim/radio-moge/runs/4edbd06f),
+verified online as running with exact provenance. Three selection baselines
+have one-ULP API serialization differences, recorded explicitly; the immutable
+runtime config is unchanged. First-update proof SHA:
+`0fedf60d5b580a3e2eb342e0ace237cd398a3ed0ea01eca28a104057e35776e9`.
+
+At 14:14 UTC the actual optimizer reached **step 2028**. The next paired
+validation is step 2250 against the unchanged initial/step-2000 protocols;
+no new-stage accuracy or cosine improvement is claimed before that result.
+The previous final and all best checkpoints, including NYU step 1750, remain
+preserved. The active wrapper/trainer hold the original GPU lock and must not
+be relaunched. Native TartanAir and ScanNet preparation continues; the full
+geometry corpus is not admitted by this six-source stage.
