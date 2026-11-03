@@ -2039,3 +2039,51 @@ policies and retain all native source-review flags. It uses a local temporary
 SQLite index, publishes relative receipt statistics and bounded all-scene
 review candidates, and cannot admit labels or repeat inference. The actual
 combined audit has not run yet; the existing producer continues unchanged.
+
+
+### ScanNet teacher completion and six-source continuation preparation
+
+The existing remainder producer completed all **7,623** images and its full
+array readback with zero rejections. `scannetpp-review-teacher-outcomes-01`
+binds these to the **28,160** previously recovered images exactly once:
+**35,783 distinct training RGB images, 25 scenes and two unchanged policies**.
+The combined audit retains native source flags and reports relative teacher
+geometry only. Audit SHA:
+`172b7996c09609c1fef77d8507293c2caa93ef248476edfeea11aec549151ef2`.
+
+All **100 selected payloads and RGB images** were read and checked against
+receipt statistics and original anonymization masks. All **34 four-panel
+pages** were actually inspected. Individual depth palettes and a shared
+log(Z / image median) range of [0.25, 128] separate display scaling from
+geometry. Broad room/furniture ordering is plausible; glass, mirrors, fine
+shelves and machinery remain locally uncertain pseudo supervision. No new
+exclusions or physical calibration claims were made. Review SHA:
+`ade0c7c57e9379afbfe4f154313404b0309fab86cc2fd88b2d9675ec8e5e4d18`.
+
+`scannetpp-teacher-source-reviews-01` completed both policy-specific source
+reviews with explicit empty additional quarantine registers. All native flags
+remain. The actual production loader then checked **300 views from those 100
+images**, all 25 scenes, both policies, crops and real flips. Minimum support
+was 213,306 original observations; no selected view was sparse. Maximum
+native-to-query relative error was 5.926e-8, a float32 consistency check rather
+than physical accuracy. The source review and crop report SHAs are
+`a0ca499ffe2c1b0f7c68ab5918ce607a5c10055a25adf6b05c1b87ca2cddb530`
+and `584ca1b9228b7e059222a8262c6b3d110e6e55062a146219162bb03246efa8f0`.
+
+`reviewed-stage3-data-01` has reconciled **404,795 original images** into
+**403,382 selected geometry labels and the same 1,413 exclusions**. The selected
+labels comprise **189,025 native synthetic and 214,357 relative teacher**.
+Only the reviewed 35,783-image ScanNet subset was added. Accounting SHA:
+`4800c6b8aaf2965e78ec3d0f769f80ba87a918eab4bb95831f49f2cfaa8fcf68`.
+
+Whole-corpus canonical RGB completion and heldout comparison are still required
+for the new subset. The comparison uses a checked local SQLite work copy to
+avoid shared-filesystem random writes; the full comparison logic is unchanged.
+Sixteen comparison tests, twelve source/crop checks and nine exact subset and
+isolation checks passed remotely; local focused checks also passed. The frozen
+continuation builder preserves the completed step-2000 adapter/Adam state,
+unchanged RGB replay and losses, and proposes a bounded 1,000 further updates.
+ScanNet receives 20% of geometry draws and previous weights scale by 0.8.
+The new stage remains unadmitted until canonical isolation and the actual
+archived-model zero-update backward gate pass. No optimizer has restarted at
+this preparation point. Prior final and best checkpoints remain preserved.
