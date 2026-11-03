@@ -1,5 +1,6 @@
 """Synthetic fixtures exercise gates; these are NOT real-corpus acceptance evidence."""
 from copy import deepcopy
+from collections import Counter
 import json
 from pathlib import Path
 import sqlite3
@@ -14,11 +15,12 @@ from radio_moge.corpus_admission import (FINAL_CHECKS, SOURCE_CHECKS, build_acco
 from radio_moge.geometry_cache import GeometryPackWriter, publish_json, sha_file
 
 
-def admission_fixture(tmp_path, *, flagged=False, missing=False):
+def admission_fixture(tmp_path, *, flagged=False, missing=False, extra_coco=False):
     root = tmp_path / 'fixture'
     root.mkdir()
     rows = []
-    for i, dataset in enumerate(('hypersim', 'coco2017')):
+    datasets = ('hypersim', 'coco2017') + (('coco2017',) if extra_coco else ())
+    for i, dataset in enumerate(datasets):
         path = root / f'rgb-{i}.png'
         Image.fromarray(np.full((24, 32, 3), 64 + i, np.uint8)).save(path)
         rows.append(dict(image=str(path), sha256=sha_file(path), dataset=dataset,
@@ -26,7 +28,7 @@ def admission_fixture(tmp_path, *, flagged=False, missing=False):
     manifest = root / 'train.jsonl'
     manifest.write_text(''.join(json.dumps(r) + '\n' for r in rows))
     manifest_hash = sha_file(manifest)
-    expected = {r['dataset']: 1 for r in rows}
+    expected = dict(Counter(r['dataset'] for r in rows))
     scope = root / 'scope.json'
     publish_json(scope, dict(manifest_sha256=manifest_hash, expected_counts=expected))
     inventory = root / 'inventory.sqlite'
@@ -38,7 +40,7 @@ def admission_fixture(tmp_path, *, flagged=False, missing=False):
     inventory_report = root / 'inventory.json'
     publish_json(inventory_report, dict(stage='inventory_complete', manifest=str(manifest),
         manifest_sha256=manifest_hash, inventory_sha256=sha_file(inventory), dataset_counts=expected,
-        images=2, duplicate_encoded_image_rows=0, heldout_checks=[]))
+        images=len(rows), duplicate_encoded_image_rows=0, heldout_checks=[]))
     evidence = root / 'synthetic-proof.json'
     publish_json(evidence, dict(test_fixture_only=True))
     exclusions = root / 'exclusions.jsonl'
@@ -47,7 +49,7 @@ def admission_fixture(tmp_path, *, flagged=False, missing=False):
                 inventory_report=file_ref(inventory_report), sources=[], exclusions=file_ref(exclusions))
     for i, row in enumerate(rows[:1] if missing else rows):
         dataset = row['dataset']
-        directory = root / dataset
+        directory = root / (dataset if i < 2 else f'{dataset}-{i}')
         directory.mkdir()
         policy = dict(dataset=dataset, manifest_sha256=manifest_hash)
         writer = GeometryPackWriter(directory / 'packs', policy)
@@ -71,10 +73,16 @@ def admission_fixture(tmp_path, *, flagged=False, missing=False):
             training_started=False, policy_sha256=writer.policy_hash, verified_cache_members=1,
             completed=1, rejected=0, passed=False, training_admission=False))
         review = directory / 'review.json'
+        quarantine = directory / 'candidate-quarantine.json'
+        publish_json(quarantine, dict(schema_version=1, stage='candidate_quality_quarantine_recorded',
+            dataset=dataset, policy_sha256=writer.policy_hash, manifest_sha256=manifest_hash,
+            packs_index=file_ref(directory / 'packs/packs.json'), flags=[],
+            training_admission=False, optimizer_updates=0))
         publish_json(review, dict(stage='source_review_complete', dataset=dataset,
             decision='eligible_with_flagged_rows_quarantined', policy_sha256=writer.policy_hash,
             manifest_sha256=manifest_hash, label_kinds=[kind],
-            checks=dict.fromkeys(SOURCE_CHECKS, True), evidence=[file_ref(evidence)]))
+            checks=dict.fromkeys(SOURCE_CHECKS, True), evidence=[file_ref(evidence)],
+            candidate_quarantine=file_ref(quarantine)))
         plan['sources'].append(dict(dataset=dataset, generation_report=file_ref(generation),
             review=file_ref(review), packs_index=file_ref(directory / 'packs/packs.json'), scope_count=1))
     return root, plan, rows

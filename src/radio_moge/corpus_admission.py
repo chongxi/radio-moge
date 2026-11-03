@@ -77,7 +77,64 @@ def normalized_inventory_row(encoded, image):
     return row
 
 
-def validate_source_review(review, dataset, policy, manifest):
+def checked_candidate_quarantine(ref, dataset, policy, manifest, packs_ref):
+    """Bind later quality findings to exact immutable candidates, never to all RGB.
+
+    Even an empty register must be explicit in the source review. This validates
+    receipt identities only; build_accounting still rereads every array and
+    checks the frozen inventory before applying a flag.
+    """
+    value = checked_json(ref)
+    if (value.get('schema_version') != 1
+            or value.get('stage') != 'candidate_quality_quarantine_recorded'
+            or value.get('dataset') != dataset or value.get('policy_sha256') != policy
+            or value.get('manifest_sha256') != manifest or value.get('packs_index') != packs_ref
+            or value.get('training_admission') is not False or value.get('optimizer_updates') != 0
+            or not isinstance(value.get('flags'), list)):
+        raise ValueError('Explicit candidate quarantine register for this source policy is required')
+    index_path = checked_path(packs_ref)
+    index = json.loads(index_path.read_text())
+    receipts = {str(index_path.parent / item['receipt']): item['sha256'] for item in index['packs']}
+    if index['policy_sha256'] != policy or len(receipts) != len(index['packs']):
+        raise ValueError('Candidate quarantine pack index differs')
+    flags, ordinals, loaded, proofs = {}, set(), {}, set()
+    for flag in value['flags']:
+        key, ordinal = flag.get('entry_key'), flag.get('corpus_ordinal')
+        if (not isinstance(key, str) or not HEX64.fullmatch(key) or key in flags
+                or type(ordinal) is not int or ordinal < 0 or ordinal in ordinals
+                or flag.get('decision') != 'quarantine_candidate'
+                or not isinstance(flag.get('reason'), str) or not flag['reason'].strip()
+                or not isinstance(flag.get('evidence'), list) or not flag['evidence']):
+            raise ValueError('Candidate quarantine needs unique exact identities and evidence')
+        receipt_ref = flag.get('receipt')
+        receipt_path = checked_path(receipt_ref)
+        if (receipt_path.parent != index_path.parent
+                or receipts.get(str(receipt_path)) != receipt_ref['sha256']):
+            raise ValueError('Quarantined candidate receipt is outside the bound pack index')
+        if str(receipt_path) not in loaded:
+            receipt = json.loads(receipt_path.read_text())
+            if receipt['policy_sha256'] != policy:
+                raise ValueError('Quarantined candidate receipt policy differs')
+            loaded[str(receipt_path)] = receipt
+        entries = [e for e in loaded[str(receipt_path)]['entries'] if e['key'] == key]
+        if len(entries) != 1:
+            raise ValueError('Quarantined candidate key is missing or repeated in its receipt')
+        entry, row = entries[0], entries[0]['image']
+        if (entry['sha256'] != flag.get('member_sha256') or row['dataset'] != dataset
+                or row['split'] != 'train' or row.get('corpus_ordinal', ordinal) != ordinal
+                or any(flag.get(k) != row[k] for k in ('image', 'sha256', 'group'))):
+            raise ValueError('Quarantined candidate member or RGB identity differs')
+        for proof in flag['evidence']:
+            encoded = canonical_json(proof)
+            if encoded not in proofs:
+                checked_path(proof)
+                proofs.add(encoded)
+        flags[key] = flag
+        ordinals.add(ordinal)
+    return flags
+
+
+def validate_source_review(review, dataset, policy, manifest, packs_ref):
     if (review.get('stage') != 'source_review_complete'
             or review.get('decision') != 'eligible_with_flagged_rows_quarantined'
             or review.get('dataset') != dataset or review.get('policy_sha256') != policy
@@ -87,6 +144,10 @@ def validate_source_review(review, dataset, policy, manifest):
         raise ValueError('A complete, policy-bound source quality review is required')
     for ref in review['evidence']:
         checked_path(ref)
+    if not review.get('candidate_quarantine'):
+        raise ValueError('Source review must explicitly bind a candidate quarantine register')
+    return checked_candidate_quarantine(review['candidate_quarantine'], dataset, policy,
+                                        manifest, packs_ref)
 
 
 def build_accounting(plan, output):
@@ -134,8 +195,13 @@ def build_accounting(plan, output):
         CREATE TABLE packs (path TEXT PRIMARY KEY, sha256 TEXT NOT NULL,
             bytes INTEGER NOT NULL, mtime_ns INTEGER NOT NULL, receipt_json TEXT NOT NULL);
         CREATE TABLE samples (sample INTEGER PRIMARY KEY, ordinal INTEGER NOT NULL UNIQUE);
+        CREATE TABLE quarantined_candidates (
+            policy_sha256 TEXT NOT NULL, entry_key TEXT NOT NULL, ordinal INTEGER NOT NULL,
+            native_flag INTEGER NOT NULL, external_flag_json TEXT, receipt_json TEXT NOT NULL,
+            PRIMARY KEY(policy_sha256,entry_key));
     ''')
     selected, quarantine, reports = Counter(), Counter(), []
+    external_quarantine, native_quarantine = Counter(), Counter()
     try:
         with readonly_db(inventory_path) as source:
             for ordinal, image, checksum, dataset, group, encoded in source.execute(
@@ -166,7 +232,8 @@ def build_accounting(plan, output):
                     or index['count'] != generation['completed']
                     or generation['completed'] + generation['rejected'] != candidate['scope_count']):
                 raise ValueError('A completed, fully reread candidate generation is required')
-            validate_source_review(review, dataset, policy, manifest)
+            pending_flags = validate_source_review(review, dataset, policy, manifest,
+                                                   candidate['packs_index'])
             policy_value = json.loads((index_path.parent / 'policy.json').read_text())
             if (hashlib.sha256(canonical_json(policy_value)).hexdigest() != policy
                     or policy_value['manifest_sha256'] != manifest):
@@ -203,8 +270,20 @@ def build_accounting(plan, output):
                             or row['dataset'] != dataset or meta['image_sha256'] != row['sha256']):
                         raise ValueError('Candidate metadata does not match source/image policy')
                     verified += 1
-                    if meta.get('source_needs_review', False):
+                    flag = pending_flags.pop(entry['key'], None)
+                    if flag is not None and flag['corpus_ordinal'] != ordinal:
+                        raise ValueError('Quarantined candidate differs from the frozen ordinal')
+                    native_flag = bool(meta.get('source_needs_review', False))
+                    if native_flag or flag is not None:
                         quarantine[dataset] += 1
+                        if native_flag:
+                            native_quarantine[dataset] += 1
+                        if flag is not None:
+                            external_quarantine[dataset] += 1
+                        db.execute('INSERT INTO quarantined_candidates VALUES (?,?,?,?,?,?)',
+                            (policy, entry['key'], ordinal, int(native_flag),
+                             canonical_json(flag).decode() if flag is not None else None,
+                             canonical_json(receipt_ref).decode()))
                         continue
                     supervision = source_supervision(meta)
                     if meta['label_kind'] not in review['label_kinds'] or valid.sum() < 32:
@@ -222,10 +301,13 @@ def build_accounting(plan, output):
                                 canonical_json(coverage_stats).decode(), ordinal))
                     selected[dataset] += 1
                 db.commit()
+            if pending_flags:
+                raise ValueError('Not every external candidate quarantine flag was encountered')
             if verified != index['count']:
                 raise ValueError('Not every published cache entry was reread')
             reports.append(dict(dataset=dataset, policy_sha256=policy, verified=verified,
-                                generation_report=candidate['generation_report'], review=candidate['review']))
+                generation_report=candidate['generation_report'], review=candidate['review'],
+                packs_index=candidate['packs_index'], candidate_quarantine=review['candidate_quarantine']))
         excluded = Counter()
         with checked_path(plan['exclusions']).open() as file:
             for line in file:
@@ -269,6 +351,8 @@ def build_accounting(plan, output):
             optimizer_updates=0, manifest_sha256=manifest, expected_counts=expected,
             total_images=sum(expected.values()), selected_counts=dict(selected),
             excluded_counts=dict(excluded), quarantined_candidate_counts=dict(quarantine),
+            native_flagged_candidate_counts=dict(native_quarantine),
+            external_flagged_candidate_counts=dict(external_quarantine),
             unresolved=0, selected_images=sum(selected.values()), sources=reports, coverage=coverage,
             inventory=plan['inventory'], inventory_report=plan['inventory_report'],
             scope=plan['scope'], plan=file_ref(output / 'plan.json'), index=file_ref(final))
@@ -318,7 +402,8 @@ def validate_pre_model_evidence(accounting_ref, checks):
     for source in accounting['sources']:
         checked_json(source['generation_report'])
         validate_source_review(checked_json(source['review']), source['dataset'],
-                               source['policy_sha256'], accounting['manifest_sha256'])
+                               source['policy_sha256'], accounting['manifest_sha256'],
+                               source['packs_index'])
     names = set(FINAL_CHECKS) - {'model_zero_update'}
     if set(checks) != names:
         raise ValueError('All source, coverage, leakage and loss gates are required before model preflight')
