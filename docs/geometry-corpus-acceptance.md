@@ -1406,6 +1406,16 @@ spatial cosine decreases from 0.961692 to 0.959636, and summary cosine from
 0.932301 to 0.931899. This is a mixed first evaluation, not evidence of overall
 improvement; training loss alone does not establish validation improvement.
 
+At step 500, the same paired checks and per-image macro recomputation pass in
+`reviewed-stage1-validation-500-review-01`. Spatial cosine recovers to 0.959927,
+still below initialization; summary cosine is 0.931840. NYU AbsRel is 0.075632
+(4.8% below initialization, worse than step 250), and ScanNet++ LiDAR AbsRel is
+0.095354 (3.5% above initialization, better than step 250). IRS accounts for the
+largest spatial-feature decrease: 0.964346 to 0.956972. The configured metric
+checkpoints retain the best observed stage result separately: NYU/summary at
+250 and spatial/LiDAR at 500. No active loss, sampling or acceptance changes
+were made from these intermediate results.
+
 ## Completed Structured3D outcomes and candidate review (2026-11-03)
 
 `structured3d-outcomes-01` accounts for all 134,749 original inputs: 133,572
@@ -1430,6 +1440,32 @@ geometry-exclusion ledger now has 250 rows, SHA256
 Only the previously excluded Hypersim white image is also excluded from RGB.
 Structured3D source acceptance, rejection dispositions and crop coverage remain
 pending. These artifacts do not modify the active training index or seal.
+
+The subsequent `structured3d-rejection-census-01` reproduced all 710 non-errata
+rejections from retained original RGB/depth/normal/semantic/camera/layout ZIP
+members. Every member SHA/CRC and original RGB identity was checked; every
+computed statistic matches the producer exactly. The other 467 original inputs
+match the bound upstream errata. No whole archive rehash, label inference or
+threshold change was performed. A four-image real preflight passed, and 22
+tooling tests passed locally and remotely.
+
+All 24 census-selected extreme pages were inspected after the four preflight
+pages. Window/exterior or blinds dominate the sparse-support views. Some views
+have smooth, extensive native surfaces but no matching structural reference;
+others retain fewer than 100 verified layout pixels amid large conflicts. These
+observations do not prove that every excluded depth is physically wrong. They
+do support retaining the unchanged native eligibility rules without guessed
+scale correction, mask filling or clearing source flags.
+
+`structured3d-rejection-decisions-01` records exact geometry-only exclusions for
+all 1,177 inputs and retains RGB replay. Together with the previous nine external
+candidate exclusions, Structured3D now has 133,563 remaining native candidates
+and 1,186 explicit geometry exclusions, with no undecided rejection. Its source
+review and crop coverage remain separate unfinished steps. The latest global
+ledger has 1,427 geometry exclusions, SHA256
+`dc8c6d04ec55d5e61e6fefac7ec8156adeffaf9bd36ba15965ec520e52605cae`.
+Only the prior Hypersim constant-white input is excluded from RGB. The active
+training corpus, configuration, optimizer and seal are unchanged.
 
 ## Publication and supervision contract
 
