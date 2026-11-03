@@ -1,9 +1,32 @@
-# Full geometry corpus: acceptance before training
+# Geometry corpus: acceptance before training
 
 Chongxi authorized offline labels for the frozen 1,637,909-image training manifest
 on 2026-11-02, and training **only after** full data, depth, loss and coverage
 acceptance. This supersedes the earlier unconfirmed cache-scope proposal. The
 small 81-view GT pilot is not sufficient acceptance for the expanded corpus.
+
+On November 3, Chongxi proposed starting with the roughly 840k already generated
+candidates if preparation did not require the GPU. Live inspection found two
+GPU preparation jobs: ScanNet++ mesh rendering and MoGe review-teacher inference.
+The first response therefore does not assume an idle GPU or preempt these jobs.
+Preparation now also prioritizes an immutable first-stage candidate snapshot so
+that a verified subset can be used without waiting for all 1,637,909 labels.
+The proposed subset still needs its own payload, source, coverage, heldout, loss
+and actual-model checks. No previous failed or unfinished check becomes a pass.
+
+`configs/geometry-stage1-candidates-20261103.json` lists all current primary,
+recovered and review-teacher sources, completed source reviews and the latest
+238 explicit geometry exclusions. `scripts/snapshot_geometry_candidates.py`
+captures only closed tar/receipt pairs at a fixed cutoff while producers keep
+running. It preserves original RGB identities, native and external quality flags,
+the distinction between native and pseudo labels, and separate candidate counts
+versus unique RGB counts. The snapshot cannot authorize training and does not
+change the original full-corpus accounting gate. The active attempt is
+`stage1-candidate-snapshot-01`, from `code-stage1-snapshot-v1` / `2182cc0`.
+Four focused tests passed locally and remotely, including incomplete tails,
+late receipts, changed original identities, duplicates and wrong exclusion
+ordinals. Previously source-reviewed eligible images total 234,036; this is not
+yet a training-ready subset or a claim that all reported candidates are GT.
 
 `configs/geometry-corpus-20261102.json` freezes the scope and teacher revision.
 `scripts/index_geometry_corpus.py` creates a disk-backed inventory and checks
