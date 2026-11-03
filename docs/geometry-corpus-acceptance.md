@@ -70,6 +70,61 @@ The first renderer attempt stopped on the publisher's opaque RGBA PNGs; v2
 verified alpha=255 and matched the producer's RGB conversion. The failed attempt
 and original reviews remain intact.
 
+## RGB replay candidate inventory (November 3)
+
+`rgb-replay-candidates-01` streams every frozen inventory row into a separate
+RGB-only candidate manifest. Exactly 1,637,908 images remain: the reviewed white
+Hypersim image at ordinal 210812 is excluded, while all 11 TartanAir geometry-only
+exclusions (381511--381521) remain in the RGB pool. The new
+`rgb-replay-input-decisions-01.jsonl` makes both scopes explicit and binds the
+original decisions and visual evidence. The blank image's bytes and constant
+pixels were checked again; the complete corpus was not decoded again by this
+metadata preparation tool. Original image identity, hash protocol, orientation,
+source and scene are preserved; depth, masks and camera labels are not copied.
+
+The candidate manifest SHA256 is
+`4de531643528b46f72fc8f1317a5c20af5aadf234d50946ad063aaba26f25f27`.
+Its 46,017 recorded groups are not a claim of physical scene independence.
+Uniform image sampling would allocate 51.37% to ScanNet++ and only 0.064% to NYU;
+the largest IRS and TartanAir families contain 22.92% and 22.20% of their
+respective candidate images. Source/scene sampling and perceptual redundancy
+therefore still need review. No sampling policy or training configuration was
+issued. The canonical train/heldout pixel comparison also remains pending.
+
+Snapshot `code-rgb-replay-v1` (`c7d1915`) passed eight focused tests locally and
+remotely. They cover scope mistakes, missing RGB-specific evidence, repeated or
+changed identities, stale input hashes, actual constant-pixel verification,
+preservation of orientation/hash conventions and geometry-only RGB retention.
+The output remains `rgb_replay_candidates_prepared_not_accepted` and cannot
+substitute for the final data, coverage, loss and zero-update model gates.
+
+## Hypersim full teacher extremes (November 3)
+
+The completed route metadata contains 3,680 teacher candidates: 3,674 have full
+support, the minimum support is 89.59%, and six have p99/median depth above 32
+(maximum 110.68). These ratios are diagnostic values, not exclusion criteria;
+full support is not calibrated confidence. `hypersim-teacher-extremes-02`
+independently rereads the actual RGB and cached payloads for the six largest
+ratios and four lowest-support views, verifying their statistics against the
+completed routes. Entire tar files were not rehashed by this bounded display.
+
+All ten full-resolution RGB/depth/mask pages were inspected. Close walls or
+columns occupy much of several high-ratio images, with distant room structure
+still visible; these ranks do not justify additional whole-image exclusions.
+The first display's upper color limit of 16 saturated those distant regions.
+The reviewed v2 uses one shared range [0.25,128]; selected payload hashes and
+statistics match v1, and no depth or support was modified. Per-image median
+normalization is not metric or multiview calibration.
+
+The left glass/reflective enclosure in ai_041_008 views at ordinals 238221 and
+238222 retains a specific surface-versus-background ambiguity. Both candidates
+remain explicitly quarantined for a source decision in
+`hypersim-teacher-extremes-02/visual-review-01.json`; their incomplete support
+is preserved. No new exclusions or source-quality acceptance were issued.
+All existing native failure flags remain recorded, including those on other
+Hypersim scenes. This diagnostic is additional evidence, not the full quality
+gate or a random estimate of error prevalence.
+
 ## Source review and unresolved checks
 
 | Source / training images | Label candidate | Required checks before admission |
