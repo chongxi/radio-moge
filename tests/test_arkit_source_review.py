@@ -61,7 +61,7 @@ def test_known_flags_identity_and_native_support_cannot_be_bypassed(change):
 
 def test_rejection_requires_exact_reviewed_reason_but_allows_legacy_geometry_scope():
     args = excluded(fixture())
-    args.update(outcome='rejected', reason='low_registered_support', key=None)
+    args.update(outcome='rejected', reason='low_registered_support', key=None, metrics=None)
     args['flags'].clear()
     with pytest.raises(ValueError, match='exact reviewed disposition'):
         source_disposition(**args)

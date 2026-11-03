@@ -201,7 +201,8 @@ def run(root, output):
                 if row['dataset'] != 'arkitscenes' or row['split'] != 'train':
                     raise ValueError('Source or split changed')
                 disposition = source_disposition(ordinal, row, outcome, reason, key,
-                                                 json.loads(stats), exclusions, flags)
+                                                 json.loads(stats) if stats is not None else {},
+                                                 exclusions, flags)
                 counts[disposition] += 1
                 if disposition == 'native_source_eligible':
                     groups.add(row['group'])
