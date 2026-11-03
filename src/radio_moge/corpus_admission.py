@@ -11,6 +11,8 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import shutil
+import tempfile
 
 import numpy as np
 
@@ -68,7 +70,7 @@ def implementation_hashes():
              'data.py', 'feature_replay.py', 'decoder.py', 'system.py', 'losses.py',
              'adapters.py', 'architecture_screen.py', 'spatial_heads.py',
              'feature_refinement.py', 'upstream.py', 'config.py', 'tracking.py', 'corpus_coverage.py',
-             'snapshot_readback.py')
+             'snapshot_readback.py', 'producer_readback.py')
     return {name: sha_file(directory / name) for name in names}
 
 
@@ -180,7 +182,8 @@ def build_accounting(plan, output):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
     publish_json(output / 'plan.json', plan)
-    temporary = output / 'accounting.sqlite.incoming'
+    local_directory = tempfile.TemporaryDirectory(prefix='geometry-accounting-')
+    temporary = Path(local_directory.name) / 'accounting.sqlite'
     db = sqlite3.connect(temporary)
     db.execute('PRAGMA cache_size=-32768')
     db.execute('PRAGMA temp_store=FILE')
@@ -225,6 +228,10 @@ def build_accounting(plan, output):
             policy = index['policy_sha256']
             dataset = candidate['dataset']
             snapshot_bindings = None
+            producer_reuse = candidate.get('payload_verification') == (
+                'completed_producer_readback_with_per_read_sha256')
+            if producer_reuse and scope.get('kind') != 'reviewed_source_subset':
+                raise ValueError('Producer reuse requires an explicit reviewed-source stage')
             if generation.get('stage') == 'snapshot_source_payload_verified':
                 from .snapshot_readback import (checked_snapshot_generation,
                     checked_snapshot_pack, checked_snapshot_member)
@@ -261,6 +268,9 @@ def build_accounting(plan, output):
                 if snapshot_bindings is not None:
                     binding = snapshot_bindings.pop(str(receipt_path))
                     payload_records = checked_snapshot_pack(binding, receipt_ref, receipt, tar)
+                elif producer_reuse:
+                    from .producer_readback import check_pack, member_summary
+                    check_pack(generation, index_path, receipt_path, receipt, tar)
                 elif sha_file(tar) != receipt['sha256']:
                     raise ValueError('Completed pack identity changed')
                 stat = tar.stat()
@@ -272,6 +282,9 @@ def build_accounting(plan, output):
                     summary = None
                     if payload_records is not None:
                         summary = checked_snapshot_member(payload_records, entry)
+                    elif producer_reuse:
+                        summary = member_summary(entry)
+                    if summary is not None:
                         meta = entry['geometry_metadata']
                         valid_pixels = summary['coverage']['valid_pixels']
                         valid_fraction = summary['coverage']['valid_fraction']
@@ -341,6 +354,7 @@ def build_accounting(plan, output):
                 generation_report=candidate['generation_report'], review=candidate['review'],
                 packs_index=candidate['packs_index'], candidate_quarantine=review['candidate_quarantine'],
                 payload_verification=('completed_snapshot_census' if snapshot_bindings is not None
+                                      else candidate['payload_verification'] if producer_reuse
                                       else 'accounting_array_readback')))
         excluded = Counter()
         with checked_path(plan['exclusions']).open() as file:
@@ -380,7 +394,10 @@ def build_accounting(plan, output):
             raise ValueError('Accounting database integrity check failed')
         db.close()
         final = output / 'accounting.sqlite'
-        os.replace(temporary, final)
+        incoming = final.with_suffix('.sqlite.incoming')
+        shutil.copyfile(temporary, incoming)
+        os.replace(incoming, final)
+        local_directory.cleanup()
         report = dict(schema_version=1, stage='accounting_verified_not_accepted', training_admission=False,
             optimizer_updates=0, manifest_sha256=manifest, expected_counts=expected,
             total_images=sum(expected.values()), selected_counts=dict(selected),
@@ -394,6 +411,7 @@ def build_accounting(plan, output):
         return report
     except BaseException as error:
         db.close()
+        local_directory.cleanup()
         publish_json(output / 'failure.json', dict(stage='failed', training_admission=False,
             error=type(error).__name__, message=str(error)[:1000]))
         raise
