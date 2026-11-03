@@ -814,12 +814,56 @@ mirrors and displays remain uncertain; a full teacher mask is not confidence.
 
 The saved review flags ten specific images for further source-quality decisions:
 three blurred Bistro window close-ups, five Diner dark/framed-panel views,
-and two nearby Supermarket shelving views with differing predicted background
-depth. These are observed ambiguities, not automatic exclusions or verified
+and two nearby Supermarket shelving views with unresolved local window-depth
+interpretation. The later common-palette review withdrew the global background
+color-difference argument for those two Supermarket views. These are observed
+ambiguities, not automatic exclusions or verified
 physical errors. No far-depth threshold has been used to repair labels or
 declare all high-ratio samples invalid. Original native disparity concerns,
 source-quality acceptance, canonical heldout comparison and corpus admission
 remain open. Pseudo replacements must not inflate unique-image coverage.
+
+## Later candidate quality findings (2026-11-03)
+
+`corpus_admission.py` now requires every completed source review to bind a
+`candidate_quarantine` file reference, including an explicit empty register
+when no additional candidate flags apply. The register binds the manifest,
+source policy and exact pack index. Each flag binds the frozen RGB identity,
+ordinal, receipt, geometry key and member payload hash, with a reason and hashed
+review evidence. Missing registers, stale evidence, wrong members and duplicate
+flags fail closed. This adds a required field to source reviews; old review
+records cannot silently imply that later findings have been considered.
+
+Accounting rereads all original geometry payloads before applying these flags.
+It stores both native and external flags in `quarantined_candidates`, counts
+their union once, and never clears a native flag. A flag applies to one exact
+candidate, so a separately reviewed alternative can still serve the same RGB.
+Without an alternative or explicit evidenced exclusion, the image remains
+unresolved and the accounting report cannot complete. The training gate checks
+the registers and their evidence again. RGB replay is unaffected by candidate
+quarantine; excluding an RGB input still requires its own scoped decision.
+
+Code snapshot `code-candidate-quarantine-v1` is commit `06be9c0`. Fifty focused
+tests passed locally (38 accounting/quarantine tests plus 12 model-probe/RGB
+tests) and on the remote model environment (50 in 6.57 seconds). They include
+unresolved visual flags, explicit geometry exclusion, candidate-specific
+replacement in either input order, overlapping native/external flags, modified
+evidence, and the existing tiny-model wiring checks. These are tooling tests,
+not the actual-model zero-update gate or a source-quality pass.
+
+`candidate-quality-quarantine-01/report.json` records 12 actual flagged teacher
+candidates after matching the complete frozen RGB rows and immutable receipts:
+10 IRS candidates and Hypersim ordinals 238221 and 238222. Its SHA256 is
+`431109743087606add9c6f25ddcca7c291dfa65435c0afe68afe77fef12ed35e`.
+The IRS source review must bind `candidate-quality-quarantine-01/irs.json`
+(`428e5627e25e2633c12b4a7ebf0c3e93193771cefb11c35a93a31ac29239a3ee`);
+the Hypersim review-teacher source review must bind `hypersim.json` in that
+directory (`747b607cf23cc8d7acd27ca3a24d671ec1e40009bb417be4ca50e00762662dc1`).
+These registers preserve the latest common-palette review findings, including
+the withdrawal of the old Supermarket global-color argument. They create no
+geometry or RGB exclusions, clear no native flags, and grant no source or
+training acceptance. The 12 candidates still need explicit quality routing
+decisions before final source reviews can pass.
 
 ## Publication and supervision contract
 
