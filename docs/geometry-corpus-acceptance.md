@@ -2368,3 +2368,68 @@ the same 796,477 RGB replay; SHA
 The intermediate data report retains its earlier `isolation_pending` stage;
 use the completed `isolation-report.json` as the later isolation result.
 Neither report opens the optimizer gate. No need to rerun this accounting.
+
+### Stage 3 completed at its time limit; paired 2750 and final 2895
+
+The existing trainer stopped normally after **895 new updates, global step
+2895**, at the two-hour optimizer budget. Its final evaluation completed once;
+the additional evaluation time does not represent further optimizer updates.
+All 895 training records are finite. The final checkpoint has 100 finite Adam
+states at 2895, stream cursor 14320, unchanged feature statistics from parent
+2000, and exact config, stream digests and revisions. Final checkpoint SHA:
+`33c69a8189a53580d483f10677415baf299f498a2f0925c8b470405f6963d2f9`;
+finish proof SHA:
+`3bfd3a8f5387258d906d7d7772b74415d79da178e2b46a924697a23151552531`.
+
+The existing reviewer checked the same four views, image order, protocols,
+frozen teacher, five heldout identities and 18 known-camera laser cases.
+No inference was repeated. Paired review SHAs are
+`bb561e5f9bf66da347981618b3db913b75ecc1e6cbc6bab1b99044aec6a6ce04`
+(2750) and
+`cc41341429cb31e83608ef2a970029f6954ebc54c96737e8f788f7b55a3d9df4`
+(2895). W&B run `4edbd06f` is finished; its five primary validation metrics
+match both recorded steps exactly.
+
+| Original evaluation metric | Step 2750 | Final 2895 |
+| --- | ---: | ---: |
+| Macro spatial cosine | 0.95975035 | 0.96011045 |
+| Macro summary cosine | 0.93188013 | 0.93197556 |
+| NYU AbsRel | 0.06847355 | 0.06907859 |
+| ScanNet LiDAR AbsRel | 0.09686707 | 0.09651619 |
+| Known-camera laser AbsRel | 0.12533590 | 0.12954709 |
+
+Both final cosine scores recover from 2750 but remain below the archived
+feature baseline. Final NYU error is 13.01% lower than that baseline; the new
+best at 2750 is 13.77% lower. Final LiDAR remains 4.77% worse than the initial
+value. Laser worsens 3.36% from 2750. These are mixed results, without an
+overall improvement or source-causality claim. The fixed 400x640 protocol
+remains separate. All prior bests are preserved; the immutable common NYU/laser
+2750 checkpoint SHA is
+`93d39a7247b6920ee4e0874f1426d5593f38a00074e11fe8b721a3722f6f2389`.
+
+`freeze_arkit_training_stage.py` binds the next seven-source stage to the actual
+completed parent step, including a time-limit stop between validation intervals.
+It proposes 20% ARKit geometry draws and scales the previous six source shares
+by 0.8, keeping RGB replay, losses, LR and Adam settings unchanged. Nineteen
+local and remote tests cover incomplete final evaluations, changed source or
+isolation evidence, and exact final selection baselines. A fresh actual model
+backward probe and seal are still required before that stage can update weights.
+
+### Twelve additional TartanAir seaside rejections
+
+`tartanair-rejection-review-08` reproduced twelve new exact source pairs and
+statistics while leaving the earlier 44 decisions unchanged. All twelve
+six-panel pages were inspected in six paired half-size contacts. The views
+are dominated by sky and distant water, with narrow building, rail and pole
+support near the image edges. Final stereo-supported fractions are 2.56–4.77%,
+below the unchanged 5% threshold. Original arrays and thresholds are unchanged;
+this is a geometry-task support decision, not an independent physical-error
+or invalid-RGB claim.
+
+All twelve receive explicit geometry-only exclusions, and all twelve exact
+RGB identities were found in the unchanged 796,477-image replay. There are now
+56 disposed TartanAir rejections in this snapshot and 4,095 known global geometry
+exclusions. The merged exclusion SHA is
+`2ab2ee38c8c789b5cc1f86b2890fed3227103cbfa5b5c9254ab952b44067cf7f`.
+Only the earlier white Hypersim image remains excluded from RGB; no neighboring
+frames or active training artifacts were changed.
