@@ -67,7 +67,8 @@ def implementation_hashes():
              'corpus_losses.py', 'geometry_cache.py', 'official_gt.py', 'train.py',
              'data.py', 'feature_replay.py', 'decoder.py', 'system.py', 'losses.py',
              'adapters.py', 'architecture_screen.py', 'spatial_heads.py',
-             'feature_refinement.py', 'upstream.py', 'config.py', 'tracking.py', 'corpus_coverage.py')
+             'feature_refinement.py', 'upstream.py', 'config.py', 'tracking.py', 'corpus_coverage.py',
+             'snapshot_readback.py')
     return {name: sha_file(directory / name) for name in names}
 
 
@@ -223,7 +224,14 @@ def build_accounting(plan, output):
             index = json.loads(index_path.read_text())
             policy = index['policy_sha256']
             dataset = candidate['dataset']
-            if (dataset not in expected or generation.get('stage') != 'complete'
+            snapshot_bindings = None
+            if generation.get('stage') == 'snapshot_source_payload_verified':
+                from .snapshot_readback import (checked_snapshot_generation,
+                    checked_snapshot_pack, checked_snapshot_member)
+                if dataset not in expected:
+                    raise ValueError('Snapshot source is outside the authorized stage')
+                snapshot_bindings = checked_snapshot_generation(generation, candidate, scope, index)
+            elif (dataset not in expected or generation.get('stage') != 'complete'
                     or generation.get('mode') != 'generate'
                     or generation.get('optimizer_updates') != 0
                     or generation.get('training_started') is not False
@@ -247,8 +255,13 @@ def build_accounting(plan, output):
                 receipt = checked_json(receipt_ref)
                 tar = receipt_path.parent / receipt['tar']
                 if (tar.parent != receipt_path.parent or receipt['policy_sha256'] != policy
-                        or len(receipt['entries']) != pack_item['count']
-                        or sha_file(tar) != receipt['sha256']):
+                        or len(receipt['entries']) != pack_item['count']):
+                    raise ValueError('Completed pack identity changed')
+                payload_records = None
+                if snapshot_bindings is not None:
+                    binding = snapshot_bindings.pop(str(receipt_path))
+                    payload_records = checked_snapshot_pack(binding, receipt_ref, receipt, tar)
+                elif sha_file(tar) != receipt['sha256']:
                     raise ValueError('Completed pack identity changed')
                 stat = tar.stat()
                 if stat.st_size != receipt['bytes']:
@@ -256,8 +269,18 @@ def build_accounting(plan, output):
                 db.execute('INSERT INTO packs VALUES (?,?,?,?,?)', (str(tar), receipt['sha256'],
                     stat.st_size, stat.st_mtime_ns, canonical_json(receipt_ref).decode()))
                 for entry in receipt['entries']:
-                    depth, valid, k, meta = read_geometry_member(tar, entry)
-                    camera_matrix(k)
+                    summary = None
+                    if payload_records is not None:
+                        summary = checked_snapshot_member(payload_records, entry)
+                        meta = entry['geometry_metadata']
+                        valid_pixels = summary['coverage']['valid_pixels']
+                        valid_fraction = summary['coverage']['valid_fraction']
+                        median_depth = summary['depth_quantiles'][2]
+                    else:
+                        depth, valid, k, meta = read_geometry_member(tar, entry)
+                        camera_matrix(k)
+                        valid_pixels, valid_fraction = int(valid.sum()), float(valid.mean())
+                        median_depth = float(np.median(depth[valid]))
                     row = dict(entry['image'])
                     identity = db.execute('SELECT ordinal,row_json,disposition FROM images WHERE image=?',
                                           (row['image'],)).fetchone()
@@ -271,6 +294,8 @@ def build_accounting(plan, output):
                         raise ValueError('Candidate metadata does not match source/image policy')
                     verified += 1
                     flag = pending_flags.pop(entry['key'], None)
+                    if summary is not None and summary['external_flag'] and flag is None:
+                        raise ValueError('A captured external quality flag was removed')
                     if flag is not None and flag['corpus_ordinal'] != ordinal:
                         raise ValueError('Quarantined candidate differs from the frozen ordinal')
                     native_flag = bool(meta.get('source_needs_review', False))
@@ -286,28 +311,37 @@ def build_accounting(plan, output):
                              canonical_json(receipt_ref).decode()))
                         continue
                     supervision = source_supervision(meta)
-                    if meta['label_kind'] not in review['label_kinds'] or valid.sum() < 32:
+                    if meta['label_kind'] not in review['label_kinds'] or valid_pixels < 32:
                         raise ValueError('Unreviewed label kind or insufficient observations')
                     if disposition != 'unresolved':
                         raise ValueError('Duplicate image selection; explicit routing is required')
-                    if not np.isclose(valid.mean(), entry['valid_fraction'], rtol=0, atol=1e-12):
+                    if not np.isclose(valid_fraction, entry['valid_fraction'], rtol=0, atol=1e-12):
                         raise ValueError('Cached valid-support statistic differs')
-                    coverage_stats = geometry_coverage(depth, valid, supervision)
+                    coverage_stats = (summary['coverage'] if summary is not None
+                                      else geometry_coverage(depth, valid, supervision))
+                    if coverage_stats['supervision'] != supervision:
+                        raise ValueError('Snapshot coverage changed metric versus relative supervision')
                     db.execute('UPDATE images SET disposition=?,pack=?,entry_json=?,decision_json=?, '
                                'label_kind=?,valid_fraction=?,median_depth=?,coverage_json=? WHERE ordinal=?',
                                ('selected', str(tar), canonical_json(entry).decode(),
                                 canonical_json(candidate['review']).decode(), meta['label_kind'],
-                                float(valid.mean()), float(np.median(depth[valid])),
+                                valid_fraction, median_depth,
                                 canonical_json(coverage_stats).decode(), ordinal))
                     selected[dataset] += 1
+                if payload_records:
+                    raise ValueError('Snapshot readback contains an undeclared cache member')
                 db.commit()
+            if snapshot_bindings:
+                raise ValueError('Not every captured snapshot pack was accounted')
             if pending_flags:
                 raise ValueError('Not every external candidate quarantine flag was encountered')
             if verified != index['count']:
-                raise ValueError('Not every published cache entry was reread')
+                raise ValueError('Not every published cache entry has verified readback')
             reports.append(dict(dataset=dataset, policy_sha256=policy, verified=verified,
                 generation_report=candidate['generation_report'], review=candidate['review'],
-                packs_index=candidate['packs_index'], candidate_quarantine=review['candidate_quarantine']))
+                packs_index=candidate['packs_index'], candidate_quarantine=review['candidate_quarantine'],
+                payload_verification=('completed_snapshot_census' if snapshot_bindings is not None
+                                      else 'accounting_array_readback')))
         excluded = Counter()
         with checked_path(plan['exclusions']).open() as file:
             for line in file:
