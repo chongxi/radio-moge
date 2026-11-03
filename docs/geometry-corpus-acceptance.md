@@ -2474,3 +2474,11 @@ The stage allows at most 1,000 new updates (global 3895) or 7,200 new seconds.
 Cadence is relative to parent 2895: first save 2945 and first validation 3145.
 All earlier bests and the native-source jobs are preserved. Whole-corpus
 acceptance is still separate from this accepted seven-source training scope.
+
+The first 20 actual updates (2896–2915) were preserved and checked: all losses
+and gradients are finite, with measured nonzero parameter-update norms at 2900
+and 2910. First-updates proof SHA:
+`44ec3469155a0e504071e5bdeb0f66dd8a07b4f274687d15702bac7f4f0fb87f`.
+At 16:33 UTC the stage had reached 2927, with 32 finite new updates and no OOM.
+Stage-4 evaluation gains have not yet been measured; compare 3145 to the same
+parent/initial images and protocols when that validation completes.
