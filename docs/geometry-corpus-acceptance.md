@@ -2799,3 +2799,43 @@ preserves all saved metrics and per-source comparisons. Original resolution and
 Both cosines increasing and LiDAR AbsRel decreasing from the archived baseline
 remain the predefined joint criterion; a single improved metric does not pass.
 The analysis is prepared, not executed on incomplete results.
+
+### Four actual control gates passed; first control is updating
+
+At 19:46 UTC all four configuration-specific actual model gates completed:
+336 forward/backward cases, identical initial model states and selected views,
+unchanged parameters and buffers, and no optimizer updates. Both geometry-free
+arms verify exact-zero geometry loss/gradient with active feature gradients.
+The consolidated report SHA is
+`41d6282d992bb50f5fa290980a8709978d7d97c931cdf1f91ca66479d6c1c8e7`.
+The existing controller 188064 then launched the first separate trainer, PID
+188613, for `feature0p1_geometry0`; the other three training arms remain queued
+inside this controller. Do not start another copy or repeat the completed gates.
+
+The real trainer's initial checkpoint has step/cursor zero, empty AdamW state
+and adapter/features statistics bitwise equal to archive 232288. The independent
+controller verification SHA is
+`3ffb5fb993eb44587ea9209973bc74e040fa60ac0819108c2d5d329898c5cdf9`;
+the first runtime configuration SHA is
+`2a3326ef74e2d0c435ef3f0f99c6a122bff15072618c11582307c15438c5519a`.
+No checkpoint readback was repeated for the startup observation.
+
+`feature0p1_geometry0/startup-observation-01` preserves the first 20 completed
+updates and their first 320 actual input records, including 160 replay slots.
+All logged quantities are finite; feature gradients and measured parameter
+updates are nonzero. Weighted geometry is exactly zero and total loss equals
+weighted feature loss in every record. Unweighted geometry diagnostics are still
+computed and must not be mistaken for active geometry supervision. Update norms
+at steps 10/20 are 0.05183740/0.03574600. Startup observation SHA:
+`48d556babb238477f538dcdcd89396bdbd3ba920c893916e6e216130cfbebb47`.
+
+W&B run `665368e8` is online. Its complete experiment configuration and provenance
+match the frozen local records exactly, with no serialization differences. The
+first 20 online total/feature/geometry/gradient records and the two measured
+parameter updates also match exactly. Configuration proof SHA:
+`f75a83d7fd08868dbce0f7cec098f51be835f6555a152b44b8a6d705ef9b685f`;
+online update proof SHA:
+`f9cac63fa86704d8f6142b16aa6a79162d07a4ecb39d146ea0c9b2431740f05f`.
+At 19:55 UTC the first arm had 42 finite updates and no OOM. No fixed-final
+validation result exists yet. Cross-arm consumed-input equality and the joint
+heldout criterion remain pending until the matched controls complete.
