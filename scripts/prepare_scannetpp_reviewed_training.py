@@ -142,14 +142,14 @@ def verify_canonical_scope(db, expected):
     return sum(expected.values())
 
 
-def isolate(root, data, comparison_path):
+def isolate(root, data, comparison_path, expected_selected=403382):
     accounting_ref = file_ref(data / 'accounting/report.json')
     accounting = checked_json(accounting_ref)
     comparison_ref = file_ref(comparison_path)
     comparison = checked_json(comparison_ref)
     if (comparison['stage'] != 'heldout_exact_comparison_complete_not_reviewed'
             or comparison['training_rows'] != 1637909 or comparison['heldout_rows'] != 190954
-            or accounting['selected_images'] != 403382 or accounting['unresolved'] != 0):
+            or accounting['selected_images'] != expected_selected or accounting['unresolved'] != 0):
         raise ValueError('Complete full RGB comparison and new stage accounting required')
     train, heldout = (checked_json(r) for r in comparison['reports'])
     scope = checked_json(accounting['scope'])
