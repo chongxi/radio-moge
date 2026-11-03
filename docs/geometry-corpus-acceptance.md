@@ -3031,3 +3031,87 @@ comparison of the shared feature objective, sampling/crop/resolution and
 optimizer-reset contracts against the archived feature training. Those remain
 hypotheses to check, not established explanations. Native corpus preparation
 continues independently and does not authorize automatic admission or training.
+
+### Read-only comparison with the archived feature-training contract
+
+`feature-continuation-contract-review-01/report.json`, SHA
+`18c8b5849a93e9337ea0ce871f3fc9d15821f673f9193323654864e207933aa8`,
+binds the archived configuration, actual runtime performance override, provenance,
+immutable execution files and completed-control input audit. Generator
+`audit_feature_continuation_contracts.py` at `abe8088` passed lint/compilation and
+ran against those actual artifacts. It performs no RGB decode, checkpoint payload
+readback, model inference or optimizer update, and issues no acceptance.
+
+The f1/G0 control uses the same four feature-loss coefficients as archive 232288.
+The actual `losses.py`, `system.py`, `adapters.py`, `architecture_screen.py`,
+`attention_tricks.py` and `feature_refinement.py` files are byte-identical between
+the archived execution tree and the control execution tree. Model revisions and
+adapter configuration match, and the existing initial-state proof establishes
+identical archived weights and fixed RMS statistics. This rules out a change in
+these particular formulas/files as a difference; it is not a complete bug audit.
+
+The following training contracts do differ:
+
+| Contract | Archived feature training | Four completed controls |
+| --- | --- | --- |
+| Feature image selection | Full-image permutation over 1,637,909 images; one complete epoch plus 11 padding presentations | Half accepted-corpus source/scene/frame mixture, half seven-source RGB replay mixture; replacement sampling |
+| Feature RGB transform | Largest aspect crop at a random position, optional horizontal flip, PIL bilinear resize | Half camera-aware ray rotation/projective warp with random center, 1–1.2 zoom and RGB prefilter/remap; half original RGB crop/flip/resize |
+| Resolution, height × width | 480×640, 640×480, 400×640 | 400×640 only |
+| Effective images per update | **32**, from the actual performance override | **16**, batch 1 × accumulation 16 |
+| Adam/RNG | Preserved moments and RNG through the archived continuation | Fresh Adam, seed 43, cursor 0; archived adapter/RMS only |
+
+The archived config's batch 4 × accumulation 4 is **not** its actual effective
+batch. The bound performance override uses effective batch 32, logical batch 4,
+actual accumulation 8 and compute-batch cap 32. LR 1e-5, constant LR policy,
+weight decay 0.01, clipping 1 and bf16 remain unchanged. The differing warmup
+fields do not create a warmup under the constant-policy branch.
+
+ScanNet DSLR constitutes 51.3723% of the old full manifest. Its expected share of
+feature supervision is 8% in the controls, with exactly 327/4,000 = **8.175%**
+actual paired feature slots and no ScanNet in replay. Conversely, NYU rises from
+0.06368% of the full manifest to 4.22118% expected feature share. These figures
+describe a substantial distribution change, not a causal explanation for the
+heldout LiDAR result. The old manifest shares are not asserted to equal any
+particular 250-update window.
+
+Replay mixture values are relative weights: the seven-source weights sum to
+**0.85**, and `random.choices` normalizes them. Expected combined feature shares
+must normalize replay weights before averaging with the paired branch. The
+report distinguishes actual paired feature counts from replay-source draws
+reconstructed from the frozen sampler; the existing input audit hashes actual
+replay pixels but does not record their image identities. No new replay-identity
+verification is claimed by this reconstruction.
+
+All four feature residual components also increase on original-resolution
+heldout images in f1/G0, so the observed cosine decrease is not accompanied by a
+heldout improvement in those MSE terms. The four controls isolate geometry and
+feature coefficients **within the new pipeline**; they do not supply an
+original-feature-pipeline continuation reference. Sampling, camera warp,
+resolution, effective batch and preserved-versus-reset Adam have not been
+isolated from one another. Establish that reference before claiming any of these
+changes is the cause; no further optimizer run was launched by this review.
+
+### TartanAir generation, readback and full outcome accounting complete
+
+The producer completed all 229,924 inputs: **229,862 native candidates and 62
+rejections**, with all 229,862 cached members read back. The prepared v2 outcome
+auditor (`94a410f`, previously tested) has now run once. It accounts for every
+frozen input, retaining provenance and native flags across 24 source bundles,
+12 environment names, 11 environment families and 272 trajectories. Trajectory
+count is not an independent-scene count. Outcome report SHA:
+`630e082e1e02cd9e58e5f7edc14e355c2744ebfa78b11a0e4ea261b488fcac20`.
+
+`tartanair-outcomes-01/rejection-closure-01.json`, SHA
+`c28eaec3bdfd027b71a9d553cc21229a184d2d8193b7ba0c9aa1f26a33cf7b0a`,
+matches all 62 final producer rejections exactly to their retained per-image
+records and existing reviewed geometry-only exclusions. All RGB remains
+retained. It verifies 148 existing evidence file hashes without rerendering or
+repeating the prior source-payload/visual reviews. Some legacy exclusion records
+omit redundant support fields; their checksum-bound per-image rejection records
+carry the exact final statistics. No exclusion or threshold was changed.
+
+The final outcome audit selects 113 candidate extremes for the remaining native
+quality review. Those candidate reviews, qualified source eligibility and crop
+coverage are still pending; full accounting alone does not admit TartanAir into
+training. Global geometry exclusions remain 4,101, with only Hypersim white RGB
+210812 excluded from RGB replay.
