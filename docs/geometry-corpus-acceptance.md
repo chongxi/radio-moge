@@ -1840,3 +1840,77 @@ exclusions now number **1,438**, SHA
 `e94b103829bf70d7237329a7db8c9111b062c75c6de8b783a79714c03e108206`.
 Only white Hypersim image 210812 is excluded from RGB. Further producer
 rejections after this snapshot require their own disposition.
+
+### Second segment completed at step 2,000
+
+The second training segment ended normally at its 2,000-global-step limit.
+All 1,000 new update records are finite, final validation is complete and the
+trainer has released its GPU lock. The existing ScanNet review-teacher remainder
+controller acquired that lock and started its already queued 7,623 inputs;
+the 28,160 recovered members were not regenerated.
+
+`reviewed-stage2-validation-2000-review-01/report.json`, SHA
+`f9dfae799e5a5334da9433ffb69b60896ee54e22c209a1b3dee1386f535c8878`,
+checks the recorded final outputs against the same initial, step-1,000 and
+step-1,750 images. Four views, protocols, teacher/GT values, five heldout digests
+and the 18 known-camera laser cases match. The macro cosines were also recomputed
+from the per-image dataset means. No inference was repeated for this comparison.
+The five main validation metrics match the finished online W&B run `df4196ed`.
+
+Original-view spatial cosine improves from **0.9599099911** at 1,750 to
+**0.9601634316**; summary cosine improves from 0.9318509872 to **0.9319317282**.
+Both remain below their initial feature-only values, 0.9616920552 and 0.9323009271.
+NYU AbsRel is **0.0711039240**, 10.46% better than the initial adapter but 1.66%
+worse than the preserved 1,750 best. ScanNet LiDAR AbsRel recovers to
+**0.0967663059**, 3.53% better than 1,750 and 0.20% better than the stage-1,000
+parent, but still 5.05% worse than the initial adapter. Known-camera laser
+AbsRel worsens to **0.1424284187**, 2.77% worse than 1,750 and 6.77% worse than
+1,000. These are mixed task-specific changes, not an overall improvement.
+
+The final checkpoint is preserved in `reviewed-stage2-finish-01`, SHA
+`3c1a51d839e2535fa849aba03e14e241de7408bef61ae678dd0d94a7f502ce50`.
+CPU readback verifies all 100 changed adapter tensors and 100 Adam states are
+finite, Adam steps are 2,000, the new data cursor is 16,000, feature statistics
+are bitwise unchanged from the parent, and configuration/stream identities match.
+This is a final-checkpoint readback, not an independent resume experiment.
+Active-stage spatial and LiDAR selections now use 2,000; NYU remains at 1,750,
+summary and laser at 1,000. Earlier stage-specific bests remain preserved.
+
+### Completed snapshot payload census and ARKit accounting
+
+`stage1-payload-census-01` has completed **4,098 packs and 873,626 candidate
+members**, covering **870,550 distinct RGB inputs**, with zero failures. The
+producer reread and verified whole tar hashes, every declared member, array
+statistics, cameras and source identities. The separate closure review checks
+the frozen pack membership, source totals, report identities and policy hashes;
+it does not repeat the payload census. All candidate flags are retained and
+the snapshot remains unaccepted as a whole. Its report SHA is
+`c5307f15eb0a5e2278bbf13bbadf637a7b758ba80a25ca97bf07b2958ce07a40`.
+
+`arkit-outcomes-01/report.json`, SHA
+`c815c418169c87445cdd76ac07bbb8b5a51af5eca6474d168997cc3ade10f27a`,
+accounts for all **197,542** frozen inputs from 3,789 videos and 1,478 visit
+groups after the producer's complete array readback. There are 194,924 native
+candidates and 2,618 rejected inputs: 1,458 failed image registration, 977 have
+insufficient registered support and 183 lack an exact-timestamp native member.
+The metadata audit issues no exclusions or source acceptance. Its 36 distinct
+review candidates cover all four rotations; these candidates have not yet been
+visually reviewed. The existing nine FARO diagnostics and their unresolved
+calibration/visibility limitations remain attached and are not rerendered.
+
+### Nineteen additional TartanAir dispositions
+
+`tartanair-rejection-review-07` reproduces only 19 new neighborhood/Hard/P012
+and P014 rejections; the prior 25 were not rerendered. All 19 complete six-panel
+pages were viewed in ten contacts with uniform 50% display resizing. Extensive
+sky, sunlight, foliage and roof/wire edges leave **4.559%–4.995%** final support,
+below the unchanged 5% requirement. Exact source arrays and statistics match.
+Only the listed original identities are excluded from geometry supervision;
+intervening frames and whole families are not excluded by extension. All 19
+unchanged RGB records were found in the accepted 796,477-image replay manifest.
+
+There are now 44 explicitly disposed TartanAir rejections and **1,457** known
+geometry exclusions overall. The merged manifest SHA is
+`3dae6b787721a92e78c4828cbf1c1bf8724c78b5bd1fd45e3d16eea2fa812191`.
+Only white Hypersim image 210812 is excluded from RGB. The completed training
+configuration, index and checkpoint selection are unchanged by these decisions.
