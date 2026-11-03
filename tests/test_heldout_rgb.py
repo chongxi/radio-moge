@@ -95,7 +95,8 @@ def audit_fixture(root):
     return dict(root=str(root), manifest_sha256='a' * 64, expected_counts={'irs': 1})
 
 
-def test_full_censuses_detect_reencoded_cross_source_leakage_and_preserve_memberships(tmp_path):
+@pytest.mark.parametrize('local_sqlite', [False, True])
+def test_full_censuses_detect_reencoded_cross_source_leakage_and_preserve_memberships(tmp_path, local_sqlite):
     config = audit_fixture(tmp_path)
     train_census(config, 'preflight', 'train-probe', 'unused')
     train_census(config, 'census', 'train-all', 'train-probe')
@@ -103,16 +104,33 @@ def test_full_censuses_detect_reencoded_cross_source_leakage_and_preserve_member
     assert probe['processed'] == 3 and probe['failed_images'] == 0
     full = run(config, 'census', 'heldout-all', 'heldout-probe')
     assert full['processed'] == 3 and full['distinct_verified_paths'] == 1
-    result = compare(tmp_path / 'train-all/report.json', tmp_path / 'heldout-all/report.json', tmp_path / 'comparison')
+    result = compare(tmp_path / 'train-all/report.json', tmp_path / 'heldout-all/report.json',
+                     tmp_path / 'comparison', local_sqlite=local_sqlite)
     assert result['exact_pixel_overlap_rows'] == 3 and result['forbidden_shared_scene_rows'] == 0
     assert result['per_manifest'][str(tmp_path / 'attention-full-mix-v1-20261022/test-irs-official.jsonl')][
         'shared_scene_rows'] == 1
     assert not result['training_admission'] and not result['near_duplicates_checked']
     assert result['automatic_exclusions'] == 0 and not result['evaluation_depth_read']
+    assert result['local_sqlite_work'] == local_sqlite
     with sqlite3.connect(tmp_path / 'comparison/comparison.sqlite') as db:
         assert db.execute('SELECT COUNT(*) FROM overlaps').fetchone()[0] == 3
     with pytest.raises(FileExistsError):
         run(config, 'preflight', 'heldout-probe', 'unused')
+
+
+def test_corrupted_local_comparison_publication_cannot_complete(tmp_path, monkeypatch):
+    config = audit_fixture(tmp_path)
+    train_census(config, 'preflight', 'train-probe', 'unused')
+    train_census(config, 'census', 'train-all', 'train-probe')
+    run(config, 'preflight', 'heldout-probe', 'unused')
+    run(config, 'census', 'heldout-all', 'heldout-probe')
+    monkeypatch.setattr('audit_heldout_rgb.shutil.copyfile', lambda source, target: target.write_bytes(b'changed'))
+    with pytest.raises(ValueError, match='publication copy differs'):
+        compare(tmp_path / 'train-all/report.json', tmp_path / 'heldout-all/report.json',
+                tmp_path / 'comparison', local_sqlite=True)
+    assert not (tmp_path / 'comparison/report.json').exists()
+    assert not (tmp_path / 'comparison/comparison.sqlite').exists()
+    assert json.loads((tmp_path / 'comparison/status.json').read_text())['stage'] == 'failed'
 
 
 def test_bad_identity_remains_failure_and_prevents_full_census(tmp_path):

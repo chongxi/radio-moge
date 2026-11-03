@@ -5,14 +5,16 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import sqlite3
+import tempfile
 import time
 
 import PIL
 
 from indoor_download import write_json
 from radio_moge.corpus_admission import checked_json, checked_path, file_ref, readonly_db
-from radio_moge.geometry_cache import canonical_json, publish_json
+from radio_moge.geometry_cache import canonical_json, publish_json, sha_file
 from radio_moge.heldout_rgb import identity, inspect_heldout_rgb, manifest_protocol
 
 
@@ -151,7 +153,7 @@ def run(config, mode, attempt, preflight):
         raise
 
 
-def compare(training_report, heldout_report, output):
+def compare(training_report, heldout_report, output, local_sqlite=False):
     """Join all raw/oriented exact hashes in a separate disk-backed work index."""
     refs = [file_ref(p) for p in (training_report, heldout_report)]
     train, heldout = [checked_json(ref) for ref in refs]
@@ -169,7 +171,8 @@ def compare(training_report, heldout_report, output):
     indexes = [checked_path(report['index']) for report in (train, heldout)]
     output = Path(output)
     output.mkdir(exist_ok=False)
-    temporary = output / 'comparison.sqlite.incoming'
+    work = tempfile.TemporaryDirectory(prefix='heldout-rgb-comparison-') if local_sqlite else None
+    temporary = (Path(work.name) if work else output) / 'comparison.sqlite.incoming'
     db = sqlite3.connect(temporary)
     db.execute('PRAGMA cache_size=-16384')
     db.execute('PRAGMA temp_store=FILE')
@@ -181,6 +184,7 @@ def compare(training_report, heldout_report, output):
     db.execute('CREATE TABLE group_overlaps(heldout_id INTEGER PRIMARY KEY,required INTEGER)')
     status = dict(stage='indexing_train_hashes', started_at=time.time(), training_rows=0, heldout_rows=0,
         training_admission=False, optimizer_updates=0, evaluation_depth_read=False, automatic_exclusions=0)
+    status['local_sqlite_work'] = bool(local_sqlite)
     write_json(output / 'status.json', status)
     try:
         with readonly_db(indexes[0]) as incoming:
@@ -225,6 +229,12 @@ def compare(training_report, heldout_report, output):
         db.close()
         for ref in refs + [train['index'], heldout['index'], train['source_report']]:
             checked_path(ref)
+        if work:
+            incoming_copy = output / 'comparison.sqlite.incoming'
+            shutil.copyfile(temporary, incoming_copy)
+            if sha_file(temporary) != sha_file(incoming_copy):
+                raise ValueError('Comparison publication copy differs from the verified local index')
+            temporary = incoming_copy
         os.rename(temporary, output / 'comparison.sqlite')
         status.update(stage='heldout_exact_comparison_complete_not_reviewed', completed_at=time.time(),
             reports=refs, index=file_ref(output / 'comparison.sqlite'), per_manifest={k: dict(v) for k, v in counts.items()},
@@ -241,6 +251,9 @@ def compare(training_report, heldout_report, output):
         status.update(stage='failed', error=type(error).__name__, message=str(error)[:1000])
         write_json(output / 'status.json', status)
         raise
+    finally:
+        if work:
+            work.cleanup()
 
 
 if __name__ == '__main__':
@@ -251,6 +264,8 @@ if __name__ == '__main__':
     parser.add_argument('--preflight', default='heldout-rgb-preflight-01')
     parser.add_argument('--training-report', type=Path)
     parser.add_argument('--heldout-report', type=Path)
+    parser.add_argument('--local-sqlite', action='store_true',
+                        help='Build the comparison index on local scratch, then hash-check and publish it')
     args = parser.parse_args()
     if any(Path(n).name != n for n in (args.attempt, args.preflight)):
         parser.error('Use a new attempt basename')
@@ -258,6 +273,7 @@ if __name__ == '__main__':
     if args.mode == 'compare':
         if not args.training_report or not args.heldout_report:
             parser.error('Both complete census reports are required')
-        compare(args.training_report, args.heldout_report, Path(config['root']) / args.attempt)
+        compare(args.training_report, args.heldout_report, Path(config['root']) / args.attempt,
+                local_sqlite=args.local_sqlite)
     else:
         run(config, args.mode, args.attempt, args.preflight)
