@@ -1773,3 +1773,16 @@ high-resolution camera calibration remain explicit limitations. Reuse these
 localized observations in the eventual complete native-source review; do not
 rerender these nine pages merely to postpone disposition. Active accepted
 training inputs and all source-quality flags remain unchanged.
+
+### Five further TartanAir dispositions
+
+`tartanair-rejection-review-05` reproduces only the five newly published
+rejections at ordinals **454273–454277**, neighborhood/Hard/P010 frames 643–647.
+The previous 19 reviewed rejections are skipped using their exact evidence.
+All five pages were viewed: sky dominates the upward tilted views, while wires,
+foliage and roof edges leave fragmented support. The unchanged final support is
+**4.624%–4.892%**, below the existing 5% requirement. These exact inputs receive
+geometry-only exclusions; their RGB remains eligible for replay. No depth,
+mask, threshold or active training artifact is changed. The cumulative known
+geometry exclusion count is now 1,437, including 24 TartanAir inputs; only the
+existing white Hypersim image 210812 is excluded from RGB replay.
