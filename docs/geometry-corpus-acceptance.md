@@ -112,6 +112,63 @@ The merged exclusion ledger now has **239** images, at
 `648dfdeeb8247247f941208c0ec8f8646aaecabba481094e4ccd80835a6b10c2`.
 Only white RGB210812 is excluded from RGB replay; the other 238 are geometry-only.
 
+### First-stage scope and automatic launch preparation (2026-11-03)
+
+After viewing the three-way point clouds, Chongxi explicitly asked to start
+training. `stage1-training-scope-01` (`64ee942`) now materializes every frozen
+RGB identity and closed pack without waiting for later producer outputs. It
+contains 870,550 unique images: 226 known geometry exclusions, 234,036 candidates
+with completed source reviews, and 636,288 candidates awaiting source review.
+The proposed geometry count is 870,324; this is not an accepted training count.
+No additional image lacks an unflagged candidate in this particular snapshot.
+The stage inventory SHA256 is
+`aed3b3f3f83506128c356e2c1fc8a52829a7d59be3e065c1d4b4f8aab21cf5e9`.
+The parent manifest remains the RGB identity anchor; the eventual corpus index
+restricts training to this exact stage scope. Original full-corpus preparation
+and the separate replay pool continue unchanged.
+
+Of the 234,036 source-eligible images, 55,462 are Hypersim native synthetic GT
+and 178,574 are relative teacher pseudo labels. They are not all measured GT,
+and their source reviews do not replace final payload, coverage, isolation,
+loss, or actual-model checks. Stage-only deferral preserves the original
+quality flags and RGB eligibility. Eight scope/snapshot tests passed locally
+and remotely, including changed identities and ambiguous alternative candidates.
+
+`configs/geometry-stage1-training-20261103.json` prepares the first segment from
+archived feature step 232288: adapter-only optimization, 400x640, one-image
+microbatches accumulated over 16, constant learning rate 1e-5, pinned MoGe-2 core
+geometry weights and 0.1 feature weights. Half the feature slots use the diverse
+RGB replay pool. Both streams use explicit eight-source weights and scene/group
+sampling. The first segment is bounded to 1,000 updates or two hours, saves
+every 100 updates and evaluates every 250. These are prepared settings; no
+training admission or optimizer update has occurred.
+
+`stage1-launch-01` runs the CPU-only watcher from `35eed29`, waiting for
+`stage1-readiness-01/plan.json`. Readiness must bind the exact requested snapshot,
+configuration, checkpoint and four nonmodel gates. The watcher then waits on
+the existing GPU lock, runs the actual zero-update forward/backward probe,
+seals the verified evidence and starts training. It does not infer a pass from
+a progress counter or a visual page. The separately archived execution directory
+`code-stage1-training-v1` must be created from the final tested implementation
+before readiness is published. Missing readiness is still an active dependency,
+not a claim that training is already running. Twelve launcher/scope/snapshot
+tests passed in the remote preparation environment.
+
+`finalize_snapshot_source_readbacks.py` and `snapshot_readback.py` (`0b6569c`)
+allow accounting to reuse the completed per-pack CPU census instead of reading
+the approximately 792 GB of payloads again. Every captured member, receipt,
+whole-tar proof, statistic and quality flag remains bound to its original
+identity; changed packs or removed external flags fail. This route requires the
+complete snapshot census, not its small preflight. The finalizer creates new
+sidecar pack indexes without changing producer indexes, restricts earlier
+source reviews to the captured scope, and leaves missing reviews pending.
+No new source review or final gate is invented. The original full-corpus
+accounting path retains its own array readback behavior.
+The 33 accounting, payload-proof, coverage and model-probe unit tests passed
+locally (7.13 s) and in the remote model environment (6.65 s). These include
+incomplete census, changed pack, removed quarantine and missing source-review
+failures; they are not the actual archived-model forward/backward preflight.
+
 `configs/geometry-corpus-20261102.json` freezes the scope and teacher revision.
 `scripts/index_geometry_corpus.py` creates a disk-backed inventory and checks
 heldout metadata without reading evaluation depth. Its success is **not** depth
