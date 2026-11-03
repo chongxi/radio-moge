@@ -2839,3 +2839,54 @@ online update proof SHA:
 At 19:55 UTC the first arm had 42 finite updates and no OOM. No fixed-final
 validation result exists yet. Cross-arm consumed-input equality and the joint
 heldout criterion remain pending until the matched controls complete.
+
+### First matched control completed; second started
+
+At 20:20 UTC `feature0p1_geometry0` completed exactly 250 optimizer updates
+and its final evaluation. All training records and final adapter/Adam tensors
+are finite, the final cursor is 4,000, and frozen statistics/configuration/data
+digests are unchanged. The existing controller's completion receipt SHA is
+`50f6c7dbb327ae72d3871d54a865607df31026832223d527d3a6c13346b864b2`.
+The complete actual input record contains 4,000 microbatches and 2,000 replay
+slots, with SHA
+`f096f826aadefb191d755f16a92109b0ae980d972091e115d7cd291e35d2a34e`.
+Later controls must match this actual sequence, not just its configured seed.
+
+The fixed final checkpoint is preserved by a hard link under the arm's
+`fixed-final-250-01/checkpoint-step250.pt`, SHA
+`2484eda99bd6c210efb9c2156dcbffd235fac867435748ce7cc3dd7bacdee7f6`.
+The preservation receipt reuses the controller's completed payload verification;
+it does not repeat the checkpoint readback or select a best validation step.
+Preservation receipt SHA:
+`a88236019a1f6526440e80e5043e3604614577388fe1bc4073ecd95018a80176`.
+
+W&B run `665368e8` is finished. Its five fixed-final validation metrics exactly
+match the saved step-250 record. Full configuration/provenance values also match;
+the finished API represents five zero geometry coefficients and clip-grad 1
+as equal integer/float values. These six type representations have zero numeric
+difference, and no frozen configuration was changed. Online final receipt SHA:
+`14fb5bd0da6e167cb003485f80fbf6a0cd387b009cc417159412ef50b4168937`.
+Pairing against the archived baseline and the complete four-arm interpretation
+remain pending; this online check does not establish improvement.
+
+Controller 188064 automatically started `feature0p1_geometry1` in trainer
+194854, W&B run `a6c5c64e`. At 20:25 UTC it had three finite updates with active
+feature and geometry losses. Its actual independent trainer initialization
+matches the archived adapter/statistics and the first arm's optimizer,
+scheduler, RNG and revisions bitwise, with empty Adam state and cursor zero.
+Initial proof SHA:
+`8c049527bc5abc79f7c1038d3d9ffef793b602fc8d4944f286b3c3fc2104f33a`.
+The remaining two controls stay queued inside the original controller and GPU
+lock. No experiment or gate has been restarted.
+
+The second arm's first 20 updates are finite, with positive weighted feature
+and geometry losses, nonzero optimizer gradients and measured parameter
+updates. Its actual first 320 input records, including 160 replay slots, match
+the first arm byte for byte. This is a verified prefix; full 4,000-input equality
+remains pending. Startup observation SHA:
+`3fcb1bbd92c1b3d4ea56a9bed8e2a5398730d1008c67c3ad4e9819997a45f5f4`.
+The online configuration/provenance values match, with five equal integer/float
+representations and no numeric change. All first-20 online loss/gradient values
+and measured update norms at steps 10/20 match exactly. Online receipts:
+`82f9da76baa4cef0477606f326d9e26afd0ff846b3ffab515e7f3013d0fc1c98`
+and `40b9414dd5e06454b67d7f50aeb2666da3a4c1660ea45017f94049229de22d9f`.
