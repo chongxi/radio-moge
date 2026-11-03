@@ -3115,3 +3115,67 @@ quality review. Those candidate reviews, qualified source eligibility and crop
 coverage are still pending; full accounting alone does not admit TartanAir into
 training. Global geometry exclusions remain 4,101, with only Hypersim white RGB
 210812 excluded from RGB replay.
+
+### Original feature reference prepared; no optimizer launched
+
+`feature-pipeline-reference-plan-01/plan.json`, SHA
+`006e536863d9ba5a5d5e6724fc3588e911b9c1b998f5e291707152a20e774338`,
+defines the missing original-pipeline continuation reference and separate future
+comparisons. Preparation code is `320a7f5`. This is a plan and candidate config,
+not a passed model gate or permission for an automatic GPU run.
+
+The original RGB manifest and the existing 1,637,908-row RGB pool were checked
+sequentially for exact projected identities, order and rotation. Only confirmed
+white image 210812 is omitted; all 4,100 geometry-only exclusions retain RGB.
+The old execution's actual deterministic sampler produced a planned 8,000-image
+sequence for 250 effective-batch-32 updates, including 4,055 ScanNet++ images
+(50.6875%). This is planned metadata, not consumed inputs or an observed gain.
+
+The proposed reference retains archived weights, RMS, Adam moments and model RNG;
+uses ordinary crop/flip/resize, all three original resolutions and effective
+batch 32; and starts a new cursor over the verified RGB pool. It is therefore
+not a bitwise uninterrupted continuation. The candidate removes the old
+`coverage_epochs=1` full-epoch budget constraint without changing its sampler.
+Its performance authorization is deliberately false. Actual initial-state,
+input, zero-update-model, evaluation-parity and resource checks remain required.
+The fixed joint criterion is unchanged: both original-protocol cosines must
+increase and LiDAR AbsRel must decrease. Any positive screen needs replication.
+
+The reset-Adam finding applies to the four completed controls from archived
+weights. It does not mean Adam was reset between the preceding staged continuous
+training segments. Turning geometry off in those controls leaves their new
+sampler and camera-warp feature views intact. The original-feature continuation
+reference was missing; neither the four controls nor this metadata plan isolates
+which changed training condition caused the regression.
+
+### TartanAir candidate source and crop reviews completed
+
+`tartanair-candidate-visuals-01/index.json`, SHA
+`4c4f14c3f126dfa701cc832a2d69e8c030e05b2501ea340df1b7d5cd422a1eeb`,
+binds all 113 selected candidates. Retained left/right depth and right RGB
+source SHA/CRC, original left RGB, cached member and reproduced depth/mask/K/
+statistics match exactly. All 29 four-panel pages were actually inspected at
+the documented display resolution, covering all 24 source bundles and 11
+environment families. Visual review SHA:
+`23045e99d4f8405adb60c769ebf0c6ebc430850024d10701248dbde7bc9c9215`.
+No new exclusions or threshold changes were made. Same-renderer stereo checks
+do not independently establish physical accuracy of reflective or translucent
+surfaces. Reuse the earlier 62 rejection decisions without reproducing them.
+
+`tartanair-candidate-crops-01/report.json`, SHA
+`2746a2ddf41dcac0c8ff98eb744e40505397c0d0d3796e0a26e367e5c1718c7d`,
+checks 339 actual loader views of these 113 images, including flips. Original
+support remains unchanged; maximum native-to-target relative error is
+5.950212433357075e-08. Two augmented views of image 496473 contain zero supported
+observations, while its ordinary crop retains 5,912. Its rendered crop page was
+actually inspected: the augmentations move away from the narrow sea-surface
+support. Keep the candidate and RGB, and use the existing less-than-32-observation
+geometry-skip rule for these views. Sparse visual review SHA:
+`88bbd496acba2f354e6517a692bdce537a795772317b74287093bef374f123ec`.
+
+Source reproduction/visual tests passed locally and remotely (25); crop/sampling
+tests passed locally and remotely (12). Execution snapshots are respectively
+`86c3430` and `918b280`. These completed reviews supersede the pending candidate
+and crop work noted above. The qualified policy-bound TartanAir source review
+and explicit quarantine register have not yet been published; active accepted
+training artifacts remain unchanged. No model or optimizer ran in this work.
