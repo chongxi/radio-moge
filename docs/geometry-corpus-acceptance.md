@@ -1501,3 +1501,46 @@ No optimizer updates until all frozen gates have evidence. The final acceptance
 record must reference the exact published manifest/cache and test/report hashes;
 changing any input invalidates acceptance. The user has authorized training after
 these gates pass; no further permission is needed for that scoped transition.
+### Paired step-750 validation and Structured3D eligibility, 2026-11-03
+
+`reviewed-stage1-validation-750-review-01` reuses completed evaluations and
+checks the same image order, manifests, preprocessing and frozen teacher GT
+values against the archived initial adapter and steps 250/500. Original-view
+equal-source spatial cosine is 0.9599162064, essentially unchanged from step
+500's 0.9599270676 and below the initial 0.9616920552. Summary cosine is
+0.9318284911 versus initial 0.9323009271. NYU AbsRel improves to 0.0732686892
+(7.74% below initial), while ScanNet LiDAR AbsRel worsens to 0.0975475884
+(5.89% above initial). This is mixed performance, not overall improvement.
+The report SHA is `b399ea8c01c09f8280e5f072a690f402fa512885da8f6d29fb2d9b3b0e325d32`.
+The active immutable training configuration and optimizer remain unchanged.
+
+`structured3d-source-reviews-01` completes qualified source eligibility for
+both preserved native policies using the existing full outcome audit,
+producer/recovery payload readback, camera census, conversion regression,
+array parity, actual visual inspections and explicit rejection decisions.
+All 134,749 original images receive one route: 133,563 native eligible and
+1,186 geometry exclusions. The recovered policy contributes 27,004 eligible
+and four quarantined candidates; the new policy contributes 106,559 eligible,
+five quarantined candidates and 1,177 source rejections. These exclusions
+retain RGB and the original source flags. Eligible images cover 2,987 groups.
+The mandatory policy-specific quarantine registers remain bound. This does
+not complete crop coverage, canonical heldout isolation or the actual model
+gate for adding Structured3D to a later training stage. It does not change
+the currently accepted 234,036-image geometry training set.
+
+The publisher's source-route/identity and existing outcome/rejection tests
+passed 23 cases locally and remotely (remote 1.68 seconds). Completed array
+audits and visual inspections were reused rather than counted as new work.
+
+ScanNet review-teacher continuation now supports explicit verified recovery
+and exact remaining-scope filtering, rejecting foreign/duplicate identities
+or changed inference/mask policies. Eleven relevant tests passed remotely.
+The runnable continuation snapshot is `code-scannet-review-teacher-v4`, commit
+`5228f12`, applying this change to original snapshot `8e2ed09`. This preserves
+the exact old inference, geometry helper and pack-format bytes. The main-tree
+snapshot v3 is not used: its newer sequential cache reader changes the
+pack-format file hash. Preflight 02 is queued on the existing GPU lock for
+all 50 original probes. It needs numeric success and actual depth/mask/K
+parity with the reviewed preflight before a new visual review can reuse that
+evidence. Closed-pack recovery and the 7,623-image remainder have not yet
+started. Never rerun all 35,783 inputs or overwrite the 110 closed old packs.
