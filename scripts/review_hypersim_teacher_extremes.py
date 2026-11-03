@@ -81,14 +81,17 @@ def run(config, attempt):
             [chosen[k] for k in ('valid_fraction', 'p01_over_median', 'p99_over_median', 'max_over_median')],
             rtol=1e-6, atol=1e-12)
         value = np.zeros(depth.shape, np.float32)
-        value[valid] = np.clip(np.log2(depth[valid] / quantiles[2] / .25) / 6, 0, 1)
+        # The observed full-source p99/median maximum is about 111. A shared
+        # upper color limit of 128 exposes those backgrounds instead of hiding
+        # every value above 16 in one saturated color. This is display only.
+        value[valid] = np.clip(np.log2(depth[valid] / quantiles[2] / .25) / 9, 0, 1)
         colors = (np.stack((value, 1 - np.abs(2 * value - 1), 1 - value), -1) * 255).astype(np.uint8)
         colors[~valid] = 0
         page = Image.new('RGB', (3 * rgb.width, rgb.height + 84), 'white')
         draw = ImageDraw.Draw(page)
         draw.text((6, 5), f"corpus {ordinal} | {row['group']} | {meta['source_id']}", fill='black')
         draw.text((6, 23), f"RGB | relative teacher Z / median | unchanged valid support {valid.mean():.6f}; p99/median={relative[3]:.3f}", fill='black')
-        draw.text((6, 41), 'One palette for every view: blue <=0.25, green 2, red >=16; black=invalid. NOT calibrated meters.', fill='black')
+        draw.text((6, 41), 'One palette for every view: blue <=0.25, green 5.657, red >=128; black=invalid. NOT calibrated meters.', fill='black')
         draw.text((6, 59), 'No resizing, depth editing, confidence claim or native-source repair. Native reason: ' + chosen['native_reason'], fill='black')
         page.paste(rgb, (0, 84))
         page.paste(Image.fromarray(colors), (rgb.width, 84))
@@ -111,7 +114,7 @@ def run(config, attempt):
         maximum_p99_over_median=max(r['p99_over_median'] for r in routes),
         diagnostic_p99_ratio_counts={str(t): sum(r['p99_over_median'] > t for r in routes)
                                      for t in (4, 8, 16, 32, 64)},
-        records=records, rendered_images=len(records), relative_color_limits=[.25, 16],
+        records=records, rendered_images=len(records), relative_color_limits=[.25, 128],
         image_resampling=False, pack_payload_hashes_rechecked=False, selected_member_payloads_rechecked=True,
         source_depth_or_mask_changed=False, exclusions_created=0, native_source_flags_cleared=False,
         source_quality_accepted=False, training_admission=False, optimizer_updates=0,
