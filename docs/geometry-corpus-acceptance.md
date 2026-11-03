@@ -2755,3 +2755,47 @@ plan-02 binds the actual `data.mixture_weights` and complete optimizer settings.
 No arm has started. The zero-geometry path, configuration-specific contracts and
 actual model gates must be implemented and verified before launch; historical
 training seals do not admit modified losses.
+
+### Matched controls: implementation and launch preparation
+
+`code-corpus-controls-v1` at `7a7c9fd` implements the four frozen plan-02
+configurations. Explicit geometry multiplier 0 requires all five geometry
+coefficients to be zero and retains the original targets, support and decoder
+computation. The actual model gate independently measures the resulting exact
+zero geometry gradient while requiring a finite, nonzero feature gradient.
+Multiplier 1 retains the pinned upstream geometry coefficients. Each loss
+configuration requires its own model proof and acceptance seal; earlier stage
+seals cannot authorize it. All 84 targeted tests pass locally and remotely
+(remote 10.46 seconds, one CPU thread, CUDA hidden). Tooling receipt SHA:
+`3fee24159c09bbce7b6699637ce762ec1309b1e1076cf0856d291de7f7d12f2a`.
+
+`corpus-controlled-comparison-01/experiment.json` binds the unchanged accepted
+598,298 geometry identities, 796,477 replay pool, sampler, augmentations, archive
+232288 and frozen feature statistics. SHA:
+`bd14110c04dc87df5259f263a636daca9111a09db101949b928701273b9958a2`.
+Controller 188064 started at 19:16 UTC under the original GPU lock. It runs all
+four actual zero-update model gates before any optimizer update, then four
+sequential fresh-Adam controls, each fixed at 250 updates and bounded to 2700
+seconds. It does not resume the production stage. Actual trainer initial
+parameters/statistics are checked against the archive, and optimizer, scheduler
+and RNG states against the first arm. Every consumed CPU RGB, native target and
+replay image is hashed in order; a complete arm requires 4,000 microbatches and
+2,000 replay slots. Changed input hashes or an incomplete arm stop the controller
+without automatic retry. At 19:25 UTC the first arm (`feature0p1_geometry0`)
+completed all 84 actual forward/backward cases: exact-zero geometry loss and
+gradient, finite nonzero adapter gradients and unchanged model parameters and
+buffers. Model proof SHA:
+`6ae253f5edfc26a469f4575c0d9b7dc9722187a4c24b4b17df1b929fedf6145f`.
+The second arm's model gate is running. No optimizer update or control result
+has been declared.
+
+`code-corpus-control-review-v1` at `4b6df5d` prepares the eventual four-arm
+comparison. All ten reviewer and pairing tests pass locally and remotely. It
+requires every arm's fixed final step, identical consumed inputs, fresh matching
+initialization, all five heldout digests, matching image order, frozen-teacher
+results and unchanged evaluation protocols. It recomputes core aggregates and
+preserves all saved metrics and per-source comparisons. Original resolution and
+400x640 remain separate. Control step 250 is not production geometry step 250.
+Both cosines increasing and LiDAR AbsRel decreasing from the archived baseline
+remain the predefined joint criterion; a single improved metric does not pass.
+The analysis is prepared, not executed on incomplete results.
