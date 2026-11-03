@@ -2087,3 +2087,49 @@ ScanNet receives 20% of geometry draws and previous weights scale by 0.8.
 The new stage remains unadmitted until canonical isolation and the actual
 archived-model zero-update backward gate pass. No optimizer has restarted at
 this preparation point. Prior final and best checkpoints remain preserved.
+
+
+### Complete canonical RGB and six-source nonmodel gates
+
+`rgb-identity-census-01` completed **all 1,637,909 original training RGBs**,
+with zero identity/orientation/hash errors and zero exact duplicate clusters
+under either the raw or explicit-orientation canonical RGB hash. This finally
+resolves the legacy cross-source hash-convention limitation. It does not
+measure perceptual near-duplicates or independent scene counts. Report SHA:
+`9046e72d8ebde10e32f2a7574ef0c6ab30fdaa25d2ee0660dc58ec16d2dd294f`.
+
+`heldout-rgb-full-comparison-01` compared the full training census against
+**190,954 memberships in all 16 heldout manifests**. Exact train/heldout pixel
+overlaps and forbidden shared-scene rows are both zero. The official IRS test
+protocol has 22,320 memberships in shared environment families by design;
+its independent IRS validation/test protocols have no shared families. These
+memberships include repeated subset manifests and are not unique image counts.
+No evaluation depth was read, no automatic exclusion was made, and no
+near-duplicate claim is inferred. All 16 manifest results were reviewed.
+Comparison SHA: `07dca135c4dbadf3aaee920e2785818a924a70b01b25d04e7fcfeaec22cacc2b`;
+review SHA: `2f107f36ee8ea59e3afdb920446774f19601f493105680629adfe189e2405584`.
+
+The new stage isolation binds **all 404,795 scoped originals**, including
+geometry exclusions, to this completed census and comparison. Its 403,382
+selected labels and unchanged 796,477-image replay are now isolated; replay
+reuses its exact prior canonical proof. Isolation SHA:
+`7d58beffd139cea2d7cf47b8ae11edbfe1be98f60768705c474e9ff4dd3dfb17`.
+
+The actual source/scene/frame sampler made 100,000 metadata draws. Observed
+shares were COCO 22.033%, Hypersim 22.548%, IRS 16.221%, NYU 3.216%, ScanNet
+19.949% and Structured3D 16.033%, all within 0.5 percentage points of the
+frozen target shares. All 25 added ScanNet scenes were sampled. Sampling is
+with replacement, and source or scene counts do not imply independent images.
+
+`reviewed-stage3-request-01` and `reviewed-stage3-readiness-01` now bind the
+completed source, coverage, isolation and unchanged-loss checks to the exact
+new accounting. The prior loss/continuation tests are reused only after all
+implementation hashes match immutable execution `8332c8c`. The new request
+starts from the verified step-2000 checkpoint, preserves Adam and unchanged
+objective/replay/evaluation protocols, resets the new sample stream to zero,
+and ends at global step 3000 or 7,200 new seconds. Request SHA:
+`265f75d3701031129ca4f60d23b1ad53ab7d61e11be9632b6301361bf0b8b205`;
+nonmodel plan SHA:
+`35512867b54243873dfe879354b46cdd22d8073368e7f3cfa34aa384529b170b`.
+The launch wrapper is running the actual archived-model gate under the original
+GPU lock; optimizer admission still requires that gate to pass.
