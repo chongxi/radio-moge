@@ -2604,3 +2604,49 @@ preflight were not rerun. Tooling receipt SHA:
 The full TartanAir outcome audit has **not run**: its producer is still generating
 the remaining images. Run it only after its final generation report and full
 payload readback complete.
+
+### Negative result and continuation decision (2026-11-03, step 3645)
+
+The user's stated target is higher feature cosine together with better geometry.
+These are separate measurements: cosine measures feature direction, whereas
+independent sensor/laser depth evaluates downstream geometry. Neither a higher
+cosine alone nor improvement on one depth dataset establishes the joint target.
+The assistant's successive replies prioritizing first LiDAR and then cosine
+were inconsistent; the comparison must retain the same criteria and baseline.
+
+`reviewed-stage4-validation-3645-review-01` compares the unchanged four image
+sets, protocols, frozen teacher, five heldout identities and 18 laser cases.
+No inference was repeated. Comparison SHA:
+`cd61e3f57d71038dd9bb917afdf318d44504c27203e77d8055adbb4456ab3bad`.
+
+| Metric (same protocol as baseline) | Feature checkpoint 232288 | Geometry step 3645 |
+|---|---:|---:|
+| Macro spatial cosine | 0.96169206 | 0.96009134 |
+| Macro summary cosine | 0.93230093 | 0.93189263 |
+| NYU AbsRel | 0.07941177 | 0.06852037 |
+| ScanNet LiDAR AbsRel | 0.09211845 | 0.09822085 |
+
+Both cosines remain below initialization; LiDAR error is 6.62% higher. NYU error
+is 13.72% lower, but this does not establish overall benefit. Known-camera laser
+AbsRel is 0.12512213, worse than the preserved 3395 result of 0.11932770.
+The current recipe is therefore a negative result against the joint target,
+not evidence that geometry supervision cannot work in general.
+
+The archived feature configuration weights all four feature terms (spatial MSE,
+summary MSE, spatial cosine loss and summary cosine loss) at 1.0; the geometry
+configuration weights each at 0.1 while adding geometry terms. The exact file
+identities and values are recorded in
+`geometry-objective-review-20261103T1816-01/configuration-comparison.json`, SHA
+`584444c5a3b56b6d081e3c92185144390a4424c8c0dd422ea76f1d14ab1b74ff`.
+This coefficient change is a concrete variable to test. Component gradient
+magnitudes/dot products have not been measured, and it is not a causal finding.
+
+Do not automatically extend or launch another unchanged training segment.
+The already-running bounded segment retains its accepted configuration and
+finishes at its existing step/time limit; retain its final state and every
+previous best. Next work should diagnose the loss balance and prepare controlled
+comparisons with matched starting state, training views, sampling, augmentation,
+budget and evaluation, including a feature-only continuation control. Do not
+attribute the negative result to geometry alone or select a new success criterion
+after inspecting a favorable dataset. This is an execution decision following
+the observed result, not a claim that the user explicitly ordered a process kill.
