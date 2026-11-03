@@ -2966,3 +2966,68 @@ exactly. Online receipts:
 and `4a15a2086b911c5a65ba2790aa76fd851a7dc65075e20d1e80661b9ed672b0d7`.
 The predefined paired analysis will run once all four fixed-final evaluations
 complete. No joint improvement is inferred from partial results.
+
+### Four fixed controls complete: predefined joint target not met
+
+All four controls completed exactly 250 updates and their fixed final evaluations.
+The original controller and final trainer exited normally. All 4,000 actual
+microbatch input records, including 2,000 replay slots per arm, have identical
+SHA `f096f826aadefb191d755f16a92109b0ae980d972091e115d7cd291e35d2a34e`.
+The independent initial-state proofs and finite final adapter/Adam-state checks
+are complete. Each fixed final checkpoint is preserved; no best-step selection
+or repeated inference was used for this comparison.
+
+The paired reviewer verified all four view protocols, image ordering, frozen
+teacher, five heldout-manifest digests and 18 known-camera laser cases. The
+original-resolution primary metrics are:
+
+| Feature coefficient | Geometry coefficient | Spatial cosine | Summary cosine | LiDAR AbsRel | LiDAR change vs archive |
+| --- | --- | --- | --- | --- | --- |
+| Archive 232288 | — | 0.961692055 | 0.932300927 | 0.092118447 | — |
+| 0.1 | 0 | 0.960881501 | 0.931956495 | 0.095577967 | +3.76% |
+| 0.1 | 1 | 0.959403149 | 0.931998087 | 0.103820847 | +12.70% |
+| 1 | 0 | 0.960880349 | 0.931957212 | 0.095619652 | +3.80% |
+| 1 | 1 | 0.960623112 | 0.931988267 | 0.097868662 | +6.24% |
+
+All four have both primary cosines below the archive and LiDAR error above it.
+Thus none meets the predefined requirement that both cosines rise and LiDAR
+AbsRel falls. NYU AbsRel improves in all four (6.75–11.83%), but that does not
+satisfy the joint criterion. Native-400x640, per-source, DSLR and known-camera
+laser metrics remain separately reported in the full paired report; no archived
+known-camera baseline is invented where the bound reference lacks one.
+
+At fixed feature coefficient, enabling geometry worsens spatial cosine and
+LiDAR error relative to the matched feature-only control, while summary cosine
+rises slightly between controls but remains below archive. Raising the feature
+coefficient mitigates the spatial/LiDAR regression in the geometry-enabled arm
+without meeting the target. The two feature-only controls also regress, so
+geometry-gradient interference alone does not explain the common regression.
+These are single-seed, fixed-budget comparisons on reused validation; they do
+not establish the cause of the earlier sequential production regression or a
+general impossibility of geometry supervision.
+
+All four W&B runs are finished. All 20 checked final validation values match
+the saved records exactly. Full configuration/provenance values match
+numerically; equal integer/float API representations are explicitly recorded.
+The fourth run `29249cc4` has nine such type differences and no numerical
+difference. Its fixed final checkpoint SHA is
+`4be2a68bcc8fa034528d16b0b540705ecb4a9f64239ee7fb091384a20d0b0144`.
+
+Evidence under `corpus-controlled-comparison-01`:
+
+- Controller completion `report.json`: SHA
+  `8f61e89d07316836fdcdd259f7b65e0cfac1dbe2ff2d82a76d0da5c0afa641b8`.
+- Complete paired results `results-review-01/report.json`: SHA
+  `bec2fec3f851733a2c207b2f3226ec01790ef2386e8988a999f411f0f4ed2ddf`.
+- Fourth `online-final-01.json`: SHA
+  `8519ed07c8bc5e7c25d6f4f90d7408b846ab7bd03c6d29f7a65a963a7989293d`.
+- Combined final closure `results-closure-01/report.json`: SHA
+  `f8846340539da94aeba9d824b6205ade7097628cd1df5ac32e8799638a5a0ded`.
+
+The closure binds all four earlier online proofs and supersedes their historical
+pending-review fields without changing those immutable records. No unchanged
+production continuation is launched. The next diagnostic priority is a read-only
+comparison of the shared feature objective, sampling/crop/resolution and
+optimizer-reset contracts against the archived feature training. Those remain
+hypotheses to check, not established explanations. Native corpus preparation
+continues independently and does not authorize automatic admission or training.
