@@ -3,10 +3,12 @@
 GT geometry still consumes every original microbatch. Feature supervision keeps
 the same number of images and weights; it is replaced, never added twice.
 """
+import math
+
 import torch
 from torch.utils.data import DataLoader
 
-from .data import DeterministicBatches, TrainingImages, check_split, read_manifest
+from .data import DeterministicBatches, MixtureBatches, TrainingImages, check_split, read_manifest
 from .tracking import preserve_rng
 
 
@@ -14,10 +16,19 @@ def validate_feature_replay(config):
     replay = config.get('feature_replay')
     if replay is None:
         return
-    if (not isinstance(replay, dict) or set(replay) != {'manifest', 'fraction', 'seed'}
+    required = {'manifest', 'fraction', 'seed'}
+    if (not isinstance(replay, dict) or not required <= set(replay)
+            or set(replay) - required - {'mixture_weights'}
             or replay['fraction'] != .5 or not isinstance(replay['manifest'], str)
             or not replay['manifest'] or type(replay['seed']) is not int or replay['seed'] < 0):
         raise ValueError('Feature replay requires manifest, fraction=0.5 and a nonnegative integer seed')
+    if 'mixture_weights' in replay:
+        weights = replay['mixture_weights']
+        if (not isinstance(weights, dict) or not weights
+                or any(not isinstance(k, str) or not k or type(v) not in (int, float)
+                       or not math.isfinite(v) or v <= 0 for k, v in weights.items())
+                or not math.isfinite(sum(weights.values()))):
+            raise ValueError('Feature replay mixture weights must be finite positive source weights')
     if not config.get('geometry_supervision'):
         raise ValueError('Feature replay requires explicit GT geometry supervision')
     if config['train']['accumulation'] % 2 or len(config['data']['buckets']) != 1:
@@ -33,6 +44,9 @@ def load_replay_records(config, heldout_sets):
         raise ValueError('Replay must contain train-only RGB records with source/scene and no GT labels')
     for heldout in heldout_sets:
         check_split(records, heldout)
+    weights = config['feature_replay'].get('mixture_weights')
+    if weights is not None and set(weights) != {r['dataset'] for r in records}:
+        raise ValueError('Feature replay mixture weights must name every dataset exactly once')
     return records
 
 
@@ -43,8 +57,15 @@ def is_replay_batch(cursor):
 def make_replay_loader(records, config, cursor, microbatches):
     seed = config['feature_replay']['seed']
     count = (cursor + microbatches) // 2 - cursor // 2
-    sampler = DeterministicBatches(len(records), config['train']['batch_size'],
-                                   config['data']['buckets'], seed, cursor // 2, count)
+    weights = config['feature_replay'].get('mixture_weights')
+    if weights is None:
+        sampler = DeterministicBatches(len(records), config['train']['batch_size'],
+                                       config['data']['buckets'], seed, cursor // 2, count)
+    else:
+        # The replay cursor counts only replay slots. Source/scene probabilities
+        # are independent of frame counts and do not advance the geometry RNG.
+        sampler = MixtureBatches(records, weights, config['train']['batch_size'],
+                                 config['data']['buckets'], seed, cursor // 2, count)
     return DataLoader(TrainingImages(records, config['data']['augment']),
                       batch_sampler=sampler, num_workers=0, pin_memory=torch.cuda.is_available(),
                       generator=torch.Generator().manual_seed(seed))

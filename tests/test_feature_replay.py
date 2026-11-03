@@ -1,4 +1,5 @@
 from contextlib import nullcontext
+from collections import Counter
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -64,6 +65,40 @@ def test_replay_stream_has_half_the_slots_and_resumes_exactly(tmp_path):
         torch.testing.assert_close(left, right, rtol=0, atol=0)
 
 
+def test_replay_mixture_rejects_invalid_and_missing_sources(tmp_path):
+    config = replay_config(tmp_path)
+    for weights in ({}, {'rgb': 0}, {'rgb': -1}, {'rgb': float('inf')},
+                    {'rgb': float('nan')}, {'rgb': True}, {'rgb': '1'}, {'': 1}, []):
+        config['feature_replay']['mixture_weights'] = weights
+        with pytest.raises(ValueError, match='replay mixture weights'):
+            validate_config(config)
+    config['feature_replay']['mixture_weights'] = {'rgb': 1}
+    validate_config(config)
+    assert load_replay_records(config, [])
+    for weights in ({'other': 1}, {'rgb': 1, 'other': 1}):
+        config['feature_replay']['mixture_weights'] = weights
+        with pytest.raises(ValueError, match='every dataset exactly once'):
+            load_replay_records(config, [])
+
+
+def test_replay_mixture_controls_source_and_scene_mass_despite_frame_imbalance(tmp_path):
+    config = replay_config(tmp_path)
+    # A long capture must not dominate either the other scene or the rare source.
+    records = [dict(dataset='large', group='long') for _ in range(10000)]
+    records += [dict(dataset='large', group='short'), dict(dataset='small', group='only')]
+    config['feature_replay']['mixture_weights'] = {'large': .4, 'small': .6}
+    config['train']['batch_size'] = 4
+    full = list(make_replay_loader(records, config, 0, 4000).batch_sampler)
+    counts = Counter((records[i]['dataset'], records[i]['group']) for batch in full for i, *_ in batch)
+    total = sum(counts.values())
+    assert counts['small', 'only'] / total == pytest.approx(.6, abs=.025)
+    assert counts['large', 'long'] / total == pytest.approx(.2, abs=.025)
+    assert counts['large', 'short'] / total == pytest.approx(.2, abs=.025)
+    for cursor in (1, 4, 5):
+        resumed = list(make_replay_loader(records, config, cursor, 4000 - cursor).batch_sampler)
+        assert resumed == full[cursor // 2:]
+
+
 def test_replay_feature_branch_preserves_rng_and_never_calls_decoder():
     system, adapter = tiny_system()
     statistics = FeatureStatistics(6, 6)
@@ -82,10 +117,13 @@ def test_replay_feature_branch_preserves_rng_and_never_calls_decoder():
     hook.remove()
 
 
-def test_replay_training_preserves_gt_stream_and_exact_resume(tmp_path, monkeypatch):
+@pytest.mark.parametrize('mixture', [False, True])
+def test_replay_training_preserves_gt_stream_and_exact_resume(tmp_path, monkeypatch, mixture):
     import importlib
     trainer = importlib.import_module('radio_moge.train')
     config = replay_config(tmp_path)
+    if mixture:
+        config['feature_replay']['mixture_weights'] = {'rgb': 1.}
     actual = trainer.ground_truth_losses
     seen = []
 
@@ -121,6 +159,11 @@ def test_replay_training_preserves_gt_stream_and_exact_resume(tmp_path, monkeypa
     for key, value in full['adapter'].items():
         torch.testing.assert_close(value, resumed['adapter'][key], rtol=0, atol=0)
     torch.testing.assert_close(full['rng']['torch'], resumed['rng']['torch'], rtol=0, atol=0)
+    if mixture:
+        changed = deepcopy(split)
+        changed['feature_replay']['mixture_weights'] = {'rgb': 2.}
+        with pytest.raises(ValueError, match='identical config and manifests'):
+            train(changed, resume=partial, system_adapter=tiny_system())
     # Additional RGB provenance participates in exact-resume validation.
     manifest = Path(config['feature_replay']['manifest'])
     rows = [json.loads(line) for line in manifest.read_text().splitlines()]
