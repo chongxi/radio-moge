@@ -104,7 +104,7 @@ def unreviewed_rejections(snapshot, decisions):
         if decision.get('dataset') != 'tartanair':
             continue
         if (decision.get('decision') != 'exclude'
-                or decision.get('scope') != 'geometry_supervision'
+                or decision.get('scope') not in ('geometry_supervision', 'geometry_only')
                 or decision.get('rgb_replay_excluded') is not False
                 or not decision.get('reason') or not decision.get('evidence')
                 or decision['image'] in reviewed):

@@ -103,6 +103,7 @@ def rejection_snapshot(root):
 def test_incremental_review_skips_only_exact_evidenced_prior_rejections(tmp_path):
     references, decision = rejection_snapshot(tmp_path)
     assert unreviewed_rejections(references, [decision]) == references[1:]
+    assert unreviewed_rejections(references, [dict(decision, scope='geometry_only')]) == references[1:]
     assert unreviewed_rejections(references, []) == references
     assert unreviewed_rejections(references[:1], [decision]) == []
 
@@ -110,7 +111,7 @@ def test_incremental_review_skips_only_exact_evidenced_prior_rejections(tmp_path
 def test_incremental_review_rejects_changed_rgb_decision_or_rejection(tmp_path):
     references, decision = rejection_snapshot(tmp_path)
     for change in (dict(sha256='f' * 64), dict(evidence=[references[1]]),
-                   dict(rgb_replay_excluded=True), dict(decision='accept')):
+                   dict(rgb_replay_excluded=True), dict(scope='rgb_replay'), dict(decision='accept')):
         with pytest.raises(ValueError):
             unreviewed_rejections(references, [dict(decision, **change)])
     with pytest.raises(ValueError, match='Unique'):
