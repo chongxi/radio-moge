@@ -1725,3 +1725,51 @@ summary cosine declines. The active stage's five checkpoint selections remain
 at its step-1,000 parent, while earlier stage-specific bests are retained.
 Training continues within its existing bounded segment; compare step 1,500
 before drawing a trend conclusion or changing the accepted objective.
+
+### Second-stage validation at step 1,500
+
+`reviewed-stage2-validation-1500-review-01/report.json`, SHA
+`fbc4138d17ab4eb468615c8130c8639035539443f3abc33fde0957d34ee8a4c8`,
+checks the completed recorded validation against the same initial, step-1,000
+and step-1,250 images. All four preprocessing views, fixed teacher/GT values,
+five heldout digests, frozen model revisions and the 18 known-camera laser views
+match. No model inference or optimizer change was made for this comparison.
+
+Original-view macro spatial cosine is **0.9597261074**, down from 0.9597938078
+at 1,250; summary cosine is **0.9318716183**, up from 0.9318046097. Both remain
+below the step-1,000 parent and the initial feature-only adapter. NYU AbsRel is
+**0.0727026400**, 1.49% better than 1,250 but 0.90% worse than 1,000, and 8.45%
+better than the original adapter. ScanNet LiDAR AbsRel is **0.0990181056**,
+0.66% worse than 1,250 and 7.49% worse than the original adapter. Known-camera
+laser AbsRel is 0.1342309032, 0.54% worse than 1,250. The native 400x640 protocol
+remains separate: spatial 0.9593450126 and summary 0.9296253680.
+
+Structured3D original-view spatial cosine falls further to 0.9650159772;
+COCO improves from 0.9423794388 to 0.9425661252. These are descriptive changes,
+not a causal attribution or evidence of overall improvement. The active stage's
+five best-checkpoint selections still refer to its step-1,000 parent. Training
+continues within the existing 2,000-global-step / 7,200-new-second bound.
+
+### Retained ARKit/FARO visual diagnostic
+
+`arkit-faro-visuals-01` reproduces all nine existing exact-frame comparisons
+from retained publisher members. SHA256, CRC, byte sizes, receipts, native
+conversion statistics and both unfitted high-resolution camera hypotheses match
+the original probe exactly. Seven tests passed locally and remotely. All nine
+pages were actually viewed with common depth and signed-error palettes.
+
+The successful comparisons cover three videos and only rotations **0 and 90**;
+the earlier 12-video availability scan does not imply completed comparisons for
+180 or 270. The near-wall view at ordinal 27177 has a broad -0.039 m median
+residual under both mappings, rather than only a boundary tail. Views 27185 and
+41546 also show residuals on wall/panel surfaces. Mirror, sink, lamp and fabric
+views expose different holes and boundary support between the two sources.
+
+The visual review, SHA
+`68c40ad1c876423b8ae0e20ec9c4b241aa2d4cd1239c90b29e65a92f3e94ceb0`,
+does not identify which source is physically correct, fit a correction, issue
+exclusions or accept ARKit. Publisher-filtered sampling and unresolved exact
+high-resolution camera calibration remain explicit limitations. Reuse these
+localized observations in the eventual complete native-source review; do not
+rerender these nine pages merely to postpone disposition. Active accepted
+training inputs and all source-quality flags remain unchanged.
