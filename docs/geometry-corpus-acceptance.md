@@ -886,6 +886,103 @@ RGB exclusion and 11 Tartan geometry-only decisions, while retaining the
 candidate quarantine registers. These 12 now have explicit geometry dispositions;
 full source reviews, whole-corpus accounting and all training gates remain open.
 
+## Completed teacher source reviews (2026-11-03)
+
+`teacher-source-reviews-02` completes the source eligibility reviews for the
+IRS teacher policy and the Hypersim review-teacher policy. IRS has 133,869
+eligible relative-pseudo candidates and 10 quarantined candidates. The
+Hypersim alternative policy has 3,678 eligible relative-pseudo candidates,
+two quarantined candidates and one previously reviewed white-RGB rejection.
+These are policy-specific source decisions; the native Hypersim source and
+whole-corpus admission have not been accepted by these records.
+
+The publisher compares all 137,559 cached teacher identities with the frozen
+inventory, checks receipt hashes, support statistics, teacher provenance and
+relative-loss routing, and requires every external flag to match its exact
+reviewed geometry exclusion. It relies on the producer's completed full array
+readback and the earlier independent selected-payload reviews; it does not
+claim another full array readback or physical metric accuracy. Existing native
+failure flags remain intact. The five source checks bind the documentation,
+camera/unit policy, support, full receipt distributions, stratified visuals,
+later common-palette reviews and explicit dispositions.
+
+The documentation review also records that Hypersim's authors recommend
+lossless HDR imagery for downstream learning. This frozen corpus uses its
+existing lossy tonemapped RGB previews, without claiming HDR equivalence.
+This review accepts the bounded relative-teacher use of those exact RGB inputs;
+it does not alter the frozen images, certify native camera repair, or clear the
+ai_009_003 native discrepancies. See the
+[official Hypersim formats](https://github.com/apple-aiml-research/ml-hypersim#lossy-preview-images).
+
+The source reviews bind their required candidate quarantine registers:
+
+- `teacher-source-reviews-02/irs-source-review.json`:
+  `5b5b16efbcb098e321ec31bfed14bad865816959dec02f4f2e059c72b6e10d46`.
+- `teacher-source-reviews-02/hypersim-source-review.json`:
+  `436ef7bc6d4d3a0bcbababc6ea116b999a17974739fe537e92df8672f538333a`.
+
+`known-geometry-exclusions.jsonl` in the same directory combines the existing
+24 exact decisions, with SHA256
+`4bfdf2b5e64cf7510994fb1926e572f5bcba73737eade36c75ce175c2f50225c`.
+It preserves all original evidence and scope fields: white RGB 210812 is
+excluded from geometry and replay; the 11 Tartan and 12 teacher-quality
+exclusions apply only to geometry. Future findings require additional explicit
+decisions. Full accounting must still apply the quarantine registers before
+these exclusions, reread every selected array, and resolve every other source.
+
+Code snapshot `code-teacher-source-review-v2` is commit `fe7981c`. The first
+attempt was stopped before any source-review publication because random
+SQLite reads over the shared filesystem were slow. The second attempt streams
+each bounded source into encoded-row lookup memory with the same identity
+checks; it completed successfully. This does not modify any producer process,
+source labels, or prior evidence.
+
+## RGB replay source and scene sampling (2026-11-03)
+
+`feature_replay.mixture_weights` now selects the existing deterministic
+source → frozen group → frame sampler for RGB replay. The weights must be
+finite, positive, and name every replay dataset exactly once. Omitting them
+preserves the older uniform stream. Replay still replaces half of feature
+supervision slots; geometry sees every original microbatch. The sampler uses
+the replay cursor, so odd and even interruption points resume exactly without
+advancing the geometry random stream.
+
+The initial policy in `rgb-replay-sampling-candidate-01/policy.json` assigns
+15% each to ARKitScenes, COCO, Hypersim, ScanNet++ and TartanAir; 10% each to
+IRS and Structured3D; and 5% to NYUv2. This gives equal aggregate weight to
+real-image and synthetic-image source families. These are design weights for
+the RGB replay slots, not fractions of the geometry stream or an optimized
+performance result. Canonical heldout isolation and final coverage acceptance
+remain prerequisites to freezing the training configuration.
+
+The actual `MixtureBatches` implementation was exercised for 100,000 draws
+using the candidate pool's complete 46,017 group counts. All eight observed
+source shares were within 0.5 percentage points of the configured weights:
+ScanNet++ was 14.985% (uniform-frame sampling would be 51.372%), and NYU was
+4.874% (uniform-frame sampling would be 0.064%). Uniform within-source groups
+reduce the largest IRS family's expected share from 22.918% to 7.692%, and
+the largest Tartan environment's share from 22.198% to 9.091%.
+
+Sampling uses replacement: the NYU simulation drew 4,874 times from 1,000
+distinct group/frame slots out of 1,043 available images. This expected
+repetition is recorded, not hidden as independent image coverage. The audit
+uses reconstructed group/frame slot IDs, not actual RGB payloads or the final
+training batch schedule. Frozen groups still do not prove physical scene
+independence, and this sampling change does not perform near-duplicate removal.
+The original candidate pool remains unchanged, including its single white-RGB
+exclusion and retained geometry-only exclusions.
+
+Sampling report SHA256:
+`53e0caf83d705dab0ddf9b31bfe57e10c42aa82cc6daf340761a916f3501a3f8`.
+Code snapshot `code-replay-mixture-v1` is commit `bb2adc6`. Seven replay tests
+and 45 related admission/model-probe tests passed locally; all 52 passed in
+the remote model environment in 7.08 seconds, with CUDA disabled. The tests
+cover source/scene imbalance, invalid weights, missing sources, exact resume,
+preserved geometry batches, unchanged random streams, and gate enforcement.
+They use tiny CPU models and do not replace the actual archived-model probe.
+The tooling record SHA256 is
+`afb1ea6d87401a619c76aaba3bd0f49b27e072a24455e7031d61024a5073b7d9`.
+
 ## Publication and supervision contract
 
 Every input image needs an outcome: verified native cache, explicitly identified
