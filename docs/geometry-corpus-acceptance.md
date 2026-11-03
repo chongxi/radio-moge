@@ -2650,3 +2650,108 @@ budget and evaluation, including a feature-only continuation control. Do not
 attribute the negative result to geometry alone or select a new success criterion
 after inspecting a favorable dataset. This is an execution decision following
 the observed result, not a claim that the user explicitly ordered a process kill.
+
+### Stage 4 finished; preserve the negative joint result
+
+Stage 4 ended normally at global step **3892**, after 997 new finite updates.
+The wall-clock budget stopped optimizer work at 7205.61 seconds; final evaluation
+and checkpoint publication completed at 7427.76 seconds. Both training processes
+exited and W&B run `6bddb43a` finished. No unchanged stage 5 is launched.
+
+The final paired review reuses the same four image sets, protocols, frozen
+teacher, five heldout identities and 18 known-camera laser cases. Five online
+validation metrics exactly match the local final record; inference was not
+repeated. Original-protocol results are:
+
+| Metric | Archived feature 232288 | Geometry 3892 |
+|---|---:|---:|
+| Macro spatial cosine | 0.96169206 | 0.96028767 |
+| Macro summary cosine | 0.93230093 | 0.93182381 |
+| NYU AbsRel | 0.07941177 | 0.07186327 |
+| ScanNet LiDAR AbsRel | 0.09211845 | 0.09528403 |
+
+LiDAR recovered from the preceding validation and is slightly below the earlier
+geometry step-500 result, but remains **3.44% worse than initialization**. Both
+cosines remain lower. NYU improves 9.51%; known-camera laser AbsRel is 0.13033798,
+above the preserved step-3395 best. The joint target remains unmet. The separate
+400x640 protocol is retained separately, and none of these comparisons establish
+statistical significance or a causal explanation.
+
+`reviewed-stage4-finish-01` preserves the immutable final checkpoint, SHA
+`f6929a16dde1bbacd99c27ea353d1cf948befe5b1d082e23dc339364e4bbedf8`.
+CPU readback verifies all 100 Adam states at 3892, cursor 15952, finite tensors,
+unchanged feature statistics, and exact config, stream identities and revisions.
+All 997 training records are finite. This is not an independent process-resume
+test. The NYU-3145, laser-3395 and older selected checkpoints remain intact.
+Final checkpoint proof SHA:
+`d2e91ead10da992421c99a4d68d88d17f0fc3825b72ffcc678f2f888edf2dd8d`.
+Final objective summary SHA:
+`9663ba825a566a619bbed8df3805228e1696c682bec2f5520a7e5583dbc18f14`.
+
+### Existing controlled experiments constrain the diagnosis
+
+The coefficient comparison above must be interpreted alongside the already
+completed November 2 experiments. `loss-weight-ablation-20261102` compared
+feature coefficients 0.1 and 1.0 for both custom and upstream-core geometry,
+with matched initialization/statistics, fresh AdamW, seed 43, 81 training views,
+400x640 inputs, LR 1e-5 and 250 steps per arm. Raising the coefficient to 1.0
+did **not** improve both cosine metrics together or recover the archived baseline.
+It is therefore incorrect to present restoring coefficient 1.0 as an untested,
+established fix for the current result.
+
+`feature-replay-ablation-20261102` used the same limited geometry scope and
+compared paired-RGB feature supervision with 50% original mixed-RGB replay.
+Replay mitigated deterioration, but both cosines and LiDAR still remained worse
+than initialization. These are single-seed, short, small-corpus experiments;
+they do not isolate the cause of the current sequential expanded-corpus run.
+Both immutable plans and reports are bound by
+`geometry-objective-history-review-01/report.json`, SHA
+`e9bae08b708e90fa2051c41515b60b1906fc7741793a53e59435b4f0e06603aa`.
+No historical experiment was repeated.
+
+`code-gradient-diagnostic-v1` at `4311579` adds an observational diagnostic.
+It uses 16 fixed-hash accepted images covering all eight source/label strata,
+two augmented paired/replay cases per image, and the archived 232288 and final
+3892 checkpoints. The two checkpoints must see identical RGB, replay and native
+targets. It measures gradients of the four-term feature objective, each cosine
+loss, and the weighted geometry objective, plus their inner products. No optimizer
+is constructed and before/after hashes cover parameters and buffers of every
+model and feature statistics. Weight scenarios are linearized Euclidean gradient
+directions, not accumulated AdamW updates or predictions of heldout improvement.
+All 25 targeted tests pass locally and remotely. The actual 64-case diagnostic
+completed in 64.68 seconds under the existing GPU lock. Exact augmented input
+identities match between checkpoints; all model parameters and buffers are
+unchanged, and no optimizer was constructed. Result SHA:
+`cd9efdffd9d528fe8c001f2269ffd71a9d66c7414f752747c8967bbfd3845534`;
+analysis SHA:
+`7757df1e896ef21d77718149575420d3a4234813cbc2d7a72caf96b80516c31b`.
+
+At the archived checkpoint, 12 of 32 selected cases have a negative inner
+product between feature and geometry gradients; at final 3892, 11 of 32 do.
+The median geometry-gradient norm relative to the currently weighted feature
+gradient is 3.75 and 3.89 respectively. Under the current objective's linearized
+SGD direction, spatial cosine loss increases in 6/32 initial and 5/32 final
+cases, and summary cosine loss increases in 2/32 and 3/32. This is a concrete
+local conflict signal, not a frequency estimate for training or proof of the
+observed heldout regression. Source-balanced selected cases do not reproduce
+the production mixture. Paired and replay branches also use different prescribed
+augmentations, so their difference is not a controlled causal replay effect.
+
+Changing the feature coefficient to 1.0 removes these adverse cosine directions
+in this local linearization, but increases geometry loss in one initial and two
+final cases. Prior actual training did not jointly restore the cosine metrics
+with coefficient 1.0. Thus neither gradient norm ratios nor these counterfactual
+directions establish a working training recipe.
+
+`geometry-controlled-comparison-plan-02/plan.json` specifies a four-arm 2x2
+comparison: feature coefficients 0.1/1.0, each with geometry disabled/enabled.
+All arms restore archived adapter/statistics 232288, use fresh identical AdamW,
+the same accepted 598,298 geometry identities and 796,477 replay pool, exact
+source/scene sampling and augmentation, seed 43, LR 1e-5 and 250 updates. Compare
+the fixed final step and report every predefined metric; an incomplete arm is
+not compared to complete arms. A joint positive result would require replication.
+The earlier plan-01 has a redundant null source-mixture field and is superseded;
+plan-02 binds the actual `data.mixture_weights` and complete optimizer settings.
+No arm has started. The zero-geometry path, configuration-specific contracts and
+actual model gates must be implemented and verified before launch; historical
+training seals do not admit modified losses.
