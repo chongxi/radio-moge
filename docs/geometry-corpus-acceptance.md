@@ -862,8 +862,29 @@ directory (`747b607cf23cc8d7acd27ca3a24d671ec1e40009bb417be4ca50e00762662dc1`).
 These registers preserve the latest common-palette review findings, including
 the withdrawal of the old Supermarket global-color argument. They create no
 geometry or RGB exclusions, clear no native flags, and grant no source or
-training acceptance. The 12 candidates still need explicit quality routing
-decisions before final source reviews can pass.
+training acceptance.
+
+The subsequent `teacher-geometry-quality-decisions-01` records a conservative
+geometry-only exclusion decision for exactly these 12 images. Existing reviews
+cannot settle the local surface-versus-background target, and no verified
+confidence/surface mask isolates reliable supervision in the uncertain regions.
+The decision omits those geometry targets without claiming proven physical
+errors, applying a depth-ratio cutoff, or reviving the withdrawn Supermarket
+color argument. Both affected Hypersim native outcomes were checked to be
+flagged or rejected; this does not discard an eligible native alternative.
+
+`teacher-geometry-quality-decisions-01/geometry-exclusions.jsonl` has SHA256
+`c2d5f19b38eefe86f5eed4743672d7278c109eea05bd61714e513ac598d82486`.
+The decision report is
+`ef53a751852c2a545ad2e700a0a62dc145f8cf2e39ee7e710c48895c917777c1`.
+All 12 exact RGB identities were found in the existing replay candidate pool;
+the pool was neither rewritten nor rehashed in full by this decision step.
+The exclusion rows explicitly set `scope=geometry_supervision` and
+`rgb_replay_excluded=false`, with the original review and candidate evidence.
+Final accounting must combine these 12 decisions with the existing one white
+RGB exclusion and 11 Tartan geometry-only decisions, while retaining the
+candidate quarantine registers. These 12 now have explicit geometry dispositions;
+full source reviews, whole-corpus accounting and all training gates remain open.
 
 ## Publication and supervision contract
 
