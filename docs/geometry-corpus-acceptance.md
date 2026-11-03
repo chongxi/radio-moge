@@ -611,7 +611,9 @@ to one CPU by process affinity, including native Embree/TBB work.
   [raw documentation](https://github.com/apple/ARKitScenes/blob/main/raw/README.md)
   also states that it was filtered using lowres/highres disagreement, so the
   sample is selection-biased. The diagnostic reports two pixel-origin mappings
-  without fitting either to depth; exact highres K remains unresolved. Within
+  without fitting either to depth; exact highres K had not been retrieved at
+  that point. The later exact-camera review below corrects the assumption that
+  it was unavailable: the publisher does release `wide_intrinsics.zip`. Within
   stable reference regions, frame median absolute differences ranged roughly 4--39 mm,
   and some frames still have substantial >5 cm disagreement and large tails.
   High confidence alone therefore does not complete ARKit acceptance. Preserve
@@ -1768,8 +1770,10 @@ views expose different holes and boundary support between the two sources.
 The visual review, SHA
 `68c40ad1c876423b8ae0e20ec9c4b241aa2d4cd1239c90b29e65a92f3e94ceb0`,
 does not identify which source is physically correct, fit a correction, issue
-exclusions or accept ARKit. Publisher-filtered sampling and unresolved exact
-high-resolution camera calibration remain explicit limitations. Reuse these
+exclusions or accept ARKit. Publisher-filtered sampling remains a limitation.
+Exact high-resolution intrinsics were subsequently obtained in
+`arkit-exact-faro-camera-01`; the earlier availability assumption is corrected
+below. Cross-sensor visibility and physical depth residuals remain. Reuse these
 localized observations in the eventual complete native-source review; do not
 rerender these nine pages merely to postpone disposition. Active accepted
 training inputs and all source-quality flags remain unchanged.
@@ -2171,3 +2175,85 @@ The previous final and all best checkpoints, including NYU step 1750, remain
 preserved. The active wrapper/trainer hold the original GPU lock and must not
 be relaunched. Native TartanAir and ScanNet preparation continues; the full
 geometry corpus is not admitted by this six-source stage.
+
+
+### Paired step-2250 validation and preserved depth checkpoint
+
+The first stage-3 validation completed at global **2250**. The comparison checks
+the same 1,268 original-resolution images, 1,268 fixed-bucket images, 128 DSLR
+images, 120 LiDAR images and 18 known-camera laser cases against the archived
+feature model and the completed step-2000 results. Image order, preprocessing,
+frozen-teacher outputs, fixed laser support, model revisions and all five
+heldout digests match. Macro scores were recomputed from the recorded per-image
+results; no inference was repeated. Four focused negative/aggregation tests
+passed locally and remotely. Comparison SHA:
+`23d84905bd39a484051925efaca57573bccd8aa891b41fc42b84e3246facfd29`.
+
+| Original evaluation metric | Step 2000 | Step 2250 | Interpretation |
+| --- | ---: | ---: | --- |
+| Macro spatial cosine | 0.96016343 | 0.95980578 | Slightly lower |
+| Macro summary cosine | 0.93193173 | 0.93185091 | Slightly lower |
+| NYU AbsRel | 0.07110392 | 0.06986465 | 1.74% lower error; new NYU best |
+| ScanNet LiDAR AbsRel | 0.09676631 | 0.09596369 | 0.83% lower error |
+| Known-camera laser AbsRel | 0.14242842 | 0.12761458 | 10.40% lower error |
+
+NYU is 12.02% better than the initial archived feature model, but LiDAR remains
+4.17% worse than that initial model. Both original cosine scores remain below
+their initial values. The fixed 400x640 protocol is separate: its NYU error
+increased 0.18% from step 2000, and its summary cosine remains slightly above
+its own initial baseline. IRS and Structured3D contribute the largest original
+spatial-cosine drops in this interval. These are task-specific observations,
+not an overall improvement or a causal attribution to the added source.
+
+The W&B **history record at optimizer step 2250**, rather than its rounded
+summary response, exactly matches all five displayed primary metrics and the
+immutable provenance. Online evidence SHA:
+`1bd861ece1921de1256244dda8688636b93693415291526fc9e3172171b21bd0`.
+
+`reviewed-stage3-best-depth-2250-01/checkpoint-step2250.pt` preserves the common
+checkpoint selected by this stage's NYU, LiDAR and laser metrics. CPU readback
+confirmed finite adapter/Adam tensors, all 100 Adam states at step 2250,
+cursor 4000, and exact config/stream/revision identity. Checkpoint SHA:
+`e1dd4917ff97b02e3bce524daf0f75fe4612d05915dcd5e82a3cfd33e5d00878`;
+verification SHA:
+`68b0bee06bc3a4fc6dcf443a1af09d691c0799c4ee17f3585fd029d95541446f`.
+This is not another resume-process test. Earlier checkpoints remain preserved:
+the historical LiDAR step-500 and laser step-250 minima still outperform this
+new stage's respective selections. The optimizer continues unchanged toward
+the existing global-3000/7200-new-second bound; the next validation is 2500.
+
+
+### Correction: exact ARKit high-resolution intrinsics are released
+
+The earlier assumption that exact high-resolution K was unavailable was
+incorrect. The [official raw documentation](https://github.com/apple/ARKitScenes/blob/main/raw/README.md)
+names `wide_intrinsics`; direct publisher URLs for `wide_intrinsics.zip` and
+`wide.zip` work, despite their omission from the default downloader's asset
+list. The new diagnostic retrieved the **exact timestamp camera and wide RGB
+for all nine previously reviewed training frames**, with retained member
+SHA256/CRC proofs. No broad archive download, fitted calibration, native mask
+change or guessed camera was used. Eight new local tests and thirteen remote
+camera/display tests passed.
+
+`arkit-exact-faro-camera-01` reproduced the original retained depth, confidence,
+camera and support before comparing FARO with the newly released camera.
+All nine new six-panel pages were actually inspected. Released focal/principal
+values differ from the integer-scaled VGA hypothesis by at most **0.004 pixels**
+(consistent with textual precision), while the half-center hypothesis has
+approximately a one-pixel principal-point difference. Exact-camera wide/native
+RGB mean absolute differences span **0.003705–0.010926** on a 0–1 scale.
+Diagnostic SHA:
+`caddc9793dccb335e41a737c67df599952a6588e44c311068030d7db3a5a5c3a`;
+visual review SHA:
+`0002e9d0a069aa74435bf885ef99fe4cfff66d7eac9fac2b61234f770f3297c2`.
+
+The camera-availability ambiguity is now resolved for these nine frames.
+It does **not** remove the broad -0.039 m near-wall residual at 27177, the
+wall/baseboard residual at 27185 or the panel/bowl disagreement at 41546
+(87.59% of compared pixels within 5 cm). Mirror and reference-hole limitations
+also persist. These comparisons still cover only three videos and rotations
+0/90, in a publisher-filtered subset. They neither identify a physically
+correct source at every pixel nor establish full-source accuracy. No new
+exclusion or ARKit source acceptance is issued. Use these exact camera proofs
+in the remaining qualified source review; do not repeat the availability
+search or rerender the same nine cases simply to defer disposition.
