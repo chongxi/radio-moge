@@ -1786,3 +1786,57 @@ geometry-only exclusions; their RGB remains eligible for replay. No depth,
 mask, threshold or active training artifact is changed. The cumulative known
 geometry exclusion count is now 1,437, including 24 TartanAir inputs; only the
 existing white Hypersim image 210812 is excluded from RGB replay.
+
+### Second-stage validation at step 1,750
+
+`reviewed-stage2-validation-1750-review-01/report.json`, SHA
+`ec35d39d7c50157b098410a03f1623cbe477d4156fe96c64948f08533496fafa`,
+compares the completed recorded outputs against identical initial, step-1,000
+and step-1,500 samples. The original and native 400x640 views each contain
+1,268 images; LiDAR, DSLR and known-camera laser views contain 120, 128 and 18.
+Image order, protocols, fixed teacher/GT values, five heldout digests and frozen
+model revisions match. All five main validation metrics also match W&B.
+
+NYU AbsRel reaches **0.0699425375**, a new best: 3.80% better than step 1,500,
+2.93% better than step 1,000 and 11.92% better than the initial feature-only
+adapter. Original-view spatial cosine recovers to **0.9599099911** from
+0.9597261074, but remains slightly below step 1,000 and the initial adapter.
+Summary cosine declines to **0.9318509872** from 0.9318716183. ScanNet LiDAR
+AbsRel rises to **0.1003067840**, 1.30% worse than step 1,500 and 8.89% worse
+than the initial adapter. Known-camera laser AbsRel rises to **0.1385882757**,
+3.25% worse than step 1,500. There is no overall improvement or causal claim.
+
+The separate native 400x640 protocol reports spatial cosine 0.9594301366 and
+summary cosine 0.9296619351. IRS original-view spatial cosine improves by
+0.0011598 since 1,500, while Structured3D improves by 0.0002749. These protocol
+and dataset results remain separate from the main macro comparison.
+
+The NYU-selected step-1,750 checkpoint is preserved by immutable hardlink in
+`reviewed-stage2-best-nyu-1750-01`, SHA
+`ca25803f5ad3d17bb9a5abd16ffd14e85694f1f6b1d0ed94fa858a36d989f3a9`.
+CPU readback verifies finite adapter/optimizer tensors, all 100 Adam states at
+step 1,750, data cursor 12,000 and exact runtime configuration, stream digests
+and model revisions. This is checkpoint readback, not a separate resume test.
+Other active-stage best selections remain at step 1,000; earlier stage-specific
+bests are retained. The running optimizer and accepted inputs are unchanged.
+
+### ARKit outcome tooling and one further TartanAir disposition
+
+`audit_arkit_outcomes.py`, execution snapshot `code-arkit-outcomes-v1` at
+`c7474f9`, is ready for the completed producer output. Ten tests pass locally
+and remotely. It requires full producer readback, binds every frozen RGB input
+to one native candidate or rejection, checks native units/grid/timestamp proofs,
+and retains both native flags and the unresolved FARO calibration/visibility
+diagnostic. Its SQLite working index uses local temporary storage. These tests
+are not an actual full-source audit or a source-quality acceptance.
+
+`tartanair-rejection-review-06` reproduces only ordinal **455036**,
+neighborhood/Hard/P010 frame 1406. The actual page was viewed: the upward view
+is mostly sky with trees, a house, pole and wires near the lower edge. Final
+support is **4.91146%**, below the unchanged 5% minimum. The exact input receives
+a geometry-only exclusion; its unchanged RGB was found in the active replay
+manifest. The prior 24 TartanAir decisions were not rerendered. Known geometry
+exclusions now number **1,438**, SHA
+`e94b103829bf70d7237329a7db8c9111b062c75c6de8b783a79714c03e108206`.
+Only white Hypersim image 210812 is excluded from RGB. Further producer
+rejections after this snapshot require their own disposition.
