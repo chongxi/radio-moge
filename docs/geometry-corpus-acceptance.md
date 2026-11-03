@@ -90,6 +90,13 @@ packs of all 12 primary/recovered/replacement sources (24 packs). Fourteen
 storage/snapshot tests passed remotely (1.05 s); the broader local set including
 geometry sampling and admission passed 41 tests (5.52 s). No optimizer ran.
 
+The actual `stage1-payload-preflight-01` then completed all **24 packs / 4,762
+members / 7,435,008,000 bytes**, with zero errors, covering every source attempt.
+`stage1-payload-census-01` is now running from immutable `code-snapshot-payload-v1`
+with the same reader, one low-priority CPU process and one BLAS thread. Its
+individual pack reports can support later scoped accounting, but the snapshot
+payload gate remains incomplete until the full run publishes its final report.
+
 The additional TartanAir rejection at exact ordinal **417529**, neighborhood
 Easy/P000 frame003273, was separately reproduced from retained left/right
 depth and RGB in `tartanair-rejection-review-02`. All source hashes and published
