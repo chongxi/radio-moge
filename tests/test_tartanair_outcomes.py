@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from audit_tartanair_outcomes import (CALIBRATION, CONVERSION, candidate_details,
-                                     quality_details, rejection_details, run)
+                                     quality_details, rejection_details, run, source_identity)
 from radio_moge.geometry_cache import GeometryPackWriter, canonical_json, publish_json, sha_file
 from radio_moge.geometry_sources import normalized_opencv_intrinsics
 
@@ -189,3 +189,25 @@ def test_candidates_reject_wrong_grid_units_eye_label_flag_or_independent_accura
     rejection['stats'] = quality(.05)
     with pytest.raises(ValueError, match='minimum support'):
         rejection_details(rejection)
+
+
+def test_day_night_family_is_preserved_and_heldout_variants_stay_out(tmp_path):
+    _, _, entry, _ = fixture(tmp_path)
+    row = entry['image']
+    proofs = entry['geometry_metadata']['source_proofs']
+    for environment, group, allowed in [('abandonedfactory_night', 'abandonedfactory', True),
+                                       ('abandonedfactory_night', 'abandonedfactory_night', False),
+                                       ('office2', 'office', False), ('seasonsforest_winter', 'seasonsforest', False)]:
+        new = deepcopy(row)
+        new.update(environment=environment, group='tartanair:environment:' + group)
+        for name in ('source_url', 'source_member', 'trajectory'):
+            new[name] = row[name].replace('test/', environment + '/')
+        corresponding = deepcopy(proofs)
+        for proof in corresponding:
+            proof['source'] = proof['source'].replace('test/', environment + '/')
+            proof['member'] = proof['member'].replace('test/', environment + '/')
+        if allowed:
+            assert source_identity(new, corresponding) == 'Easy'
+        else:
+            with pytest.raises(ValueError, match='left-eye source identity'):
+                source_identity(new, corresponding)

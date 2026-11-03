@@ -17,6 +17,7 @@ import time
 
 import numpy as np
 
+from download_tartanair_variety import family, split_for
 from radio_moge.corpus_admission import checked_json, checked_path, file_ref, readonly_db
 from radio_moge.geometry_cache import HEX64, canonical_json, publish_json, validate_member_reference
 
@@ -33,7 +34,8 @@ def source_identity(row, proofs):
             or len(parts) != 5 or parts[0] != row['environment'] or parts[1] not in ('Easy', 'Hard')
             or parts[3] != 'image_left' or not parts[4].endswith('_left.png')
             or row['trajectory'] != '/'.join(parts[:3])
-            or row['group'] != 'tartanair:environment:' + row['environment']
+            or row['group'] != 'tartanair:environment:' + family(row['environment'])
+            or split_for(row['environment']) != 'train'
             or '..' in parts or PurePosixPath(row['source_member']).is_absolute()
             or not row['source_url'].startswith('https://airlab-cloud.andrew.cmu.edu:8080/swift/v1/')
             or not row['source_url'].endswith('/tartanair/' + '/'.join(parts[:2]) + '/image_left.zip')):
@@ -196,8 +198,8 @@ def run(config, native_attempt, attempt):
                 bind(db, record['image'], 'rejected', record['reason'], ref, details)
                 rejection_refs.append(ref)
             counts = dict(db.execute('SELECT outcome,COUNT(*) FROM images GROUP BY outcome'))
-            bundles, environments, trajectories = db.execute('SELECT COUNT(DISTINCT source_url),'
-                'COUNT(DISTINCT environment),COUNT(DISTINCT trajectory) FROM images').fetchone()
+            bundles, environments, trajectories, families = db.execute('SELECT COUNT(DISTINCT source_url),'
+                'COUNT(DISTINCT environment),COUNT(DISTINCT trajectory),COUNT(DISTINCT scene_group) FROM images').fetchone()
             if (None in counts or counts.get('rejected', 0) != len(rejections)
                     or counts.get('native_candidate', 0) != packs['count']
                     or bundles != generation['source_bundles_seen']
@@ -231,7 +233,7 @@ def run(config, native_attempt, attempt):
     publish_json(output / 'review-candidates.json', [selected[k] for k in sorted(selected)])
     report = dict(stage='native_outcomes_accounted_not_accepted', dataset='tartanair', completed_at=time.time(),
         expected_scope=expected, outcome_counts=counts, source_bundles=bundles, environments=environments,
-        trajectories=trajectories, trajectory_count_is_not_independent_scene_count=True,
+        environment_families=families, trajectories=trajectories, trajectory_count_is_not_independent_scene_count=True,
         manifest_sha256=config['manifest_sha256'], policy_sha256=policy_hash, source_report=source_ref,
         inventory=inventory_ref, generation_report=refs['generation'], packs=refs['packs'],
         rejections=refs['rejections'], policy=refs['policy'], index=file_ref(output / 'outcomes.sqlite'),
@@ -241,7 +243,8 @@ def run(config, native_attempt, attempt):
         producer_array_readback_complete=True, independent_array_readback_performed=False,
         pack_payload_hashes_rechecked=False, receipt_metadata_only=True, source_quality_accepted=False,
         automatic_exclusions=0, training_admission=False, optimizer_updates=0,
-        local_temporary_index=True, audit_code=file_ref(Path(__file__)))
+        local_temporary_index=True, audit_code=file_ref(Path(__file__)),
+        family_split_helper=file_ref(Path(__file__).with_name('download_tartanair_variety.py')))
     publish_json(output / 'report.json', report)
     return report
 
