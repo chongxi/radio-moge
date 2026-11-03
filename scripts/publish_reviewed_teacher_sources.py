@@ -114,6 +114,13 @@ def publish(config, attempt):
             if found != (row['image'], row['sha256'], row['dataset']):
                 raise ValueError('Exclusion does not match the frozen inventory')
         for dataset, cache_name, expected, rejected, policy_hash, evidence_names in specs:
+            # A bounded source-sized map avoids hundreds of thousands of random
+            # SQLite/NFS reads. Keep encoded rows, not the entire corpus in RAM.
+            originals = {ordinal: (image, encoded) for ordinal, image, encoded in db.execute(
+                'SELECT ordinal,image,row_json FROM images WHERE dataset=? ORDER BY ordinal', (dataset,))
+                if dataset == 'irs' or ordinal in hyp_teachers}
+            if len(originals) != expected:
+                raise ValueError('Frozen teacher source scope changed')
             cache = root / cache_name
             gen_ref, packs_ref, policy_ref = [file_ref(cache / p) for p in
                 ('report.json', 'packs/packs.json', 'packs/policy.json')]
@@ -159,7 +166,7 @@ def publish(config, attempt):
                 for entry in receipt['entries']:
                     row, meta = entry['image'], entry['geometry_metadata']
                     ordinal = row['corpus_ordinal']
-                    found = db.execute('SELECT image,row_json FROM images WHERE ordinal=?', (ordinal,)).fetchone()
+                    found = originals.pop(ordinal, None)
                     original = json.loads(found[1]) if found else {}
                     if found:
                         original['image'] = found[0]
@@ -186,7 +193,7 @@ def publish(config, attempt):
                         raise ValueError('An excluded geometry candidate was not quarantined')
                     else:
                         strata[(row['group'], row.get('eye', 'single'))] += 1
-            if (len(seen) != expected or (dataset == 'hypersim' and seen != hyp_teachers)
+            if (originals or len(seen) != expected or (dataset == 'hypersim' and seen != hyp_teachers)
                     or not set(flags) <= keys):
                 raise ValueError('Teacher source scope differs from the complete outcome audit')
             audit = dict(stage='source_receipts_and_dispositions_verified', dataset=dataset,
