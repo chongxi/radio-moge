@@ -2890,3 +2890,42 @@ representations and no numeric change. All first-20 online loss/gradient values
 and measured update norms at steps 10/20 match exactly. Online receipts:
 `82f9da76baa4cef0477606f326d9e26afd0ff846b3ffab515e7f3013d0fc1c98`
 and `40b9414dd5e06454b67d7f50aeb2666da3a4c1660ea45017f94049229de22d9f`.
+
+### Two matched controls complete; higher feature-weight control running
+
+By 21:00 UTC `feature0p1_geometry1` also completed exactly 250 updates and its
+final evaluation. Completion receipt SHA:
+`7de12002305052b55bf6b3d97ffe200cc5d95d1ed898cd33e63488732f362b19`.
+Its entire 4,000-microbatch record, including 2,000 replay slots, matches the
+first arm's actual input bytes and SHA `f096f826...`. The controller verified
+finite final adapter/Adam state, optimizer step 250, cursor 4,000 and unchanged
+statistics/configuration/data digests. Its fixed final checkpoint is preserved
+under `feature0p1_geometry1/fixed-final-250-01`, SHA
+`00bfa8cff6675125779ddd14080f1f51582b3268d18e6e259f771b7b7937a901`.
+Preservation receipt SHA:
+`a7199c8fba528dd20d35afd16cfbe1a80276d7427284eb2a14b15db7d965bf02`.
+This reuses the controller's payload verification without another readback.
+
+W&B `a6c5c64e` is finished, with all five fixed-final validation metrics matching
+the saved record exactly. Configuration/provenance values match, with five
+equal integer/float representations and zero numeric differences. Online final
+receipt SHA:
+`60ddc7607003ff471d6064489ab550d8323a59686cbcaefafb7e7436d7b2c406`.
+The four-arm paired analysis remains pending; these checks concern completion
+and logging, not a claim of improvement.
+
+The original controller automatically started `feature1p0_geometry0`, trainer
+201113, W&B `8f36799c`. Its independent initial-state proof verifies the archive
+adapter/statistics and first-arm optimizer/scheduler/RNG/revisions bitwise:
+`713de7b5dfdb3004ffef63b62cdb6bc8cadefcdf85880fb04e6ba1e243dcfe50`.
+All four feature coefficients are 1; weighted geometry remains exactly zero.
+The first 20 updates are finite with nonzero gradients and measured updates,
+and the first 320 actual inputs match the first arm byte for byte. Observation
+SHA: `96cca50c1192a4401c1591cb4ca45e59f7e4ea1badf2efd03064d606ef9bfb80`.
+Online configuration and first-20 training values match numerically. The API
+has ten equal integer/float configuration representations and represents each
+of the 20 zero geometry-loss values as an equal integer/float; no numerical
+change occurred. Online receipts:
+`64b82df6b67d721dae1e852fab9f99d56697eda294333acdba272da6f4a23b40`
+and `fe6028b3727dcefe5855ab107aaf0b874c0beb6ca0b069302b6a911af631c5f1`.
+Full input equality for the third arm and the fourth arm's run remain pending.
