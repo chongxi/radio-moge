@@ -19,7 +19,7 @@ from radio_moge.corpus_admission import checked_json, checked_path, file_ref, re
 from radio_moge.geometry_cache import canonical_json, publish_json
 
 
-def teacher_metrics(entry, policy_hash, revision, dataset='irs'):
+def teacher_metrics(entry, policy_hash, revision, dataset='irs', image_shape=None):
     meta, row = entry['geometry_metadata'], entry['image']
     if (meta['label_kind'] != 'teacher_pseudo' or meta['camera_kind'] != 'teacher_estimated'
             or meta['metric_calibrated'] is not False or meta['dataset'] != dataset
@@ -29,10 +29,17 @@ def teacher_metrics(entry, policy_hash, revision, dataset='irs'):
         raise ValueError('Teacher provenance differs from the pinned candidate policy')
     quantiles = np.asarray(entry['depth_quantiles_m'], dtype=np.float64)
     h, w = meta['shape']
+    # Legacy NYU rows have no dimension fields. Their caller must obtain the
+    # shape from the hash-checked RGB, never from the geometry being audited.
+    if image_shape is None:
+        image_shape = (row['height'], row['width'])
+    if (('height' in row and row['height'] != image_shape[0])
+            or ('width' in row and row['width'] != image_shape[1])):
+        raise ValueError('Teacher RGB dimensions differ from the frozen row')
     pixels = meta['valid_pixels']
     if (quantiles.shape != (5,) or not np.isfinite(quantiles).all()
             or not (quantiles > 0).all() or not (np.diff(quantiles) >= 0).all()
-            or (h, w) != (row['height'], row['width'])
+            or (h, w) != tuple(image_shape)
             or type(pixels) is not int or not 0 < pixels <= h * w
             or not math.isclose(entry['valid_fraction'], pixels / (h * w), rel_tol=0, abs_tol=1e-12)):
         raise ValueError('Teacher receipt support or quantiles are invalid')
