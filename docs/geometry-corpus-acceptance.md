@@ -1386,6 +1386,51 @@ tests passed locally (0.10 s) and remotely (0.80 s). Changed paths, hashes,
 datasets, explicit groups, ordinals and decisions still fail. No actual model
 forward/backward probe or optimizer update occurred.
 
+## Active scoped training and first validation (2026-11-03)
+
+The separately accepted first stage is running from immutable execution commit
+`95f1ba3`: 234,036 geometry images (55,462 native Hypersim synthetic targets and
+178,574 relative teacher targets), with 796,477 RGB replay images. Its exact
+configuration, acceptance and 50-case actual model backward probe are bound in
+`reviewed-stage1-launch-02`; the active wrapper is
+`reviewed-stage1-training-restart-01`. The initial launch's pre-update W&B error
+does not describe the active run. The unfinished full corpus remains unaccepted
+and is prepared independently; its new decisions do not change active inputs.
+
+`reviewed-stage1-validation-250-review-01/report.json` compares the first
+250-step validation with the archived feature-step-232288 initialization using
+identical images, order, manifests and preprocessing. Frozen teacher GT metrics
+are unchanged per image. NYU AbsRel improves from 0.079412 to 0.074031, while
+ScanNet++ LiDAR AbsRel worsens from 0.092118 to 0.096241. Equal-source macro
+spatial cosine decreases from 0.961692 to 0.959636, and summary cosine from
+0.932301 to 0.931899. This is a mixed first evaluation, not evidence of overall
+improvement; training loss alone does not establish validation improvement.
+
+## Completed Structured3D outcomes and candidate review (2026-11-03)
+
+`structured3d-outcomes-01` accounts for all 134,749 original inputs: 133,572
+native candidates (27,008 recovered and 106,564 newly generated), and 1,177
+rejections requiring disposition. Rejections comprise 467 upstream errata,
+686 insufficient layout references and 24 insufficient valid support. All 686
+source flags belong to rejected images; no cached candidate carries that flag.
+The audit binds completed producer readback and checks every receipt identity;
+it does not claim a second full payload audit. Sixteen relevant tests passed
+locally and remotely.
+
+All 24 selected extremes were read back and visually reviewed on 12 pages in
+`structured3d-extreme-visuals-01`. Original RGB, a common depth palette, relative
+depth and unchanged support were inspected. The follow-up covered all nine
+original images in scene 00103: ordinals 532493 through 532501 have nearly
+uniform high-intensity RGB despite detailed geometry. Exact geometry-only
+exclusions and both policy-specific quarantine registers are published in
+`structured3d-scene00103-decisions-01`. RGB replay is retained; these are not
+exactly constant images or a general brightness cutoff. The merged known
+geometry-exclusion ledger now has 250 rows, SHA256
+`0926ea364696e21e139fc5662ec6c9444888f247e02e5455f9f7b0f5c4f8a9f0`.
+Only the previously excluded Hypersim white image is also excluded from RGB.
+Structured3D source acceptance, rejection dispositions and crop coverage remain
+pending. These artifacts do not modify the active training index or seal.
+
 ## Publication and supervision contract
 
 Every input image needs an outcome: verified native cache, explicitly identified
