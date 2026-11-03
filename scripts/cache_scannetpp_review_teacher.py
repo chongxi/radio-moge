@@ -21,6 +21,8 @@ import torch
 
 from cache_coco_teacher_geometry import generation_policy, infer_one
 from indoor_download import write_json
+from radio_moge import cache_recovery
+from radio_moge.cache_recovery import recovered_rows, remaining_scope, validate_teacher_recovery_policy
 from radio_moge.corpus_admission import checked_json, checked_path, readonly_db
 from radio_moge.geometry_cache import (GeometryPackWriter, canonical_json, publish_json,
                                       read_geometry_member, sha_file)
@@ -80,7 +82,7 @@ def anonymized_support(row, valid):
     return support, hashlib.sha256(data).hexdigest()
 
 
-def run(config, mode, attempt, preflight):
+def run(config, mode, attempt, preflight, recovery_name=None):
     root = Path(config['root'])
     route_path = root / 'scannetpp-review-teacher-routing-20261102.json'
     route = json.loads(route_path.read_text())
@@ -92,11 +94,16 @@ def run(config, mode, attempt, preflight):
             or route['training_admission'] is not False or route['fill_native_holes'] is not False):
         raise ValueError('Frozen inventory and explicit nonmetric candidate routing required')
     all_rows, probes = review_scope(root, route, config['manifest_sha256'])
+    if mode == 'preflight' and recovery_name is not None:
+        raise ValueError('Preflight must inspect every selected view without recovery skipping')
+    recovered, recovery_ref = recovered_rows(root, recovery_name, 'scannetpp_dslr', config['manifest_sha256'])
+    rows = probes if mode == 'preflight' else remaining_scope(all_rows, recovered)
     output = root / attempt
     output.mkdir(exist_ok=False)
     (output / 'rejected').mkdir()
     status = dict(stage='loading_teacher', mode=mode, started_at=time.time(), completed=0, rejected=0,
-                  training_started=False, training_admission=False, optimizer_updates=0)
+                  training_started=False, training_admission=False, optimizer_updates=0,
+                  recovered_subset=recovery_ref, recovered_skipped=len(recovered), original_scope=len(all_rows))
     write_json(output / 'status.json', status)
     try:
         if str(torch.__version__) != '2.8.0+cu128' or torch.version.cuda != '12.8':
@@ -106,12 +113,16 @@ def run(config, mode, attempt, preflight):
         checkpoint_hash = sha_file(checkpoint)
         policy = generation_policy(config, checkpoint_hash)
         policy.update(dataset='scannetpp_dslr', generator_sha256=sha_file(Path(__file__)),
+            recovery_helper_sha256=sha_file(Path(cache_recovery.__file__)),
             reused_inference_generator_sha256=sha_file(Path(__file__).with_name('cache_coco_teacher_geometry.py')),
             candidate_routing_sha256=sha_file(route_path), native_depth_decision=route['decision'],
             preflight_image_sha256=[r['sha256'] for r in probes], native_geometry_read=False,
             anonymity='original mask==255 AND 5x5 erosion AND teacher support; no resizing/filling',
             minimum_valid_fraction=.05, torch=str(torch.__version__), cuda=torch.version.cuda)
         policy_hash = hashlib.sha256(canonical_json(policy)).hexdigest()
+        if recovery_ref is not None:
+            recovered_policy = json.loads((root / recovery_name / 'packs/policy.json').read_text())
+            validate_teacher_recovery_policy(recovered_policy, policy)
         if mode == 'generate':
             previous_path = root / preflight / 'report.json'
             previous = json.loads(previous_path.read_text())
@@ -139,7 +150,6 @@ def run(config, mode, attempt, preflight):
         writer = GeometryPackWriter(output / 'packs', policy)
         status.update(stage='generating_cache', policy_sha256=policy_hash)
         examples, rejections = [], []
-        rows = probes if mode == 'preflight' else all_rows
         for row in rows:
             result, stats = infer_one(model, row)
             if result is not None:
@@ -208,6 +218,7 @@ if __name__ == '__main__':
     parser.add_argument('--config', required=True, type=Path)
     parser.add_argument('--attempt', required=True)
     parser.add_argument('--preflight', default='scannetpp-review-teacher-preflight-01')
+    parser.add_argument('--recovered', help='Explicit fully verified subset to skip in generation')
     parser.add_argument('--wait-for-gpu-lock', action='store_true')
     args = parser.parse_args()
     if any(Path(n).name != n for n in (args.attempt, args.preflight)):
@@ -219,4 +230,4 @@ if __name__ == '__main__':
             print(json.dumps(dict(stage='waiting_for_existing_gpu_lock', optimizer_updates=0,
                                   attempt=args.attempt, mode=args.mode, time=time.time())), flush=True)
         fcntl.flock(lock, fcntl.LOCK_EX | (0 if args.wait_for_gpu_lock else fcntl.LOCK_NB))
-        run(config, args.mode, args.attempt, args.preflight)
+        run(config, args.mode, args.attempt, args.preflight, args.recovered)

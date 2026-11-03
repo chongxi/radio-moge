@@ -3,7 +3,8 @@ import sqlite3
 
 import pytest
 
-from radio_moge.cache_recovery import recover_closed_packs, recovered_rows
+from radio_moge.cache_recovery import (recover_closed_packs, recovered_rows, remaining_scope,
+                                       validate_teacher_recovery_policy)
 from radio_moge.geometry_cache import GeometryPackWriter, publish_json, sha_file
 from test_geometry_cache import example
 
@@ -54,3 +55,27 @@ def test_corrupt_closed_pack_blocks_recovery(tmp_path):
         recover_closed_packs(config, 'failed', 'recovered')
     assert not (tmp_path / 'recovered/report.json').exists()
     assert json.loads((tmp_path / 'recovered/status.json').read_text())['stage'] == 'failed'
+
+
+def test_remaining_scope_preserves_order_and_rejects_foreign_or_duplicate_images():
+    rows = [dict(sha256=str(i), corpus_ordinal=i) for i in range(5)]
+    result = remaining_scope(rows, {'1', '3'})
+    assert result == [rows[i] for i in (0, 2, 4)]
+    assert len(rows) == 5
+    assert remaining_scope(rows, set()) == rows
+    assert remaining_scope(rows, {str(i) for i in range(5)}) == []
+    with pytest.raises(ValueError, match='selected scope'):
+        remaining_scope(rows, {'other'})
+    with pytest.raises(ValueError, match='unique'):
+        remaining_scope(rows + [rows[0]], set())
+
+
+def test_teacher_recovery_allows_only_recorded_execution_code_changes():
+    previous = dict(label_kind='teacher_pseudo', num_tokens=2500, anonymity='original eroded mask',
+                    teacher={'revision': 'frozen'}, generator_sha256='old')
+    current = dict(previous, generator_sha256='new', recovery_helper_sha256='helper')
+    validate_teacher_recovery_policy(previous, current)
+    for key, value in [('num_tokens', 1200), ('anonymity', 'no mask'),
+                       ('teacher', {'revision': 'other'}), ('label_kind', 'synthetic_renderer')]:
+        with pytest.raises(ValueError, match='policy differs'):
+            validate_teacher_recovery_policy(previous, dict(current, **{key: value}))

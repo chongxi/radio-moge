@@ -29,6 +29,22 @@ def recovered_rows(root, name, dataset, manifest):
     return ids, dict(path=str(path.resolve()), sha256=sha_file(path))
 
 
+def remaining_scope(rows, recovered):
+    """Keep original order and reject recovery from outside this exact scope."""
+    identities = [row['sha256'] for row in rows]
+    if len(set(identities)) != len(rows) or not recovered <= set(identities):
+        raise ValueError('Recovered identities must be unique members of the selected scope')
+    return [row for row in rows if row['sha256'] not in recovered]
+
+
+def validate_teacher_recovery_policy(previous, current):
+    code_only = {'generator_sha256', 'recovery_helper_sha256'}
+    if (previous.get('label_kind') != 'teacher_pseudo' or current.get('label_kind') != 'teacher_pseudo'
+            or {k: v for k, v in previous.items() if k not in code_only}
+            != {k: v for k, v in current.items() if k not in code_only}):
+        raise ValueError('Recovered teacher inference, masks or source policy differs')
+
+
 def recover_closed_packs(config, original_name, attempt):
     """Reread complete tar/receipt pairs; abandon uncommitted tails as evidence.
 
