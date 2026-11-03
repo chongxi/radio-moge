@@ -70,7 +70,7 @@ def implementation_hashes():
              'data.py', 'feature_replay.py', 'decoder.py', 'system.py', 'losses.py',
              'adapters.py', 'architecture_screen.py', 'spatial_heads.py',
              'feature_refinement.py', 'upstream.py', 'config.py', 'tracking.py', 'corpus_coverage.py',
-             'snapshot_readback.py', 'producer_readback.py')
+             'snapshot_readback.py', 'producer_readback.py', 'corpus_model_probe.py')
     return {name: sha_file(directory / name) for name in names}
 
 

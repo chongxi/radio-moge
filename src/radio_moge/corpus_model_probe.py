@@ -106,8 +106,7 @@ def backward_case(system, adapter, statistics, batch, config, cursor):
     raw = system.decoder(prediction, image.shape[-2:])
     geometry = corpus_geometry_losses(raw, batch['geometry_targets'],
         config['models'].get('moge_source'), seed=config['train']['seed'] + cursor)
-    if geometry['gt_skipped_sparse_images'] != 0:
-        raise ValueError('Selected model-probe view has insufficient observations after cropping')
+    skipped = int(geometry['gt_skipped_sparse_images'])
     geometry_total = weighted_loss({k: geometry[k] for k in OFFICIAL_GT_KEYS}, config['loss'])
     if not geometry_total.requires_grad:
         raise ValueError('Geometry loss is detached from adapter outputs')
@@ -121,8 +120,10 @@ def backward_case(system, adapter, statistics, batch, config, cursor):
             if not torch.isfinite(grad).all():
                 raise FloatingPointError('Nonfinite gradient through frozen decoder')
             geometry_norm += float(grad.detach().float().square().sum(dtype=torch.float64))
-    if not math.isfinite(geometry_norm) or geometry_norm <= 0:
+    if not math.isfinite(geometry_norm) or (geometry_norm <= 0 and not skipped):
         raise FloatingPointError('Geometry loss did not reach adapter outputs')
+    if skipped and (skipped != len(batch['geometry_targets']) or float(geometry_total.detach()) != 0):
+        raise ValueError('A sparse-only view must have an explicit zero geometry loss')
     del decoder_grads
     feature_total = weighted_loss(feature, config['loss'])
     total = feature_total + geometry_total
@@ -135,7 +136,8 @@ def backward_case(system, adapter, statistics, batch, config, cursor):
         identities=batch['identities'], feature_weighted=float(feature_total.detach()),
         geometry_weighted=float(geometry_total.detach()), total=float(total.detach()),
         losses={k: float(v.detach()) for k, v in {**feature, **geometry}.items()},
-        gradient=gradients, geometry_gradient_at_adapter_outputs=math.sqrt(geometry_norm))
+        gradient=gradients, skipped_sparse_images=skipped,
+        geometry_gradient_at_adapter_outputs=math.sqrt(geometry_norm))
 
 
 def observe_model(system, adapter, statistics, batches, config, on_case=None):
@@ -154,6 +156,11 @@ def observe_model(system, adapter, statistics, batches, config, on_case=None):
                 on_case(row)
         if not rows or len(rows) % 2 or {r['feature_branch'] for r in rows} != {'paired_rgb', 'replay_rgb'}:
             raise ValueError('Complete paired and replay feature slots are required')
+        strata = {(i['dataset'], i['label_kind']) for row in rows for i in row['identities']}
+        active = {(i['dataset'], i['label_kind']) for row in rows for i in row['identities']
+                  if row['geometry_gradient_at_adapter_outputs'] > 0}
+        if strata != active:
+            raise ValueError('No geometry gradient for a probed source/label stratum')
         after = {name: module_digest(module) for name, module in modules.items()}
         if before != after:
             raise ValueError('Model parameters or buffers changed during zero-update preflight')

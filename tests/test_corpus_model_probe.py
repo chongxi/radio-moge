@@ -73,6 +73,22 @@ def test_model_gate_binds_feature_objective_and_actual_joint_adapter_code():
 
 @pytest.mark.upstream
 @pytest.mark.usefixtures('small_official')
+def test_sparse_view_tests_feature_only_path_but_each_source_still_needs_geometry_gradient(tmp_path):
+    _, _, config, selected, replay = fixture(tmp_path)
+    batches = list(probe_batches(selected, replay, config))
+    batches[0]['geometry_targets'][0]['valid'][:] = False
+    system, adapter = tiny_system()
+    result = observe_model(system, adapter, FeatureStatistics(6, 6), batches, config)
+    assert result['rows'][0]['skipped_sparse_images'] == 1
+    assert result['rows'][0]['geometry_weighted'] == 0
+    assert result['rows'][0]['gradient']['norm'] > 0
+    batches[1]['geometry_targets'][0]['valid'][:] = False
+    with pytest.raises(ValueError, match='No geometry gradient'):
+        observe_model(system, adapter, FeatureStatistics(6, 6), batches, config)
+
+
+@pytest.mark.upstream
+@pytest.mark.usefixtures('small_official')
 def test_real_loss_through_tiny_models_preserves_weights_and_covers_replay(tmp_path, monkeypatch):
     _, _, config, selected, replay = fixture(tmp_path)
     system, adapter = tiny_system()
