@@ -2372,7 +2372,7 @@ Neither report opens the optimizer gate. No need to rerun this accounting.
 ### Stage 3 completed at its time limit; paired 2750 and final 2895
 
 The existing trainer stopped normally after **895 new updates, global step
-2895**, at the two-hour optimizer budget. Its final evaluation completed once;
+2895**, at the two-hour wall-clock budget. Its final evaluation completed once;
 the additional evaluation time does not represent further optimizer updates.
 All 895 training records are finite. The final checkpoint has 100 finite Adam
 states at 2895, stream cursor 14320, unchanged feature statistics from parent
