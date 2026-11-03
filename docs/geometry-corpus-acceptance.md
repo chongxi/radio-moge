@@ -1580,3 +1580,64 @@ packs using one CPU worker. Wait for its complete 28,160-image proof before
 launching the 7,623-image remainder from execution snapshot v4. The main-tree
 v3 snapshot remains unused for generation because its pack-format file hash
 differs; no hash guard was relaxed.
+
+### Reviewed five-source expansion, 2026-11-03
+
+`reviewed-stage2-data-01` accounts for all 369,012 inputs in the five completed
+sources: **367,599 selected and 1,413 excluded**. The selected labels are
+189,025 native synthetic observations and 178,574 relative teacher candidates.
+Structured3D adds 133,563 images; prior source selections and all native/external
+quality flags remain bound. Completed producer payload readbacks are reused
+explicitly, with per-read hashes retained in the training loader. Preparation
+report SHA: `ed6a258bb7cf4328f0ce84d5588b1d242e5d45cadcefd853dc67b004dac65280`.
+
+Every selected ordinal, dataset, scene and RGB hash was matched to the unchanged
+seven-source canonical RGB isolation index, which already contains Structured3D
+and was compared against 190,954 heldout memberships. There are zero exact pixel
+overlaps or forbidden shared scene rows. This reuses the completed comparison;
+it does not claim that the unfinished eight-source RGB census has completed.
+The 796,477-image RGB-only replay manifest remains unchanged.
+
+`structured3d-training-crops-01` uses the production 400x640 loader on 224 images
+from 171 groups, with 112 images per preserved policy. Selection includes low
+support, nearest/farthest median depth and deterministic scene samples. Three
+views per image produce 672 views. All selected native observations are unique,
+supported and correctly transformed; maximum relative point error is
+5.95e-8. Three views from ordinals 529248 and 570412 are empty. Both full pages
+in `structured3d-sparse-crop-visuals-01` were inspected: accepted opaque wall
+support lies at the left edge, which the augmentation crops out while retaining
+unsupported window/exterior RGB. Center views still contain 26,944 and 32,941
+observations; one augmented view retains 67. No mask filling or whole-image
+exclusion follows. The existing <32-observation rule supplies explicit zero
+geometry and preserves the scheduled paired/RGB-replay feature branch. This
+deliberately extreme selection is not a corpus prevalence estimate.
+Crop report SHA: `d3bcf9d98c0ecb876e322951bf9e3be6cd913102472fb39ab6e9fa12c1b9f0ce`.
+
+The proposed next segment preserves the step-1,000 adapter, feature statistics,
+Adam moments and optimizer count. It starts a new sample stream at cursor zero,
+keeps the existing LR, loss weights, replay and evaluation protocols, and has
+an additional 1,000-update/7,200-second limit. Geometry draws allocate 20% to
+Structured3D and multiply previous source probabilities by 0.8: COCO/Hypersim
+28% each, IRS 20%, NYU 4%. A 100,000-draw probe of the actual source/scene/frame
+sampler matches all source probabilities within 0.00316. Replay sampling is
+unchanged. Final step-1,000 validation values become checkpoint-selection
+baselines, while all prior best checkpoints remain available.
+
+Execution snapshot `code-reviewed-continuation-v1` is commit `8332c8c`. It allows
+only an explicit corpus data fork with a distinct new acceptance seal bound
+to the exact checkpoint and real model probe. Objective, optimizer settings,
+replay and heldout identity changes are rejected. Tiny CPU tests verified exact
+Adam/adapter/statistics restoration and a fresh cursor in a new trainer
+invocation. Nineteen crop/identity tests passed locally and remotely; 36
+continuation tests passed locally, 73 training/continuation/replay/model tests
+passed remotely, and nine pinned geometry-loss tests passed remotely. These
+tests do not substitute for the actual model preflight.
+
+`reviewed-stage2-readiness-01/plan.json` binds all four nonmodel gates, SHA
+`a9828e67bc1bc13ff987ce237644a530602f0bfbde2b7d25963d41ac39e25753`.
+The supervisor `reviewed-stage2-launch-01` must finish the real zero-update
+model gate before sealing or optimizing. At 09:24 UTC it was running that
+preflight; no second-stage optimizer update was yet claimed. The ScanNet
+remainder supervisor is separately waiting for complete 28,160-member recovery,
+then will submit only the remaining 7,623 images from code v4 under the same
+existing GPU lock. Neither supervisor bypasses that lock.
