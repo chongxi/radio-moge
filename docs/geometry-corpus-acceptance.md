@@ -202,7 +202,7 @@ to one CPU by process affinity, including native Embree/TBB work.
   by RQ decomposition, without warping RGB or substituting a universal focal.
   Some released first-frame pose matrices contain uniform asset scale (observed
   0.25). Remove only verified uniform scale, tolerate at most 1e-5 decimal-metadata
-  orthogonality residual, and independently check the world geometry. The
+  orthogonality residual, and cross-check the separately stored world geometry. The
   [publisher's exporter](https://github.com/apple/ml-hypersim/blob/main/code/python/tools/generate_hdf5_from_vrimg.py)
   computes range from world distance and stores range/position as FP16; pose scale
   must not rescale metric range. Per-pixel acceptance accounts for actual storage
@@ -353,7 +353,7 @@ to one CPU by process affinity, including native Embree/TBB work.
   sensor consistency before admitting native labels. It is not permission to
   apply a fitted bias correction or relabel AppleDepth as FARO GT.
 - The running Hypersim producer has encountered a further source-consistency
-  issue in `ai_009_003`: many frames fail the independent world-position check.
+  issue in `ai_009_003`: many frames fail the stored world-position consistency check.
   At the 11:50 UTC snapshot there were 100 review flags and four published sparse
   candidate entries carrying `source_needs_review:true`; most other affected
   frames were rejected for insufficient verified support. These four cached
@@ -982,6 +982,115 @@ preserved geometry batches, unchanged random streams, and gate enforcement.
 They use tiny CPU models and do not replace the actual archived-model probe.
 The tooling record SHA256 is
 `afb1ea6d87401a619c76aaba3bd0f49b27e072a24455e7031d61024a5073b7d9`.
+
+## Completed COCO and NYU teacher source reviews (2026-11-03)
+
+`coco-nyu-source-reviews-01` records source eligibility for **39,984 COCO** and
+**1,043 NYU** relative-pseudo candidates. It does not open corpus admission.
+All 41,040 original teacher receipt identities, statistics, provenance and
+loss routes were checked against the frozen source audits; completed producer
+array readback remains bound. Legacy NYU rows lack width/height fields, so the
+audit decodes and checks the original RGB to obtain dimensions without changing
+those rows. Eleven local/remote audit tests passed, covering changed RGB,
+incomplete readback, duplicate/outside identities and incorrect dimensions.
+
+COCO review inspected 39 full-resolution preflight/aspect/extreme views, then
+all 101 candidates with less than 5% original valid support. The latter number
+is a diagnostic selection, not an exclusion threshold. In total, 131 distinct
+images were inspected. Many sparse masks legitimately cover small birds,
+planes or kites against unsupported sky. Thirteen exact candidates were
+excluded from geometry for visible text/graphics, letterbox support, or
+specific unresolved sky/surface ambiguity. This is not a calibrated physical
+error claim or an automatic tail-ratio cutoff. All thirteen RGB images were
+verified in the existing replay pool and remain available there.
+
+The sparse-support diagnostic exercised the actual camera-aware loader for
+101 images, two output shapes and center/two seeded augmented views: 606 views.
+Eighteen views from nine images had fewer than 32 selected observations.
+Two of those images are now excluded for separately reviewed watermark support;
+seven remain candidates requiring explicit treatment in final crop/coverage
+review. The loss already reports zero geometry contribution below 32 supported
+observations. Original support ranges down to 71 pixels and must not be filled
+to make a crop pass. This source decision is not final training-view coverage.
+
+NYU's ten full-cache extreme/support views and the previously inspected 45
+preflight views cover the existing 24 scene types. Minimum original support is
+99.604%; no new specific image exclusion was found. Native RGB/raw-depth
+registration remains unresolved, and these teacher labels do not repair or
+authorize the native route. Intrinsics are teacher estimates and supervision
+remains relative.
+
+The source reviews bind the required thirteen-entry COCO and explicitly empty
+NYU quarantine registers. Report SHA256:
+`df77a02f510a0cbde0f693658fd52e912566b86d7607bde25f776ae6ca0abc5e`.
+COCO review SHA256:
+`e5b8c319ec71939405bb4d9f83501579907cf0ee3a2991cb4158e478b4408698`.
+NYU review SHA256:
+`1e00bcb87f33ba1a411601018aa02d892ed0486bc91e2343a4dc727794c18d2a`.
+The then-current 37 geometry exclusions remain an immutable intermediate record;
+the later merged native-review register below is the latest known set.
+
+## Hypersim native scale and precision review (2026-11-03)
+
+`hypersim-native-quality-01` checks all 58,739 completed native receipt
+identities against the existing native outcome audit: 55,663 initially
+unflagged candidates and 3,076 original flagged candidates. Its ten selected
+actual payloads cover the lowest support, farthest depth and largest storage
+uncertainty. `hypersim-native-near-depth-01` adds the two nearest median depths.
+All twelve pages were inspected. Lowest-support views show a facade with
+invalid background and retain 29.7--32.3% support; no new exclusion follows
+from that support fraction.
+
+The far-depth extremes belong to `ai_013_001`. The complete 200-frame scope
+has median camera-Z ranges 277.17--314.80 m in cam_00 and 170.45--173.10 m in
+cam_01. The corresponding first/middle/last RGB images show a colonnade and
+downward views of tiled floor and column bases. The source's
+`meters_per_asset_unit` is already 0.009999999776482582.
+`hypersim-native-scale-probe-01` checks the retained source receipts and
+reproduces cached depth/masks exactly for six frames across both cameras and
+the two near-depth cases. These large distances already occur in the original
+radial/world data; this is not a missing extra centimeter conversion in our
+loader. No guessed scale correction is applied.
+
+The [publisher's exporter](https://raw.githubusercontent.com/apple/ml-hypersim/main/code/python/tools/generate_hdf5_from_vrimg.py)
+derives radial distance from world position, camera position and scene scale,
+then stores position and distance as FP16. These arrays share renderer
+provenance. Their consistency checks storage/conversion, not independent
+physical calibration or realistic scene scale. Earlier references to an
+"independent world-position check" must be read with this limitation.
+Raw radial and finite-world quantiles in the probe use different finite-support
+sets; common-support relative-error statistics are the appropriate comparison.
+
+The inspected near frame 251659 (`ai_052_002/cam_01/frame.0021`) has almost
+featureless RGB, median Z 0.000917 m and a median world-norm/radial relative
+discrepancy of 1.4075. The original absolute quantization gate still passes all
+pixels because world-coordinate storage uncertainty exceeds the tiny range.
+That is insufficient verification for metric supervision of this exact image,
+not proof that its original radial distance is physically wrong. By contrast,
+textured near frame 210303 has median Z 0.02254 m and p99 relative discrepancy
+about 0.0166; it remains a candidate. Near/far depth alone is not a rejection rule.
+
+`hypersim-native-extreme-review-01` therefore records exact geometry-only
+exclusions for all 200 `ai_013_001` images (ordinals 211112--211311) due to the
+scene-scale plausibility concern, plus frame 251659 due to its precision and
+visual-support limitation. All 201 candidate identities bind the native policy,
+pack receipt, member, RGB and visual/source evidence. All 201 RGB images were
+verified in the unchanged replay pool. The 201 dispositions are complete;
+they must not be repeatedly treated as undecided findings. Original 3,076
+native flags remain intact. The remaining 55,462 native candidates still need
+their complete source review and final corpus coverage; this record is not a
+source pass or a training gate.
+
+Latest known geometry exclusions: **238 unique inputs**, in
+`hypersim-native-extreme-review-01/known-geometry-exclusions.jsonl`, SHA256
+`d334f481ad592d79ba0af1a86ca92569454f39e605befd0f9f5550a94158916d`.
+Only the existing pure-white RGB 210812 is also excluded from replay; the other
+237 exclusions are geometry-only. Native quarantine register SHA256:
+`f2d9ef08f80c6c20ddc820df64feefccdb958b728aa6fa4a8cceff9be85a9229`.
+Review report SHA256:
+`a2a50a21d27d736fde7fa3236ed5854c4885831b0aea531c58b35e9adf8060e5`.
+No geometry arrays, native producer policy, existing combined-route evidence,
+or prior source reviews were overwritten.
 
 ## Publication and supervision contract
 
