@@ -11,6 +11,7 @@ from .feature_replay import replay_feature_losses
 from .geometry_cache import canonical_json
 from .losses import weighted_loss
 from .official_gt import OFFICIAL_GT_KEYS
+from .corpus_control import geometry_multiplier
 
 
 def module_digest(module):
@@ -107,7 +108,10 @@ def backward_case(system, adapter, statistics, batch, config, cursor):
     geometry = corpus_geometry_losses(raw, batch['geometry_targets'],
         config['models'].get('moge_source'), seed=config['train']['seed'] + cursor)
     skipped = int(geometry['gt_skipped_sparse_images'])
-    geometry_total = weighted_loss({k: geometry[k] for k in OFFICIAL_GT_KEYS}, config['loss'])
+    enabled = geometry_multiplier(config, corpus_preflight=True)
+    # Include explicit zero multipliers so the disabled branch is differentiable
+    # and its exact-zero decoder-input gradient can be measured independently.
+    geometry_total = sum(geometry[k] * config['loss'][k] for k in OFFICIAL_GT_KEYS)
     if not geometry_total.requires_grad:
         raise ValueError('Geometry loss is detached from adapter outputs')
     # A finite combined gradient alone could conceal a detached geometry branch.
@@ -120,8 +124,10 @@ def backward_case(system, adapter, statistics, batch, config, cursor):
             if not torch.isfinite(grad).all():
                 raise FloatingPointError('Nonfinite gradient through frozen decoder')
             geometry_norm += float(grad.detach().float().square().sum(dtype=torch.float64))
-    if not math.isfinite(geometry_norm) or (geometry_norm <= 0 and not skipped):
+    if not math.isfinite(geometry_norm) or (enabled and geometry_norm <= 0 and not skipped):
         raise FloatingPointError('Geometry loss did not reach adapter outputs')
+    if not enabled and (geometry_norm != 0 or float(geometry_total.detach()) != 0):
+        raise ValueError('Disabled geometry must have exactly zero loss and gradient')
     if skipped and (skipped != len(batch['geometry_targets']) or float(geometry_total.detach()) != 0):
         raise ValueError('A sparse-only view must have an explicit zero geometry loss')
     del decoder_grads
@@ -137,6 +143,7 @@ def backward_case(system, adapter, statistics, batch, config, cursor):
         geometry_weighted=float(geometry_total.detach()), total=float(total.detach()),
         losses={k: float(v.detach()) for k, v in {**feature, **geometry}.items()},
         gradient=gradients, skipped_sparse_images=skipped,
+        geometry_control_multiplier=enabled,
         geometry_gradient_at_adapter_outputs=math.sqrt(geometry_norm))
 
 
@@ -159,7 +166,8 @@ def observe_model(system, adapter, statistics, batches, config, on_case=None):
         strata = {(i['dataset'], i['label_kind']) for row in rows for i in row['identities']}
         active = {(i['dataset'], i['label_kind']) for row in rows for i in row['identities']
                   if row['geometry_gradient_at_adapter_outputs'] > 0}
-        if strata != active:
+        enabled = geometry_multiplier(config, corpus_preflight=True)
+        if (enabled and strata != active) or (not enabled and active):
             raise ValueError('No geometry gradient for a probed source/label stratum')
         after = {name: module_digest(module) for name, module in modules.items()}
         if before != after:
@@ -167,6 +175,8 @@ def observe_model(system, adapter, statistics, batches, config, on_case=None):
         return dict(rows=rows, state_before=before, state_after=after, optimizer_updates=0,
                     optimizer_constructed=False, frozen_backbones_unchanged=True,
                     adapter_unchanged=True, statistics_unchanged=True,
+                    geometry_control_multiplier=enabled,
+                    disabled_geometry_exact_zero=not enabled,
                     finite_nonzero_adapter_gradient=True)
     finally:
         adapter.zero_grad(set_to_none=True)

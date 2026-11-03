@@ -70,7 +70,7 @@ def implementation_hashes():
              'data.py', 'feature_replay.py', 'decoder.py', 'system.py', 'losses.py',
              'adapters.py', 'architecture_screen.py', 'spatial_heads.py',
              'feature_refinement.py', 'upstream.py', 'config.py', 'tracking.py', 'corpus_coverage.py',
-             'snapshot_readback.py', 'producer_readback.py', 'corpus_model_probe.py')
+             'snapshot_readback.py', 'producer_readback.py', 'corpus_model_probe.py', 'corpus_control.py')
     return {name: sha_file(directory / name) for name in names}
 
 
@@ -474,6 +474,7 @@ def validate_pre_model_evidence(accounting_ref, checks):
 
 
 def validate_final_evidence(accounting_ref, checks, config):
+    from .corpus_control import geometry_multiplier
     if set(checks) != set(FINAL_CHECKS):
         raise ValueError('All final source, coverage, leakage, loss and model gates are required')
     accounting, hashes = validate_pre_model_evidence(
@@ -487,6 +488,10 @@ def validate_final_evidence(accounting_ref, checks, config):
             or model.get('finite_nonzero_adapter_gradient') is not True
             or model.get('training_contract_sha256') != training_contract_hash(config)):
         raise ValueError('Actual unchanged-model zero-update preflight is required')
+    multiplier = geometry_multiplier(config, corpus_preflight=True)
+    if (model.get('geometry_control_multiplier', 1) != multiplier
+            or (not multiplier and model.get('disabled_geometry_exact_zero') is not True)):
+        raise ValueError('Model preflight does not verify the configured geometry control')
     checked_path(model['initial_checkpoint'])
     return accounting, model, hashes
 

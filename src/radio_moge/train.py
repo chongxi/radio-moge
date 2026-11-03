@@ -40,6 +40,7 @@ from .gt_data import GroundTruthImages, geometry_digest, validate_gt_records
 from .corpus_admission import open_training_gate
 from .corpus_data import CorpusRecords, CorpusImages, collate_corpus
 from .corpus_losses import corpus_geometry_losses
+from .corpus_control import geometry_multiplier, InputAudit
 from .planes import FLATNESS_MODES, PlaneConfig, detect_planes, plane_losses
 from .system import build_system
 from .tracking import ExperimentTracker, preserve_rng
@@ -122,6 +123,7 @@ def validate_config(config, *, corpus_preflight=False):
     gt = config.get('geometry_supervision')
     corpus = data.get('geometry_corpus')
     corpus_mode = corpus is not None or corpus_preflight
+    control_multiplier = geometry_multiplier(config, corpus_preflight=corpus_preflight)
     if corpus is not None:
         if (not isinstance(corpus, dict) or set(corpus) != {'path', 'sha256'}
                 or not isinstance(corpus['path'], str) or not Path(corpus['path']).is_absolute()
@@ -151,7 +153,7 @@ def validate_config(config, *, corpus_preflight=False):
         else:
             if any(config['loss'].get(k, 0) for k in GT_LOSS_KEYS):
                 raise ValueError('Official and custom GT objectives must not be mixed')
-            if any(config['loss'].get(k) != v for k, v in OFFICIAL_GT_WEIGHTS.items()):
+            if any(config['loss'].get(k) != v * control_multiplier for k, v in OFFICIAL_GT_WEIGHTS.items()):
                 raise ValueError('moge2_core requires pinned official type-B geometry weights')
         if any(config['loss'].get(k, 0) for k in
                ('points', 'mask', 'scale', 'gradient', 'normal',
@@ -302,6 +304,9 @@ def train(
     invocation_started = time.monotonic()
     elapsed_before = 0.0
     validate_config(config)
+    if config.get('corpus_loss_control') and (resume or fork_from or extension
+            or config['train']['batch_size'] != 1):
+        raise ValueError('Controlled corpus comparisons use fresh one-image initialization, not resume or fork')
     corpus_gate = None
     if config['data'].get('geometry_corpus'):
         if (extension or resolution_fork or lr_adjustment
@@ -703,6 +708,7 @@ def train(
     replay_iterator = (iter(make_replay_loader(
         replay_records, config, cursor, max(0, total - step) * accumulation))
         if replay_records else None)
+    input_audit = InputAudit(output / 'control-inputs.jsonl') if config.get('corpus_loss_control') else None
 
     def synchronize_update():
         if gpu_prefetch:
@@ -839,11 +845,13 @@ def train(
                 with amp():
                     prediction = adapter(features)
                 losses = statistics.loss(prediction, target)
+                cpu_replay = None
                 if replay_iterator is not None:
                     gt_features = {f'gt_feature_{key}': value.detach() for key, value in losses.items()}
                     replay_slot = is_replay_batch(cursor)
                     if replay_slot:
-                        replay_image = next(replay_iterator).to(accelerator.device, non_blocking=True)
+                        cpu_replay = next(replay_iterator)
+                        replay_image = cpu_replay.to(accelerator.device, non_blocking=True)
                         if replay_image.shape != image.shape:
                             raise ValueError('Replay must preserve feature batch size and resolution')
                         losses = replay_feature_losses(
@@ -894,6 +902,8 @@ def train(
                                                                        'teacher_axis')))
                         losses["plane_regions"] = student_points.new_tensor(
                             sum(map(len, patches)) / len(patches))
+                if input_audit is not None:
+                    input_audit.add(cursor, cpu_batch, cpu_replay)
                 loss = weighted_loss(losses, config["loss"])
                 if not performance and not torch.isfinite(loss):
                     raise FloatingPointError(f"Nonfinite loss before optimizer step {step + 1}")
@@ -1020,9 +1030,13 @@ def train(
         for module in (system.radio, system.encoder, system.decoder):
             if any(p.grad is not None or p.requires_grad for p in module.parameters()):
                 raise AssertionError("Frozen models accumulated gradients or became trainable")
+        if input_audit is not None:
+            atomic_json(input_audit.report(), output / 'control-input-audit.json')
         success = True
         return output / "latest.pt"
     finally:
+        if input_audit is not None:
+            input_audit.close()
         if prepared_windows is not None:
             prepared_windows.close()
         for sig, handler in old_handlers.items():
