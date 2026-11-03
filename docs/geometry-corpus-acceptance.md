@@ -15,8 +15,8 @@ The proposed subset still needs its own payload, source, coverage, heldout, loss
 and actual-model checks. No previous failed or unfinished check becomes a pass.
 
 `configs/geometry-stage1-candidates-20261103.json` lists all current primary,
-recovered and review-teacher sources, completed source reviews and the latest
-238 explicit geometry exclusions. `scripts/snapshot_geometry_candidates.py`
+recovered and review-teacher sources, completed source reviews and the 238
+explicit geometry exclusions known at capture. `scripts/snapshot_geometry_candidates.py`
 captures only closed tar/receipt pairs at a fixed cutoff while producers keep
 running. It preserves original RGB identities, native and external quality flags,
 the distinction between native and pseudo labels, and separate candidate counts
@@ -76,6 +76,35 @@ does not certify all samples or all packs. This forward-only sanity check is
 also **not** the required training forward/backward zero-update model gate.
 Production optimizer updates remain zero.
 
+### First-stage payload verification and one additional Tartan rejection
+
+`scripts/verify_snapshot_payloads.py` (`7f9bec2`) verifies the fixed snapshot's
+791,996,323,840 bytes with one CPU worker, without using the GPU. It decodes every
+declared NPZ member, checks the exact RGB/policy identity, depth/support/camera
+contract, receipt statistics, sequential USTAR headers/padding, and whole-file
+SHA256. A pack verification is published only after the final whole-file check,
+not after its last member happens to decode. Candidate-level metric/relative
+coverage is recorded separately and never clears source or external flags.
+The full run requires a code- and snapshot-bound preflight on both endpoint
+packs of all 12 primary/recovered/replacement sources (24 packs). Fourteen
+storage/snapshot tests passed remotely (1.05 s); the broader local set including
+geometry sampling and admission passed 41 tests (5.52 s). No optimizer ran.
+
+The additional TartanAir rejection at exact ordinal **417529**, neighborhood
+Easy/P000 frame003273, was separately reproduced from retained left/right
+depth and RGB in `tartanair-rejection-review-02`. All source hashes and published
+statistics agree. Its sky-dominated view has 27.0462% task-range support and
+4.9863% final stereo support, below the unchanged 5% per-image threshold. The
+six-panel evidence was inspected. Only this image's geometry is explicitly
+excluded; its RGB remains in replay. Earlier 11 decisions were reused, not
+re-audited or silently extended. This input is absent from the already frozen
+stage-one candidate snapshot, which remains unchanged.
+
+The merged exclusion ledger now has **239** images, at
+`tartanair-rejection-review-02/known-geometry-exclusions.jsonl`, SHA256
+`648dfdeeb8247247f941208c0ec8f8646aaecabba481094e4ccd80835a6b10c2`.
+Only white RGB210812 is excluded from RGB replay; the other 238 are geometry-only.
+
 `configs/geometry-corpus-20261102.json` freezes the scope and teacher revision.
 `scripts/index_geometry_corpus.py` creates a disk-backed inventory and checks
 heldout metadata without reading evaluation depth. Its success is **not** depth
@@ -88,8 +117,9 @@ reviews. Eligible image counts are 39,984 COCO relative pseudo, 133,869 IRS
 relative pseudo, 1,043 NYU relative pseudo, 55,462 Hypersim native and 3,678
 Hypersim relative pseudo. The whole 59,344-image Hypersim scope reconciles once
 to its two eligible label routes plus 204 explicit geometry exclusions.
-The latest merged corpus exclusion set has 238 rows; only pure-white RGB
-210812 is also excluded from RGB replay. All native flags remain recorded.
+The source reviews above used the 238-row merged corpus exclusion set. The later
+Tartan rejection review adds one geometry-only exclusion (239 total); only
+pure-white RGB210812 is also excluded from RGB replay. All native flags remain recorded.
 
 These are source eligibility decisions, not corpus admission. The other four
 sources are still generating; final full payload accounting, actual training
@@ -1168,7 +1198,7 @@ native flags remain intact. This exclusion record itself is not a source pass
 or a training gate. The subsequent source review below binds the remaining
 55,462 native candidates; final corpus coverage is still required.
 
-Latest known geometry exclusions: **238 unique inputs**, in
+At this milestone, known geometry exclusions were **238 unique inputs**, in
 `hypersim-native-extreme-review-01/known-geometry-exclusions.jsonl`, SHA256
 `d334f481ad592d79ba0af1a86ca92569454f39e605befd0f9f5550a94158916d`.
 Only the existing pure-white RGB 210812 is also excluded from replay; the other
