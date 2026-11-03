@@ -10,7 +10,23 @@ small 81-view GT pilot is not sufficient acceptance for the expanded corpus.
 heldout metadata without reading evaluation depth. Its success is **not** depth
 acceptance and cannot start training. Native assets remain immutable.
 
-## Hypersim combined accounting and live status (23:27 UTC)
+## Completed source-review milestone (2026-11-03)
+
+COCO, IRS, NYU and both Hypersim label routes now have evidence-bound source
+reviews. Eligible image counts are 39,984 COCO relative pseudo, 133,869 IRS
+relative pseudo, 1,043 NYU relative pseudo, 55,462 Hypersim native and 3,678
+Hypersim relative pseudo. The whole 59,344-image Hypersim scope reconciles once
+to its two eligible label routes plus 204 explicit geometry exclusions.
+The latest merged corpus exclusion set has 238 rows; only pure-white RGB
+210812 is also excluded from RGB replay. All native flags remain recorded.
+
+These are source eligibility decisions, not corpus admission. The other four
+sources are still generating; final full payload accounting, actual training
+view coverage, canonical heldout isolation, loss evidence and the archived-model
+zero-update probe remain required. The RGB replay sampler is still a candidate
+policy, not a frozen training configuration. Production optimizer updates are 0.
+
+## Hypersim combined accounting and historical status (2026-11-02 23:27 UTC)
 
 `hypersim-review-teacher-cache-01` completed 3,680 pseudo candidates and their
 full producer readback, with the one evidenced constant-RGB rejection.
@@ -1077,9 +1093,9 @@ visual-support limitation. All 201 candidate identities bind the native policy,
 pack receipt, member, RGB and visual/source evidence. All 201 RGB images were
 verified in the unchanged replay pool. The 201 dispositions are complete;
 they must not be repeatedly treated as undecided findings. Original 3,076
-native flags remain intact. The remaining 55,462 native candidates still need
-their complete source review and final corpus coverage; this record is not a
-source pass or a training gate.
+native flags remain intact. This exclusion record itself is not a source pass
+or a training gate. The subsequent source review below binds the remaining
+55,462 native candidates; final corpus coverage is still required.
 
 Latest known geometry exclusions: **238 unique inputs**, in
 `hypersim-native-extreme-review-01/known-geometry-exclusions.jsonl`, SHA256
@@ -1091,6 +1107,34 @@ Review report SHA256:
 `a2a50a21d27d736fde7fa3236ed5854c4885831b0aea531c58b35e9adf8060e5`.
 No geometry arrays, native producer policy, existing combined-route evidence,
 or prior source reviews were overwritten.
+
+`hypersim-native-source-review-02` subsequently completed the native source
+review and a fresh reconciliation of all 59,344 original Hypersim identities.
+It rechecks all 58,739 native receipt identities and their unchanged flags,
+binds the producer's full array readback, camera census, RQ/tilt verification,
+earlier source-mismatch diagnostics and the new extreme-scale review. The
+native source review uses its mandatory 201-entry external quarantine register
+in addition to the original 3,076 flagged native candidates. It accepts 55,462
+native candidates from 355 frozen scene groups. This is synthetic source-scale
+supervision with documented limitations, not independent real-sensor accuracy.
+
+Its new source-route ledger contains exactly 55,462 native-eligible, 3,678
+relative-teacher-eligible and 204 excluded images. No original image is missing
+or selected twice. The old combined-candidate ledger remains unchanged.
+Native source-review SHA256:
+`1be522b9b26d9aaae5644510967c82b48f637e0c4e43720b92af585d07bd5296`.
+Source-route ledger SHA256:
+`580806095875a4826a772fc3b5b0c6a46ae24801e68cb6149f6f82504f846c48`.
+Completed report SHA256:
+`a937b494336bf12c8c197d8ef332d7e438efbae6b0c7a115ac38daef7caee237`.
+
+Source-review attempt 01 stopped before publishing a pass because the legacy
+white-image exclusion omits a redundant scene-group field. Attempt 02 binds
+its exact original ordinal/path/hash/dataset and checks group whenever present,
+without rewriting the legacy record. Nine compatibility and negative identity
+tests passed locally (0.10 s) and remotely (0.80 s). Changed paths, hashes,
+datasets, explicit groups, ordinals and decisions still fail. No actual model
+forward/backward probe or optimizer update occurred.
 
 ## Publication and supervision contract
 
