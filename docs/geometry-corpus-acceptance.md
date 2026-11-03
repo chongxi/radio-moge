@@ -1544,3 +1544,39 @@ all 50 original probes. It needs numeric success and actual depth/mask/K
 parity with the reviewed preflight before a new visual review can reuse that
 evidence. Closed-pack recovery and the 7,623-image remainder have not yet
 started. Never rerun all 35,783 inputs or overwrite the 110 closed old packs.
+
+### First geometry segment completed, 2026-11-03 08:37 UTC
+
+The first segment stopped normally at its 1,000-update limit, completed final
+validation and released the existing GPU lock. W&B run `f6e8d335` is `finished`,
+with matching final validation values. Its logging index 1,003 includes
+validation events; the actual optimizer count is exactly 1,000.
+`reviewed-stage1-finish-01` retains an immutable hardlink of the final
+`latest.pt`, SHA `047253cc38aa012def90405e879dbddbc843c9a08560b5e679388742309e499f`.
+CPU readback confirmed step 1,000/cursor 16,000, all 100 Adam states at step
+1,000, finite adapter/optimizer tensors, 100 changed adapter tensors, unchanged
+feature statistics and the same accepted configuration and stream identities.
+All 1,000 training records are finite. This is not an independent resume test.
+
+`reviewed-stage1-validation-1000-review-01` repeats only the paired metadata
+comparison, with SHA `9d19e02a7baedd35b0c1ad28517d7502f09869d4f3574a0fc7d6bad2c9cd09ad`.
+Original-view spatial cosine is 0.9599341052 and summary cosine 0.9320206924;
+both recover slightly but remain below the archived initial adapter. NYU
+AbsRel is 0.0720507646, 9.27% better than initial; ScanNet LiDAR is 0.0969569659,
+5.25% worse. Under the separate 400x640 crop protocol, summary cosine rises
+from 0.9296161041 to 0.9298317738, while spatial remains below initial. Do not
+mix those protocols or claim an overall gain. Best NYU/spatial/summary are now
+step 1,000, best LiDAR step 500, and best known-camera laser step 250.
+
+ScanNet review-teacher preflight 02 subsequently completed all 50 views with
+zero rejections. `review_teacher_preflight_parity.py` checked exact RGB,
+provenance, depth/mask/K bytes and all 25 reviewed scenes against preflight 01.
+The new visual gate explicitly reuses the earlier actual inspection through
+this exact parity; no new visual inspection is claimed. Five parity/recovery
+tests passed remotely. New review SHA:
+`dcdc4dc1660590a4fb9559e7552f758b8c8682e92ab78d3f6345eaea59b9a437`.
+`scannetpp-review-teacher-recovered-01` is rereading only the 110 closed old
+packs using one CPU worker. Wait for its complete 28,160-image proof before
+launching the 7,623-image remainder from execution snapshot v4. The main-tree
+v3 snapshot remains unused for generation because its pack-format file hash
+differs; no hash guard was relaxed.
