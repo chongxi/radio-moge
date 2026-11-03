@@ -2000,3 +2000,42 @@ existing FARO calibration/visibility limitations remain. The accepted 367,599
 geometry inputs, completed 2,000-update training segment and best checkpoints
 are unchanged. Reuse the finished census and visual reviews rather than
 repeating them during the remaining source-quality and crop-coverage work.
+
+### ARKit actual crop support and ScanNet remainder audit preparation
+
+`arkit-training-crops-01` exercises the unchanged production loader on **127
+candidate images, 99 visit groups and 381 actual 400x640 views**. The selection
+covers all four rotations, low support and depth extremes, deterministic visit
+samples, centered crops, random crops and an actual horizontal reflection.
+The three previously excluded candidates are omitted. Diagnostic seed 13145
+did not exercise a flip; the new probe uses seed 0 and asserts actual flip
+coverage. Production augmentation is unchanged. Twenty tests passed locally
+and remotely. These tests and the crop probe are not a real-model gate.
+
+Every selected target remains one unique original native observation and
+projects onto its prediction query. Maximum relative native-to-target error
+was 5.941e-8 from float32 storage; this is not physical depth accuracy. There
+are **six sparse views from two original images**. Both complete pages in
+`arkit-sparse-crop-visuals-01` were inspected after reproducing all six view
+metrics. For ordinal 36153, most of the 2,651 original valid points lie above
+or below the horizontal viewport, leaving 15/11/11 points. For ordinal 168525,
+all 3,218 original supported points lie below the three tested viewports,
+leaving zero points. Its blurred close door/panel RGB does not independently
+establish native depth accuracy.
+
+The existing fewer-than-32-observations rule skips geometry for these views;
+RGB feature eligibility remains. No depth, mask, crop policy or exclusion was
+changed. This extreme selection does not estimate whole-source sparse-view
+prevalence. ARKit source quality and final crop coverage remain unaccepted,
+including the retained FARO calibration/visibility limitations. Visual review
+SHA: `0caa3c0dc2919854f5f0a6ef066c35e966ecd95ec3296154348b43a0a0f8b82e`.
+
+`audit_scannetpp_teacher_outcomes.py` is ready in immutable
+`code-scannet-teacher-outcomes-v1` (commit `bcaaf79`). Eighteen tests passed
+locally and remotely. After the current remainder producer completes its full
+readback, the auditor will bind the 28,160 recovered and 7,623 remaining
+original RGB identities exactly once, check both unchanged inference/mask
+policies and retain all native source-review flags. It uses a local temporary
+SQLite index, publishes relative receipt statistics and bounded all-scene
+review candidates, and cannot admit labels or repeat inference. The actual
+combined audit has not run yet; the existing producer continues unchanged.
