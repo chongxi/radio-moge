@@ -244,6 +244,45 @@ def check_resolution_fork(config, state, digests):
         raise ValueError('Resolution fork preserves the source learning rate')
 
 
+def check_corpus_data_fork(config, state, digests, gate):
+    """A newly sealed corpus may retain Adam while starting a new sample stream.
+
+The caller has already opened the NEW gate against this exact checkpoint.
+Only accepted geometry selection, its mixture, output and bounded run budget
+may change. Existing replay, evaluation, objective and optimizer settings stay
+fixed; an old seal never authorizes the new selection.
+    """
+    import hashlib
+    from .corpus_admission import checked_json, training_contract_hash
+    from .geometry_cache import canonical_json
+
+    previous = state['config']
+    old_ref = previous['data'].get('geometry_corpus')
+    if not old_ref or not gate or config['data']['geometry_corpus'] == old_ref:
+        raise ValueError('Corpus data fork requires a distinct newly accepted stage')
+    old = checked_json(old_ref)
+    model = checked_json(gate['checks']['model_zero_update'])
+    old_digest = hashlib.sha256(canonical_json(old)).hexdigest()
+    if (old.get('stage') != 'accepted_for_training' or old.get('training_admission') is not True
+            or old.get('training_contract_sha256') != training_contract_hash(previous)
+            or old['index'] == gate['index']
+            or model.get('initial_source_step') != state['step']
+            or any(state['data_digests'].get(k) != old_digest for k in ('train', 'geometry'))):
+        raise ValueError('Corpus fork parent selection or newly probed checkpoint differs')
+    if set(digests) != set(state['data_digests']) or any(
+            digests[k] != value for k, value in state['data_digests'].items()
+            if k not in ('train', 'geometry')):
+        raise ValueError('Corpus fork must preserve replay and every validation/probe identity')
+    normalized = deepcopy(config)
+    for key in ('geometry_corpus', 'train_manifest', 'mixture_weights'):
+        normalized['data'].pop(key, None)
+        if key in previous['data']:
+            normalized['data'][key] = previous['data'][key]
+    check_lr_fork(normalized, state, state['data_digests'])
+    if config['train']['lr'] != previous['train']['lr']:
+        raise ValueError('Corpus data fork preserves the source learning rate')
+
+
 def train(
     config,
     resume=None,
@@ -265,9 +304,10 @@ def train(
     validate_config(config)
     corpus_gate = None
     if config['data'].get('geometry_corpus'):
-        if fork_from or extension or resolution_fork or data_fork or lr_adjustment:
+        if (extension or resolution_fork or lr_adjustment
+                or bool(fork_from) != bool(data_fork)):
             raise ValueError('Corpus configuration/budget changes need new acceptance, not an implicit fork')
-        corpus_gate = open_training_gate(config, init=init, resume=bool(resume))
+        corpus_gate = open_training_gate(config, init=fork_from or init, resume=bool(resume))
     if config.get('geometry_supervision') and performance:
         raise ValueError('GT paired batches do not support the RGB-only performance pipeline')
     if sum(bool(x) for x in (resume, init, fork_from)) > 1:
@@ -384,7 +424,10 @@ def train(
         if fork_from:
             from .data_fork import check_data_fork
             check = check_data_fork if data_fork else check_resolution_fork if resolution_fork else check_lr_fork
-            check(config, state, digests)
+            if corpus_gate:
+                check_corpus_data_fork(config, state, digests, corpus_gate)
+            else:
+                check(config, state, digests)
             if (resolution_fork or data_fork) and performance:
                 parent_effective = (state.get('performance') or {}).get(
                     'effective_batch', state['config']['train']['batch_size'] *

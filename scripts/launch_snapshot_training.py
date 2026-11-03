@@ -46,6 +46,8 @@ def publish(path, value, *, replace=False):
 
 
 def validate_bindings(request, ready, payload, snapshot, scope):
+    if ready.get('start_mode', 'init') != request.get('start_mode', 'init'):
+        raise ValueError('Readiness changed optimizer initialization versus continuation')
     if request.get('scope_kind') == 'reviewed_source_subset':
         if (request.get('training_authorized_after_checks') is not True
                 or any(ready.get(k) != request[k] for k in
@@ -82,9 +84,13 @@ def run(request_path, *, once=False, poll_seconds=30):
     request = checked(request_ref)
     config = checked(request['training_config'])
     snapshot = checked(request['snapshot']) if 'snapshot' in request else None
-    if ('geometry_corpus' in config['data'] or request['source_step'] != 232288
+    start_mode = request.get('start_mode', 'init')
+    if ('geometry_corpus' in config['data'] or start_mode not in ('init', 'corpus_data_fork')
+            or type(request['source_step']) is not int or request['source_step'] < 1
+            or (start_mode == 'init' and request['source_step'] != 232288)
+            or (start_mode == 'corpus_data_fork' and request.get('scope_kind') != 'reviewed_source_subset')
             or request.get('training_authorized_after_checks') is not True):
-        raise ValueError('Use the unsealed requested stage configuration and archived feature checkpoint')
+        raise ValueError('Use an unsealed requested stage and explicit verified initialization mode')
     output = Path(request['launch_directory'])
     output.mkdir(exist_ok=False)
     state = dict(stage='waiting_for_data_and_loss_checks', started_at=time.time(),
@@ -158,8 +164,10 @@ def run(request_path, *, once=False, poll_seconds=30):
             open_training_gate(runtime, init=request['initial_checkpoint']['path'])
             status('training_running', training_started=True, training_admission=True,
                    optimizer_updates=None, training_config=file_ref(config_path))
+            checkpoint_args = (['--fork-from', request['initial_checkpoint']['path'], '--data-fork']
+                if start_mode == 'corpus_data_fork' else ['--init', request['initial_checkpoint']['path']])
             subprocess.run([sys.executable, '-m', 'radio_moge.train', '--config', str(config_path),
-                '--init', request['initial_checkpoint']['path']], cwd=code, env=env, check=True)
+                *checkpoint_args], cwd=code, env=env, check=True)
             status('training_process_completed', optimizer_updates=None,
                    training_output=config['output_dir'])
         return state
