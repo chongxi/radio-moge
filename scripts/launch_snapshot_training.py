@@ -46,6 +46,16 @@ def publish(path, value, *, replace=False):
 
 
 def validate_bindings(request, ready, payload, snapshot, scope):
+    if request.get('scope_kind') == 'reviewed_source_subset':
+        if (request.get('training_authorized_after_checks') is not True
+                or any(ready.get(k) != request[k] for k in
+                       ('training_config', 'initial_checkpoint', 'source_step', 'accounting_report'))
+                or scope.get('kind') != 'reviewed_source_subset'
+                or scope.get('expected_counts') != request['expected_counts']):
+            raise ValueError('Readiness changed the reviewed source subset or initialization')
+        if set(ready.get('checks', {})) != {'source_quality', 'coverage', 'heldout_isolation', 'loss_tests'}:
+            raise ValueError('The four nonmodel gates are required before starting a model')
+        return
     if (request.get('training_authorized_after_checks') is not True
             or ready.get('training_config') != request['training_config']
             or ready.get('initial_checkpoint') != request['initial_checkpoint']
@@ -71,7 +81,7 @@ def run(request_path, *, once=False, poll_seconds=30):
     request_ref = file_ref(request_path)
     request = checked(request_ref)
     config = checked(request['training_config'])
-    snapshot = checked(request['snapshot'])
+    snapshot = checked(request['snapshot']) if 'snapshot' in request else None
     if ('geometry_corpus' in config['data'] or request['source_step'] != 232288
             or request.get('training_authorized_after_checks') is not True):
         raise ValueError('Use the unsealed requested stage configuration and archived feature checkpoint')
@@ -95,8 +105,8 @@ def run(request_path, *, once=False, poll_seconds=30):
             raise ValueError('Launch request changed while waiting')
         ready_ref = file_ref(request['readiness_plan'])
         ready = checked(ready_ref)
-        payload_ref = file_ref(request['payload_report'])
-        payload = checked(payload_ref)
+        payload_ref = file_ref(request['payload_report']) if 'payload_report' in request else None
+        payload = checked(payload_ref) if payload_ref is not None else None
         accounting = checked(ready['accounting_report'])
         scope = checked(accounting['scope'])
         validate_bindings(request, ready, payload, snapshot, scope)
@@ -124,7 +134,8 @@ def run(request_path, *, once=False, poll_seconds=30):
             # Recheck after waiting; a stale plan cannot start a model.
             checked(request_ref)
             checked(ready_ref)
-            checked(payload_ref)
+            if payload_ref is not None:
+                checked(payload_ref)
             checked(request['training_config'])
             validate_pre_model_evidence(ready['accounting_report'], ready['checks'])
             probe = output / 'model-zero-update'

@@ -74,3 +74,22 @@ def test_changed_request_config_is_rejected_before_queue_creation(tmp_path):
     config.write_text(json.dumps(dict(data={'geometry_corpus': 'unreviewed'})))
     with pytest.raises(ValueError, match='evidence changed'):
         run(request, once=True)
+
+
+def test_reviewed_subset_does_not_wait_for_unrelated_snapshot_but_still_binds_all_gates():
+    request, ready, _, _, scope = bound()
+    request.update(scope_kind='reviewed_source_subset', expected_counts={'a': 3},
+                   accounting_report={'path': '/fixture/account', 'sha256': 'b' * 64})
+    request.pop('snapshot')
+    ready.pop('snapshot')
+    ready['accounting_report'] = request['accounting_report']
+    scope = dict(kind='reviewed_source_subset', expected_counts={'a': 3})
+    validate_bindings(request, ready, None, None, scope)
+    for key in ('accounting_report', 'initial_checkpoint', 'training_config'):
+        changed = deepcopy(ready)
+        changed[key] = 'changed'
+        with pytest.raises(ValueError, match='Readiness changed'):
+            validate_bindings(request, changed, None, None, scope)
+    ready['checks'].pop('coverage')
+    with pytest.raises(ValueError, match='four nonmodel gates'):
+        validate_bindings(request, ready, None, None, scope)
