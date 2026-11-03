@@ -2929,3 +2929,40 @@ change occurred. Online receipts:
 `64b82df6b67d721dae1e852fab9f99d56697eda294333acdba272da6f4a23b40`
 and `fe6028b3727dcefe5855ab107aaf0b874c0beb6ca0b069302b6a911af631c5f1`.
 Full input equality for the third arm and the fourth arm's run remain pending.
+
+### Three fixed controls complete; final factorial arm running
+
+By 21:37 UTC `feature1p0_geometry0` completed 250 updates and its final
+evaluation. The full 4,000-input sequence and 2,000 replay slots match the first
+two arms exactly. Completion receipt SHA:
+`7fe4ebd7eaa17d69d52e30b59b3f73dab229e4585b47de7b418f0292df968ddc`.
+The controller verified finite adapter/Adam tensors, step 250, cursor 4,000 and
+unchanged frozen statistics/configuration/digests. A hard link preserves the
+fixed final checkpoint, SHA
+`ff9aed9633f874712b0120c92242898e3f9094b89cb1df45f0a7b0b06840f1aa`;
+preservation receipt SHA
+`1e185e0ba669a8c28e14dabf20140673ead174b5fc1bd8a70474c931991c5c53`.
+No payload readback was repeated and no best checkpoint was selected.
+
+W&B `8f36799c` is finished, and its five fixed-final validation values match the
+saved step-250 record exactly. Configuration/provenance values match, with ten
+equal integer/float representations and no numerical difference. Online final
+receipt SHA:
+`b2a7d01ace42dbe6a21252e083023d195e7539d193c5485fca3e137690e849e8`.
+
+Controller 188064 automatically started `feature1p0_geometry1`, trainer 207323,
+W&B `29249cc4`. The actual independent trainer's initial adapter/statistics
+match archive 232288, and optimizer/scheduler/RNG/revisions match the first arm
+bitwise with empty Adam and cursor zero. Initial proof SHA:
+`5024285ce163ab68895e747a9b9e98f4f952fa5f1fa6956254d967ca872df51e`.
+Its first 20 updates have finite positive feature/geometry losses, nonzero
+optimizer gradients and measured updates. The first 320 actual inputs match
+the first arm exactly; full 4,000-input equality remains pending. Startup SHA:
+`052cd384a0cbabfb810d650aa5113d9c80c50fbb20e7eb6d27f805de6d7f3ab0`.
+The online configuration/provenance values match with nine equal integer/float
+representations. First-20 online losses/gradients and updates at 10/20 match
+exactly. Online receipts:
+`08e505625d136bab90f17598653f76c7325227853c3f0dfb06490e956e4785c5`
+and `4a15a2086b911c5a65ba2790aa76fd851a7dc65075e20d1e80661b9ed672b0d7`.
+The predefined paired analysis will run once all four fixed-final evaluations
+complete. No joint improvement is inferred from partial results.
