@@ -55,9 +55,12 @@ def run(review_path, output):
                 or sha_file(row['image']) != row['sha256']):
             raise ValueError('Unchanged training RGB and nonmetric teacher required')
         with Image.open(row['image']) as source:
-            if source.mode != 'RGB' or source.getexif().get(274, 1) != 1:
+            if (source.mode not in ('RGB', 'RGBA') or source.getexif().get(274, 1) != 1
+                    or (source.mode == 'RGBA' and source.getextrema()[3] != (255, 255))):
                 raise ValueError('Unexpected RGB mode/orientation')
-            rgb = source.copy()
+            # These publisher PNGs have an opaque alpha channel; match the
+            # producer's RGB conversion without compositing transparency.
+            rgb = source.convert('RGB')
         if depth.shape != (rgb.height, rgb.width):
             raise ValueError('Original image and geometry grids differ')
         median = float(np.median(depth[valid]))
