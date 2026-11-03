@@ -1674,3 +1674,54 @@ only the 7,623 remaining inputs from execution v4/`5228f12`; its child is waitin
 for the original GPU lock held by the active trainer. Do not relaunch either
 the recovery or the queued remainder, or run teacher inference alongside this
 training segment by bypassing that lock.
+
+### Additional TartanAir rejection review, 2026-11-03
+
+`tartanair-rejection-review-04` reproduces only five new rejected inputs,
+ordinals **451241–451245**, neighborhood/Hard/P006 frames 157–161. The previous
+14 decisions remain bound to their exact RGB and rejection receipts and are
+not rerendered. Both the left/right source identities and published conversion
+statistics match exactly. All five rendered pages were inspected: the upward
+views contain extensive sky, utility wires and fragmented foliage/roof edges.
+Final stereo support is 4.016%–4.684%, below the unchanged 5% minimum. These five
+inputs receive explicit geometry-only exclusions; all five original RGB records
+were found unchanged in the active replay manifest. No active training input,
+mask, threshold or optimizer state was modified.
+
+The incremental review helper accepts both existing spellings for a geometry-only
+decision while retaining exact image/SHA/rejection/evidence binding. Eight tests
+passed locally and remotely. The initial attempt rejected the older spelling
+before creating review output; the corrected execution snapshot is
+`code-tartanair-incremental-review-v2`, commit `c886075`.
+
+The merged known geometry exclusions now number **1,432**:
+`tartanair-rejection-review-04/known-geometry-exclusions.jsonl`, SHA
+`ac6d3c783b1f12a9b17c5a5c0e5785a0228bb5b0183043a382b30014fc4f7699`.
+Only the previously reviewed Hypersim white image 210812 is excluded from RGB
+replay. These dispositions do not constitute full TartanAir source acceptance.
+
+### Second-stage validation at step 1,250
+
+`reviewed-stage2-validation-1250-review-01/report.json`, SHA
+`40ceeff2e949dd5d17e947d377e49f49358239e50ba4e4cf1ff2943cd367dc1e`,
+compares recorded outputs without repeating model inference. Original and native
+400x640 views each contain the same 1,268 images, alongside the same 120 LiDAR,
+128 DSLR and 18 known-camera laser views. Image order, preprocessing protocols,
+heldout digests, frozen model revisions and fixed teacher/GT quantities match.
+
+Against the step-1,000 parent, original-view spatial cosine falls from
+0.9599341052 to 0.9597938078 and summary cosine from 0.9320206924 to 0.9318046097.
+NYU AbsRel rises from 0.0720507646 to 0.0738057821 (2.44% worse), ScanNet LiDAR
+from 0.0969569659 to 0.0983683786 (1.46% worse), and known-camera laser AbsRel
+from 0.1333986210 to 0.1335096824 (0.083% worse). NYU remains 7.06% better than
+the original feature-only adapter, while LiDAR is 6.78% worse. There is no
+overall improvement claim.
+
+The largest original-view spatial decline is Structured3D
+(0.9679181371 to 0.9655191442); IRS improves from 0.9578006924 to 0.9587802906.
+This describes where the change occurs, not a causal attribution. Under the
+separate native crop protocol, spatial cosine changes by only +1.24e-6 and
+summary cosine declines. The active stage's five checkpoint selections remain
+at its step-1,000 parent, while earlier stage-specific bests are retained.
+Training continues within its existing bounded segment; compare step 1,500
+before drawing a trend conclusion or changing the accepted objective.
