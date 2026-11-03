@@ -66,6 +66,39 @@ receipt preserves their exact hashes; remaining7,623 images must resume in a
 new attempt after recovery verification, without regenerating the entire set.
 Other native generation and the full RGB/payload censuses continue.
 
+The first launcher was stopped during input loading, before models or an
+optimizer were constructed. Its replay export had retained NYU depth fields,
+and the legacy reader resolved/statted every replay file at startup.
+`reviewed-stage1-replay-02` strips all non-RGB fields while proving the same
+796,477 ordered image identities, groups and orientations. Its manifest SHA256
+is `1ff48734105a0ca14532f2a511916d7db9cc057ece37d2d74210bc860ea81aaa`.
+Code `95f1ba3` checks this complete frozen manifest once and checks image bytes
+on each actual replay read. Changed manifests and changed sampled images fail
+tests. The canonical isolation result remains bound to the same RGB inputs.
+Sixty-eight remote tests pass in 6.95s. The replacement launcher is
+`reviewed-stage1-launch-02`, using immutable `code-reviewed-training-v4` and
+`reviewed-stage1-readiness-02`; the old attempt and evidence remain preserved.
+
+The actual archived-model probe passed all 50 paired/replay forward/backward
+cases. All five source/label strata have nonzero geometry gradients; the one
+empty crop follows the explicit feature-only path. Parameter and buffer hashes
+prove RADIO, MoGe, adapter and feature statistics unchanged during this probe.
+Peak allocated GPU memory was 10,531,868,160 bytes. The scoped acceptance seal
+is `reviewed-stage1-launch-02/acceptance.json`.
+
+The first trainer process then stopped before any optimizer update because its
+remote environment lacked the workspace W&B authentication. Its three metadata
+files are preserved in `reviewed-stage1-training01-preupdate-failure-01`.
+`reviewed-stage1-training-restart-01` revalidates the unchanged acceptance seal
+and reuses the completed model probe, supplying the existing connected account
+only through the process environment. No credential is recorded in evidence.
+Actual optimizer updates began at approximately 06:52 UTC. The active output is
+`reviewed-stage1-training-01`, initialized from archived feature step 232288;
+its new-stage step counter starts at 1. Online tracking:
+https://forge.coreweave.com/wandb/brainsim/radio-moge/runs/f6e8d335 .
+This acceptance covers the reviewed four-source stage, not the unfinished full
+corpus or the unrelated 870k candidate snapshot.
+
 `configs/geometry-stage1-candidates-20261103.json` lists all current primary,
 recovered and review-teacher sources, completed source reviews and the 238
 explicit geometry exclusions known at capture. `scripts/snapshot_geometry_candidates.py`
