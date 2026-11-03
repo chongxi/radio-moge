@@ -2541,3 +2541,66 @@ The snapshot now has 60 disposed TartanAir rejections and 4,099 known global
 geometry exclusions; only white Hypersim ordinal 210812 is excluded from RGB.
 Merged exclusion SHA:
 `8da1d75e2f5adf96ffd3c78290207011d1fda7f449f4c51acda0317a8d5a817a`.
+
+### Stage 4 paired validation at 3395
+
+`reviewed-stage4-validation-3395-review-01` verifies unchanged four-view image
+orders, protocols, frozen-teacher results, five heldout digests and 18 known-camera
+laser cases against 3145. The five W&B validation metrics match their saved
+records exactly; no inference was repeated. Comparison SHA:
+`f9844a2bf4f1c6ba6d253a81ae751a03cd49a7342ea05560a80ef6709c71822a`;
+online proof SHA:
+`e215d9f10ec398e32da07add93cd425f543f15d0d21cf9bbec6b183c7dd45016`.
+
+Original macro spatial/summary cosine decline slightly to 0.95997293/0.93192033,
+remaining below both the stage parent and initial feature checkpoint. NYU AbsRel
+is 0.06962723, 2.11% worse than 3145 but 12.32% better than initial. LiDAR AbsRel
+improves 3.46% from 3145 to 0.09645290, still 4.71% worse than initial; the earlier
+step-500 result remains better. Known-camera laser AbsRel improves another 2.70%
+to **0.11932770**, a new observed low. These remain task-specific changes without
+an overall gain or causal claim. In the separate 400x640 protocol, NYU worsens
+1.15% from 3145 while summary cosine increases slightly.
+
+The stage-selected laser/LiDAR checkpoint was preserved in
+`reviewed-stage4-best-laser-lidar-3395-01`. CPU readback confirms finite adapter
+and optimizer tensors, all 100 Adam states at 3395, cursor 8000, and exact config,
+stream digests and revisions. Checkpoint SHA:
+`710dff5cf6259a31cf5577b591c922791cf407f1837f9de03a1757f5da489bda`;
+proof SHA:
+`6a38a21cabae47359f0114bf81900a0c2ae5e3c777f610acdc258ff685b0703b`.
+The best NYU checkpoint remains 3145 and all older bests are retained. Training
+continues on the unchanged 598,298 geometry inputs and 796,477 RGB replay inputs;
+the next validation is 3645.
+
+### Two TartanAir Hard/P002 rejections and full-outcome tooling
+
+`tartanair-rejection-review-10` exactly reproduces the two new inputs 497095 and
+497096, seaside-town Hard/P002 frames 000000/000001. Both original six-panel
+pages were inspected. Sky and distant sea dominate, with a narrow building edge,
+rail and posts; final support is 2.87–3.84%, below the unchanged 5% minimum.
+Both receive exact geometry-only exclusions and both original RGB identities
+were found once in the unchanged replay. The earlier 60 decisions were reused.
+The snapshot now contains 62 disposed TartanAir rejections and 4,101 known global
+geometry exclusions, still with only white Hypersim ordinal 210812 excluded from
+RGB. Decision report SHA:
+`f13b4c95c5ad4feadd72acf02e8f6341e10b56baacdb360f4ca7ce455e1bf317`;
+merged exclusion SHA:
+`81b99a558ea9abe5335e7f8adf5c884a384f4e7170ee5c20c0ae920c1c30a13b`.
+
+`audit_tartanair_outcomes.py` is ready in `code-tartanair-outcomes-v2` at
+`94a410f`. It requires completed producer payload readback, reconciles every
+frozen RGB once with a candidate or the exact persisted rejection, checks stereo
+source identities, support nesting, units and unchanged thresholds, and uses
+a local temporary SQLite index. It selects bounded per-environment/difficulty
+extremes for later review; it does not accept labels or repeat payload readback.
+The original family/split helper preserves day/night grouping and heldout
+variants, while environment, family and trajectory counts remain distinct.
+
+All 22 targeted tests pass locally and remotely. Metadata compatibility was
+checked against the existing 47 preflight candidates and one rejection, covering
+12 environment names and 11 families; source generation and the original
+preflight were not rerun. Tooling receipt SHA:
+`97ffd034acaf3b01ae90938b4e7e06c77ce83e44bb475d40ead386a505082898`.
+The full TartanAir outcome audit has **not run**: its producer is still generating
+the remaining images. Run it only after its final generation report and full
+payload readback complete.
