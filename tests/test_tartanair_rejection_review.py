@@ -2,13 +2,15 @@ from copy import deepcopy
 import hashlib
 import io
 import json
+from pathlib import Path
 
 import numpy as np
 from PIL import Image
 import pytest
 
-from review_tartanair_rejections import reproduce
-from radio_moge.geometry_cache import sha_file
+from review_tartanair_rejections import reproduce, unreviewed_rejections
+from radio_moge.corpus_admission import file_ref
+from radio_moge.geometry_cache import publish_json, sha_file
 from radio_moge.tartanair_depth import convert_tartanair
 
 
@@ -83,3 +85,38 @@ def test_wrong_reported_support_and_changed_rgb_cannot_pass_reproduction(tmp_pat
     Image.fromarray(np.full((480, 640, 3), 51, np.uint8)).save(original['image']['image'])
     with pytest.raises(ValueError, match='Unchanged frozen'):
         reproduce(original, tmp_path / 'native')
+
+
+def rejection_snapshot(root):
+    references = []
+    for i in range(2):
+        path = root / f'{i}.json'
+        publish_json(path, dict(image=dict(dataset='tartanair', image=f'/rgb/{i}.png',
+                                          sha256=str(i) * 64)))
+        references.append(file_ref(path))
+    decision = dict(dataset='tartanair', image='/rgb/0.png', sha256='0' * 64,
+                    decision='exclude', scope='geometry_supervision', rgb_replay_excluded=False,
+                    reason='reviewed insufficient stereo support', evidence=[references[0]])
+    return references, decision
+
+
+def test_incremental_review_skips_only_exact_evidenced_prior_rejections(tmp_path):
+    references, decision = rejection_snapshot(tmp_path)
+    assert unreviewed_rejections(references, [decision]) == references[1:]
+    assert unreviewed_rejections(references, []) == references
+    assert unreviewed_rejections(references[:1], [decision]) == []
+
+
+def test_incremental_review_rejects_changed_rgb_decision_or_rejection(tmp_path):
+    references, decision = rejection_snapshot(tmp_path)
+    for change in (dict(sha256='f' * 64), dict(evidence=[references[1]]),
+                   dict(rgb_replay_excluded=True), dict(decision='accept')):
+        with pytest.raises(ValueError):
+            unreviewed_rejections(references, [dict(decision, **change)])
+    with pytest.raises(ValueError, match='Unique'):
+        unreviewed_rejections(references, [decision, decision])
+    with pytest.raises(ValueError, match='Unique'):
+        unreviewed_rejections(references + references[:1], [decision])
+    Path(references[0]['path']).write_text('{}')
+    with pytest.raises(ValueError, match='Evidence changed'):
+        unreviewed_rejections(references, [decision])

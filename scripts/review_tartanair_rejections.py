@@ -97,7 +97,39 @@ def draw_page(row, left, left_rgb, right_rgb, valid, quality):
     return canvas
 
 
-def run(config, cache_attempt, attempt):
+def unreviewed_rejections(snapshot, decisions):
+    """Skip only exact, evidenced prior geometry exclusions; never skip by frame alone."""
+    reviewed, verified_evidence = {}, set()
+    for decision in decisions:
+        if decision.get('dataset') != 'tartanair':
+            continue
+        if (decision.get('decision') != 'exclude'
+                or decision.get('scope') != 'geometry_supervision'
+                or decision.get('rgb_replay_excluded') is not False
+                or not decision.get('reason') or not decision.get('evidence')
+                or decision['image'] in reviewed):
+            raise ValueError('Unique evidenced prior geometry-only decisions required')
+        for evidence in decision['evidence']:
+            key = canonical_json(evidence)
+            if key not in verified_evidence:
+                checked_path(evidence)
+                verified_evidence.add(key)
+        reviewed[decision['image']] = decision
+    result, seen = [], set()
+    for reference in snapshot:
+        row = checked_json(reference)['image']
+        if row['dataset'] != 'tartanair' or row['image'] in seen:
+            raise ValueError('Unique TartanAir rejection inputs required')
+        seen.add(row['image'])
+        prior = reviewed.get(row['image'])
+        if prior is None:
+            result.append(reference)
+        elif prior['sha256'] != row['sha256'] or reference not in prior['evidence']:
+            raise ValueError('Prior decision does not bind this exact RGB and rejection')
+    return result
+
+
+def run(config, cache_attempt, attempt, prior_decisions=None):
     root = Path(config['root'])
     cache = root / cache_attempt
     source_ref, policy_ref = file_ref(root / 'inventory.json'), file_ref(cache / 'packs/policy.json')
@@ -113,7 +145,11 @@ def run(config, cache_attempt, attempt):
     for name in ('src/radio_moge/tartanair_depth.py', 'src/radio_moge/geometry_sources.py'):
         if sha_file(repo / name) != policy['code_sha256'][name]:
             raise ValueError('Reproduction converter differs from producer policy')
-    selection = [file_ref(p) for p in sorted((cache / 'rejected').glob('*.json'))]
+    snapshot = [file_ref(p) for p in sorted((cache / 'rejected').glob('*.json'))]
+    prior_ref = file_ref(prior_decisions) if prior_decisions is not None else None
+    decisions = ([json.loads(line) for line in checked_path(prior_ref).read_text().splitlines()
+                  if line.strip()] if prior_ref else [])
+    selection = unreviewed_rejections(snapshot, decisions)
     if not 1 <= len(selection) <= 64:
         raise ValueError('Bounded rejection snapshot of 1-64 records required')
     output = root / attempt
@@ -135,12 +171,13 @@ def run(config, cache_attempt, attempt):
             os.rename(temporary, page)
             records.append(dict(corpus_ordinal=match[0], image=row, rejection=ref, source_receipts=refs,
                 page=file_ref(page), quality=quality, reproduced_statistics_exact=True))
-    for ref in (source_ref, policy_ref, *selection):
+    for ref in (source_ref, policy_ref, *snapshot, *([prior_ref] if prior_ref else [])):
         checked_path(ref)
     result = dict(stage='rejection_evidence_rendered_not_reviewed', dataset='tartanair', records=records,
         reviewed_subset_size=len(records), full_source_scope=config['expected_counts']['tartanair'],
         inventory=inventory_ref, source_report=source_ref, producer_policy=policy_ref,
         selection=file_ref(output / 'selection.json'), audit_code=file_ref(Path(__file__)),
+        prior_decisions=prior_ref, prior_rejections_not_reaudited=len(snapshot) - len(selection),
         selection_is_snapshot_of_running_producer=True, full_source_accounting_complete=False,
         independent_physical_depth_accuracy_checked=False, thresholds_changed=False,
         native_holes_filled=False, network_requests=0, teacher_inference_performed=False,
@@ -154,7 +191,9 @@ if __name__ == '__main__':
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--cache-attempt', default='tartanair-native-cache-01')
     parser.add_argument('--attempt', required=True)
+    parser.add_argument('--prior-decisions', type=Path,
+                        help='Checked geometry exclusions whose exact rejection records are already reviewed')
     args = parser.parse_args()
     if any(Path(n).name != n for n in (args.cache_attempt, args.attempt)):
         parser.error('Use new attempt basenames')
-    run(json.loads(args.config.read_text()), args.cache_attempt, args.attempt)
+    run(json.loads(args.config.read_text()), args.cache_attempt, args.attempt, args.prior_decisions)
