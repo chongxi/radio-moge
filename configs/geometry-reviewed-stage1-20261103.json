@@ -158,7 +158,8 @@
   },
   "feature_replay": {
     "fraction": 0.5,
-    "manifest": "/home/buildhub/shared/radio-moge/chongxi/geometry-corpus-20261102/reviewed-stage1-data-02/rgb-replay.jsonl",
+    "manifest": "/home/buildhub/shared/radio-moge/chongxi/geometry-corpus-20261102/reviewed-stage1-replay-02/rgb.jsonl",
+    "manifest_sha256": "1ff48734105a0ca14532f2a511916d7db9cc057ece37d2d74210bc860ea81aaa",
     "mixture_weights": {
       "arkitscenes": 0.15,
       "coco2017": 0.15,

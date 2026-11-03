@@ -125,6 +125,8 @@ def run(root, output):
                     'JOIN original.images o ON t.ordinal=o.ordinal ORDER BY t.ordinal'):
                 row = json.loads(encoded)
                 row['image'] = image
+                row = {key: row[key] for key in ('image', 'sha256', 'dataset', 'group',
+                    'split', 'image_rotation_cw', 'height', 'width') if key in row}
                 file.write(json.dumps(row, sort_keys=True) + '\n')
         heldout_ref = file_ref(root / 'heldout-rgb-census-01/report.json')
         heldout = checked_json(heldout_ref)

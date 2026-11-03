@@ -3,11 +3,12 @@ from collections import Counter
 from copy import deepcopy
 import json
 from pathlib import Path
+import hashlib
 
 import pytest
 import torch
 
-from radio_moge.data import read_manifest
+from radio_moge.data import read_manifest, manifest_digest, TrainingImages
 from radio_moge.feature_replay import (is_replay_batch, load_replay_records, make_replay_loader,
                                        replay_feature_losses)
 from radio_moge.losses import FeatureStatistics
@@ -52,6 +53,30 @@ def test_replay_admission_and_budget_constraints(tmp_path):
         Path(config['feature_replay']['manifest']).write_text(json.dumps(row) + '\n')
         with pytest.raises(ValueError, match='train-only RGB'):
             load_replay_records(config, [])
+
+
+def test_verified_replay_skips_global_file_scan_but_checks_each_actual_rgb(tmp_path, monkeypatch):
+    config = replay_config(tmp_path)
+    path = Path(config['feature_replay']['manifest'])
+    rows = read_manifest(path)
+    for row in rows:
+        row['sha256'] = hashlib.sha256(Path(row['image']).read_bytes()).hexdigest()
+    path.write_text(''.join(json.dumps(r) + '\n' for r in rows))
+    config['feature_replay']['manifest_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
+    def no_global_stats(*args):
+        raise AssertionError('Verified replay must not stat every source image at startup')
+    monkeypatch.setattr(Path, 'is_file', no_global_stats)
+    records = load_replay_records(config, [])
+    assert manifest_digest(records) == config['feature_replay']['manifest_sha256']
+    image = TrainingImages(records)[(0, 43, 32, 48)]
+    assert image.shape == (3, 32, 48)
+    p = Path(rows[0]['image'])
+    p.write_bytes(p.read_bytes() + b'changed')
+    with pytest.raises(ValueError, match='RGB bytes changed'):
+        TrainingImages(records)[(0, 43, 32, 48)]
+    path.write_text(path.read_text() + '\n')
+    with pytest.raises(ValueError, match='manifest changed'):
+        load_replay_records(config, [])
 
 
 def test_replay_stream_has_half_the_slots_and_resumes_exactly(tmp_path):

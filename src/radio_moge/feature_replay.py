@@ -4,6 +4,10 @@ GT geometry still consumes every original microbatch. Feature supervision keeps
 the same number of images and weights; it is replaced, never added twice.
 """
 import math
+import hashlib
+import json
+from pathlib import Path
+import re
 
 import torch
 from torch.utils.data import DataLoader
@@ -18,10 +22,12 @@ def validate_feature_replay(config):
         return
     required = {'manifest', 'fraction', 'seed'}
     if (not isinstance(replay, dict) or not required <= set(replay)
-            or set(replay) - required - {'mixture_weights'}
+            or set(replay) - required - {'mixture_weights', 'manifest_sha256'}
             or replay['fraction'] != .5 or not isinstance(replay['manifest'], str)
             or not replay['manifest'] or type(replay['seed']) is not int or replay['seed'] < 0):
         raise ValueError('Feature replay requires manifest, fraction=0.5 and a nonnegative integer seed')
+    if 'manifest_sha256' in replay and not re.fullmatch('[0-9a-f]{64}', str(replay['manifest_sha256'])):
+        raise ValueError('Replay manifest SHA256 must be exact')
     if 'mixture_weights' in replay:
         weights = replay['mixture_weights']
         if (not isinstance(weights, dict) or not weights
@@ -35,10 +41,42 @@ def validate_feature_replay(config):
         raise ValueError('Feature replay requires even accumulation and one fixed resolution bucket')
 
 
+class VerifiedReplayRecords(list):
+    """A frozen RGB index with payload identity checked on every actual read."""
+    verify_on_read = True
+
+    def __init__(self, rows, checksum):
+        super().__init__(rows)
+        self.checksum = checksum
+
+    def digest(self):
+        return self.checksum
+
+
+def load_verified_replay(path, checksum):
+    rows, digest, seen = [], hashlib.sha256(), set()
+    with Path(path).open('rb') as file:
+        for line in file:
+            digest.update(line)
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if (not Path(row['image']).is_absolute() or row['image'] in seen
+                    or not re.fullmatch('[0-9a-f]{64}', str(row.get('sha256', '')))):
+                raise ValueError('Verified replay requires unique absolute RGB paths and hashes')
+            seen.add(row['image'])
+            rows.append(row)
+    if not rows or digest.hexdigest() != checksum:
+        raise ValueError('Verified replay manifest changed')
+    return VerifiedReplayRecords(rows, checksum)
+
+
 def load_replay_records(config, heldout_sets):
     if config.get('feature_replay') is None:
         return []
-    records = read_manifest(config['feature_replay']['manifest'])
+    settings = config['feature_replay']
+    records = (load_verified_replay(settings['manifest'], settings['manifest_sha256'])
+               if 'manifest_sha256' in settings else read_manifest(settings['manifest']))
     if any(row.get('split') != 'train' or not row.get('dataset') or not row.get('group')
            or 'depth' in row or 'geometry' in row for row in records):
         raise ValueError('Replay must contain train-only RGB records with source/scene and no GT labels')

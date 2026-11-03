@@ -1,4 +1,5 @@
 import hashlib
+import io
 import json
 import math
 import random
@@ -67,8 +68,14 @@ def image_rotation(row):
     return rotation
 
 
-def oriented_rgb(row):
-    with Image.open(row["image"]) as file:
+def oriented_rgb(row, verify_hash=False):
+    source = row['image']
+    if verify_hash:
+        data = Path(source).read_bytes()
+        if hashlib.sha256(data).hexdigest() != row['sha256']:
+            raise ValueError('Verified replay RGB bytes changed')
+        source = io.BytesIO(data)
+    with Image.open(source) as file:
         image = ImageOps.exif_transpose(file).convert("RGB")
     rotation = image_rotation(row)
     if rotation:
@@ -95,7 +102,7 @@ class TrainingImages(Dataset):
     def __getitem__(self, key):
         index, seed, h, w = key
         rng = random.Random(seed)
-        image = oriented_rgb(self.records[index])
+        image = oriented_rgb(self.records[index], verify_hash=getattr(self.records, 'verify_on_read', False))
         iw, ih = image.size
         # Largest crop at the chosen aspect ratio; random location, no geometric warping.
         cw, ch = min(iw, max(1, round(ih * w / h))), min(ih, max(1, round(iw * h / w)))
