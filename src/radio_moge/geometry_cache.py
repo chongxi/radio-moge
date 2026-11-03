@@ -169,14 +169,24 @@ class GeometryPackWriter:
         self.lock.close()
 
 
-def read_geometry_member(pack_path, entry):
-    """Bounded random read, SHA verification, and safe non-pickle array decoding."""
+def validate_member_reference(entry):
     if (entry['offset'] < 512 or entry['offset'] % 512 or not 0 < entry['size'] <= 64 * 1024**2
             or not HEX64.fullmatch(entry['key']) or entry['member'] != entry['key'] + '.npz'):
         raise ValueError('Invalid packed geometry reference')
+
+
+def read_geometry_member(pack_path, entry):
+    """Bounded random read, SHA verification, and safe non-pickle array decoding."""
+    validate_member_reference(entry)
     with Path(pack_path).open('rb') as file:
         file.seek(entry['offset'])
         data = file.read(entry['size'])
+    return decode_geometry_member(data, entry)
+
+
+def decode_geometry_member(data, entry):
+    """Use the same content checks for random and sequential pack readers."""
+    validate_member_reference(entry)
     if len(data) != entry['size'] or hashlib.sha256(data).hexdigest() != entry['sha256']:
         raise ValueError('Packed geometry hash mismatch')
     with np.load(io.BytesIO(data), allow_pickle=False) as arrays:
@@ -190,3 +200,59 @@ def read_geometry_member(pack_path, entry):
             or not np.all(depth[~valid] == 0) or k.shape != (3, 3)):
         raise ValueError('Packed geometry content violates its receipt')
     return depth, valid, k, metadata
+
+
+def iter_geometry_pack(pack_path, receipt):
+    """Read/hash the entire USTAR once, decoding each bounded member.
+
+    Consumers MUST exhaust this iterator before publishing a pack verification.
+    The final whole-file hash and padding checks run after the last yielded member.
+    The format is the exact regular-file USTAR layout written by GeometryPackWriter.
+    """
+    path = Path(pack_path)
+    if (path.name != receipt['tar'] or not HEX64.fullmatch(receipt['sha256'])
+            or not receipt['entries'] or len(receipt['entries']) > 1024):
+        raise ValueError('Invalid completed pack receipt')
+    before = path.stat()
+    if before.st_size != receipt['bytes']:
+        raise ValueError('Pack byte count changed')
+    digest = hashlib.sha256()
+    keys = set()
+    with path.open('rb') as file:
+        def read_exact(size):
+            data = file.read(size)
+            if len(data) != size:
+                raise ValueError('Truncated packed geometry')
+            digest.update(data)
+            return data
+
+        for entry in receipt['entries']:
+            validate_member_reference(entry)
+            if entry['key'] in keys or file.tell() + 512 != entry['offset']:
+                raise ValueError('Repeated or nonsequential packed geometry reference')
+            keys.add(entry['key'])
+            header = tarfile.TarInfo.frombuf(read_exact(512), 'utf-8', 'strict')
+            if (not header.isfile() or header.name != entry['member']
+                    or header.size != entry['size'] or header.linkname):
+                raise ValueError('Tar header differs from the bound member')
+            result = decode_geometry_member(read_exact(entry['size']), entry)
+            padding = read_exact((-entry['size']) % 512)
+            if padding.strip(b'\0'):
+                raise ValueError('Nonzero member padding')
+            yield entry, result
+        remaining = before.st_size - file.tell()
+        if remaining < 1024 or remaining % 512:
+            raise ValueError('Incomplete tar footer')
+        while remaining:
+            block = read_exact(min(remaining, 8 * 1024**2))
+            if block.strip(b'\0'):
+                raise ValueError('Unexpected data after the declared pack members')
+            remaining -= len(block)
+        opened = os.fstat(file.fileno())
+    after = path.stat()
+    def identity(s):
+        return s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns
+    if identity(before) != identity(opened) or identity(before) != identity(after):
+        raise ValueError('Pack changed during sequential readback')
+    if digest.hexdigest() != receipt['sha256']:
+        raise ValueError('Whole pack hash mismatch')
