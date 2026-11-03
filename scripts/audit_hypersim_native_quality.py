@@ -20,7 +20,7 @@ from radio_moge.geometry_cache import canonical_json, publish_json, read_geometr
 from radio_moge.geometry_sampling import source_supervision
 
 
-def run(root, output):
+def run(root, output, near_only=False):
     audit_ref = file_ref(root / 'hypersim-outcomes-01/report.json')
     audit = checked_json(audit_ref)
     generation = checked_json(audit['generation_report'])
@@ -85,8 +85,9 @@ def run(root, output):
     if originals or counts != Counter(unflagged_cache=55663, flagged_cache=3076):
         raise ValueError('Native counts no longer match the completed outcome audit')
     selected = {}
-    for key, count, descending in [('valid_fraction', 4, False), ('p99_m', 4, True),
-                                   ('quantization_bound_p99_m', 2, True)]:
+    selection = ([('median_depth_m', 2, False)] if near_only else [
+        ('valid_fraction', 4, False), ('p99_m', 4, True), ('quantization_bound_p99_m', 2, True)])
+    for key, count, descending in selection:
         for row in sorted(records, key=lambda r: ((-1 if descending else 1) * r[key], r['corpus_ordinal']))[:count]:
             selected.setdefault(row['corpus_ordinal'], dict(row, reasons=[]))['reasons'].append(key)
     output.mkdir(exist_ok=False)
@@ -134,6 +135,7 @@ def run(root, output):
         cached_counts=dict(counts), eligible_before_visual_count=len(records),
         eligible_groups=len({r['group'] for r in records}), probabilities=probabilities,
         statistics=summary, selected=visuals, source_flags_cleared=False,
+        selection='two_nearest_median_depths' if near_only else 'support_far_depth_and_quantization_extremes',
         selected_payloads_rechecked=True, full_pack_payloads_rehashed=False,
         producer_full_readback_bound=True, source_quality_accepted=False,
         training_admission=False, optimizer_updates=0, code=file_ref(Path(__file__))))
@@ -144,5 +146,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--near-only', action='store_true')
     args = parser.parse_args()
-    run(args.root.resolve(), args.output.resolve())
+    run(args.root.resolve(), args.output.resolve(), args.near_only)
