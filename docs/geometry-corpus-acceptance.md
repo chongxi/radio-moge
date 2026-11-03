@@ -28,6 +28,54 @@ late receipts, changed original identities, duplicates and wrong exclusion
 ordinals. Previously source-reviewed eligible images total 234,036; this is not
 yet a training-ready subset or a claim that all reported candidates are GT.
 
+The snapshot completed at 04:41 UTC on November 3: **4,098 published packs,
+873,626 candidate entries and 870,550 unique RGB identities**, with all eight
+sources represented. Native/teacher alternatives are counted once in the RGB
+total. Its database SHA256 is
+`6ce23b197f2c510c0996e65057e7b5d79d56e295091dc16b6f9c915619b92831`.
+This completes metadata capture, not full payload verification or admission.
+
+### Requested three-way point-cloud sanity viewer
+
+Chongxi explicitly requested selectable GT/cache versus MoGe versus Adapter
+point clouds from these packs. The prior cache and image-alignment checks did
+not include this exact eight-source three-way comparison. It is now exported
+as `stage1-sanity-clouds-01`, using `scripts/export_stage1_sanity.py` (`44fb97f`):
+six distinct scene groups per source, with each available label kind represented,
+plus three explicitly marked flagged/excluded diagnostics, **51 images total**.
+Selection was fixed before model inference; no outputs were used to choose images.
+
+Every selected member payload and original RGB hash was verified. Reference
+observations retain native depth and camera geometry without hole filling.
+The same prepared RGB was sent to the resident MoGe/Adapter service, with exact
+pixel parity asserted on returned inference arrays; Adapter is the archived
+feature checkpoint at step 232288, before geometry training. Reference projection
+and both models' point/depth/intrinsics consistency checks passed on all 51.
+Actual arrays and per-image provenance remain in the remote `arrays/` directory.
+The public manifest SHA256 is
+`ab813ef10caecf58446642889f4d17126e1b0ff9f31fccde426067ee7b8aca85`.
+
+Viewer: <https://buildhub-nano-test--p7873.pub.astera.work/> (BuildHub sign-in).
+It offers dataset/scene selection, synchronized orbit/zoom/pan, overlay, raw
+versus explicitly normalized display, fixed-reference versus own-mask support,
+per-image numerical differences, and raw PLY export. Display/PLY are uniformly
+decimated to at most 30,000 points per branch; numerical comparisons use all
+reference observations. Pseudo-reference rows are clearly identified and do
+not provide independent GT accuracy. Normalization does not change saved data.
+The page only serves precomputed public assets; viewing needs no server GPU.
+
+Three export-unit tests passed. The real browser check loaded all 51 samples,
+tested source filters, search, previous/next, synchronized controls, support
+switching, overlay and mobile layout, with no page errors or failed requests.
+PLY bytes reproduce the original displayed coordinates/colors even when the
+view is normalized. A follow-up test checked hash links, empty-search races and
+fixed gallery sizing. Screenshots from one image in each of eight sources were
+visually inspected: no obvious shared coordinate flip or RGB mismatch was seen;
+surface/detail and scale differences remain visible. This limited inspection
+does not certify all samples or all packs. This forward-only sanity check is
+also **not** the required training forward/backward zero-update model gate.
+Production optimizer updates remain zero.
+
 `configs/geometry-corpus-20261102.json` freezes the scope and teacher revision.
 `scripts/index_geometry_corpus.py` creates a disk-backed inventory and checks
 heldout metadata without reading evaluation depth. Its success is **not** depth
