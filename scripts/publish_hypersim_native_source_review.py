@@ -18,6 +18,15 @@ from radio_moge.geometry_cache import canonical_json, publish_json
 from radio_moge.geometry_sampling import source_supervision
 
 
+def validate_exclusion_identity(decision, original, ordinal):
+    # Early exclusions bind an exact frozen ordinal/path/hash without repeating
+    # the group. The original row supplies it; an explicit wrong group still fails.
+    if (decision.get('corpus_ordinal') != ordinal or decision.get('decision') != 'exclude'
+            or any(decision.get(k) != original[k] for k in ('image', 'sha256', 'dataset'))
+            or ('group' in decision and decision['group'] != original['group'])):
+        raise ValueError('Geometry exclusion changed frozen RGB')
+
+
 def run(root, output):
     paths = ('hypersim-outcomes-01/report.json', 'hypersim-combined-routes-01/report.json',
         'hypersim-native-quality-01/report.json', 'hypersim-native-near-depth-01/report.json',
@@ -117,8 +126,7 @@ def run(root, output):
         seen.add(ordinal)
         if ordinal in exclusions:
             decision = exclusions[ordinal]
-            if any(decision[k] != original[k] for k in ('image', 'sha256', 'group')):
-                raise ValueError('Geometry exclusion changed frozen RGB')
+            validate_exclusion_identity(decision, original, ordinal)
             disposition = 'excluded_geometry'
         elif row['route'] == 'native_candidate' and ordinal in retained:
             disposition = 'native_source_eligible'
