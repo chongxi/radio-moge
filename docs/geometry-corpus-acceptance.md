@@ -2257,3 +2257,99 @@ correct source at every pixel nor establish full-source accuracy. No new
 exclusion or ARKit source acceptance is issued. Use these exact camera proofs
 in the remaining qualified source review; do not repeat the availability
 search or rerender the same nine cases simply to defer disposition.
+
+
+### Paired step-2500 validation and preserved NYU/laser checkpoint
+
+The completed step-2500 comparison reuses the same four evaluation views,
+image order, protocols, frozen teacher, five heldout digests and 18 known-camera
+laser cases. Aggregates were recomputed from recorded per-image results; no
+model inference was repeated. Comparison SHA:
+`50e1cd6648faad031361f3c4bf3b832014e84c9db07ca3a5944f8e2fba55d692`.
+
+| Original evaluation metric | Step 2250 | Step 2500 | Interpretation |
+| --- | ---: | ---: | --- |
+| Macro spatial cosine | 0.95980578 | 0.95991014 | Slight recovery |
+| Macro summary cosine | 0.93185091 | 0.93192420 | Slight recovery |
+| NYU AbsRel | 0.06986465 | 0.06906248 | 1.15% lower error; new NYU best |
+| ScanNet LiDAR AbsRel | 0.09596369 | 0.09701413 | 1.09% higher error |
+| Known-camera laser AbsRel | 0.12761458 | 0.12574232 | 1.47% lower error |
+
+Original-resolution NYU improves 13.03% from the archived feature baseline.
+LiDAR remains 5.31% worse than that baseline, and both original cosine scores
+remain below the initial values and step 2000. The fixed 400x640 view is separate:
+its NYU AbsRel is 0.06985523, and its summary cosine 0.92977160 remains slightly
+above its own initial 0.92961610. These results do not establish overall gains
+or attribute changes causally to a source.
+
+W&B's optimizer-step-2500 history exactly matches all five primary metrics and
+the immutable provenance. Its three stored selection baselines retain the
+previously observed one-ULP API serialization differences; the runtime config
+is unchanged. Online evidence SHA:
+`a58e0784659e83564c117c69a0e50685444d6c8c68dd6afb0b469f5f25b19589`.
+
+`reviewed-stage3-best-nyu-laser-2500-01/checkpoint-step2500.pt` is an immutable
+hard link to the common NYU/laser selection. CPU readback found finite adapter
+and Adam tensors, all 100 Adam states at 2500, cursor 8000, and exact runtime
+config, stream digests and model revisions. Checkpoint SHA:
+`b497d63fb6999c66f21aac2966332b38e65301fc14ebdeb122b84ea81ac0c791`;
+verification SHA:
+`b2030a9f90e4e3e41fc919768cca255f28346102ec5e95723eff67ff9c53942b`.
+This does not repeat the independent initial-resume proof. Earlier selections
+remain preserved, including the lower historical LiDAR/laser minima. Active
+stage-3 training continues under its existing step/time bound and data seal.
+
+
+### Qualified ARKit source eligibility and explicit FARO dispositions
+
+`arkit-source-review-02` reuses the completed full producer readback, all
+197,542 frozen outcomes, source camera/units checks, 36 candidate reviews,
+2,618 reproduced rejection dispositions, nine exact-camera FARO pages and
+381 actual production-loader crop views. It records **194,916 eligible native
+sensor candidates across 1,478 visit groups and 2,626 geometry exclusions**.
+Source review SHA:
+`c7939c09f59947b45bf3158f604d2067a08ea2e9b099da385ea64093150c7941`;
+complete routes/report SHA:
+`bf8a5db072eeedef6691616cc0cea03e5d06378220c8d84d3724d6287f95f7c9`.
+
+The exact reviewed frames 27177, 27185, 41530, 41531 and 41546 receive explicit
+geometry-only exclusions for persistent broad residual or reflected/occluded
+surface ambiguity. These are conservative individual decisions, not proof
+that one sensor is physically wrong, a numeric error threshold, fitted bias
+correction, or a rule extended to neighboring frames. Frames 4591, 4600, 4606
+and 27155 remain eligible under the unchanged confidence/stability/registration
+masks, with their smaller residual and reference-hole limitations retained.
+All five newly excluded frames were found in the unchanged accepted RGB replay.
+
+The mandatory policy-specific register now contains eight candidates (the
+three earlier flags plus these five); SHA:
+`dcf838252f128a18b886ef40f6e56660ed155a838c1ea92d7000bf0dbf278314`.
+Global known geometry exclusions now total **4,083**, SHA
+`02ba17535280f30ddc57443f62bcc4f5db6042558268adc251d7fce58beae150`.
+Only the previously excluded white Hypersim image 210812 is excluded from RGB.
+
+Eligibility is for **noisy native mobile-sensor metric supervision**, distinct
+from rendered synthetic depth, FARO ground truth and relative teacher labels.
+Metric units and a known camera do not guarantee physical accuracy. The nine
+FARO comparisons remain limited to three videos in a publisher-filtered subset;
+visibility, timing and reflective-surface uncertainty are explicitly retained.
+Sparse crop cases keep their existing fewer-than-32-observations zero-geometry
+route. No source-wide accuracy or crop-sparsity prevalence is inferred.
+
+Sixteen source publication/outcome tests passed locally and remotely. Attempt
+01 stopped before source-review publication because rejected rows legitimately
+have NULL candidate statistics; attempt 02 handles that representation and
+reconciles every route. Preserve attempt 01 as failed evidence and use 02.
+
+`prepare_arkit_reviewed_training.py` prepares a separate seven-source scope:
+602,337 original images, expected 598,298 selected geometry and 4,039 stage
+exclusions. Expected labels are 194,916 measured sensor, 189,025 synthetic and
+214,357 relative teacher. It copies the exact previous inventory, preserving
+the 35,783-image ScanNet teacher subset rather than widening it to the entire
+unfinished source. Thirty scope/readback/admission tests passed locally and
+remotely. The CPU job `reviewed-stage4-data-01` runs from immutable
+`code-arkit-stage4-v1` / `fc3e77c`, with one worker and explicit producer-readback
+reuse. It will bind the expanded identities to the completed full canonical
+comparison. This launch is not completed accounting or a training seal;
+coverage, loss and an actual archived-model gate remain required. The active
+403,382-geometry / 796,477-RGB stage remains unchanged.
