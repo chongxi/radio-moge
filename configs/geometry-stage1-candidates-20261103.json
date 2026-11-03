@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "purpose": "Freeze the already published candidate pool for an earlier training stage; eligibility and GPU scheduling remain separate.",
+  "user_request_date_utc": "2026-11-03",
+  "training_admission": false,
+  "optimizer_updates": 0,
+  "sources": [
+    {
+      "attempt": "coco-teacher-cache-02",
+      "dataset": "coco2017",
+      "role": "primary",
+      "source_review": {
+        "path": "/home/buildhub/shared/radio-moge/chongxi/geometry-corpus-20261102/coco-nyu-source-reviews-01/coco2017-source-review.json",
+        "sha256": "e5b8c319ec71939405bb4d9f83501579907cf0ee3a2991cb4158e478b4408698"
+      }
+    },
+    {
+      "attempt": "hypersim-native-cache-02",
+      "dataset": "hypersim",
+      "role": "primary",
+      "source_review": {
+        "path": "/home/buildhub/shared/radio-moge/chongxi/geometry-corpus-20261102/hypersim-native-source-review-02/native-source-review.json",
+        "sha256": "1be522b9b26d9aaae5644510967c82b48f637e0c4e43720b92af585d07bd5296"
+      }
+    },
+    {
+      "attempt": "irs-teacher-cache-01",
+      "dataset": "irs",
+      "role": "primary",
+      "source_review": {
+        "path": "/home/buildhub/shared/radio-moge/chongxi/geometry-corpus-20261102/teacher-source-reviews-02/irs-source-review.json",
+        "sha256": "5b5b16efbcb098e321ec31bfed14bad865816959dec02f4f2e059c72b6e10d46"
+      }
+    },
+    {
+      "attempt": "nyuv2-teacher-cache-01",
+      "dataset": "nyuv2",
+      "role": "primary",
+      "source_review": {
+        "path": "/home/buildhub/shared/radio-moge/chongxi/geometry-corpus-20261102/coco-nyu-source-reviews-01/nyuv2-source-review.json",
+        "sha256": "1e00bcb87f33ba1a411601018aa02d892ed0486bc91e2343a4dc727794c18d2a"
+      }
+    },
+    {
+      "attempt": "arkit-native-cache-01",
+      "dataset": "arkitscenes",
+      "role": "primary"
+    },
+    {
+      "attempt": "tartanair-native-cache-01",
+      "dataset": "tartanair",
+      "role": "primary"
+    },
+    {
+      "attempt": "structured3d-recovered-01",
+      "dataset": "structured3d",
+      "role": "primary_recovered"
+    },
+    {
+      "attempt": "structured3d-native-cache-02",
+      "dataset": "structured3d",
+      "role": "primary"
+    },
+    {
+      "attempt": "scannetpp-recovered-01",
+      "dataset": "scannetpp_dslr",
+      "role": "primary_recovered"
+    },
+    {
+      "attempt": "scannetpp-native-cache-02",
+      "dataset": "scannetpp_dslr",
+      "role": "primary"
+    },
+    {
+      "attempt": "hypersim-review-teacher-cache-01",
+      "dataset": "hypersim",
+      "role": "replacement",
+      "source_review": {
+        "path": "/home/buildhub/shared/radio-moge/chongxi/geometry-corpus-20261102/teacher-source-reviews-02/hypersim-source-review.json",
+        "sha256": "436ef7bc6d4d3a0bcbababc6ea116b999a17974739fe537e92df8672f538333a"
+      }
+    },
+    {
+      "attempt": "scannetpp-review-teacher-cache-01",
+      "dataset": "scannetpp_dslr",
+      "role": "replacement"
+    }
+  ],
+  "exclusions": {
+    "path": "/home/buildhub/shared/radio-moge/chongxi/geometry-corpus-20261102/hypersim-native-extreme-review-01/known-geometry-exclusions.jsonl",
+    "sha256": "d334f481ad592d79ba0af1a86ca92569454f39e605befd0f9f5550a94158916d"
+  },
+  "rgb_replay": "Retain all geometry-only exclusions in the existing diverse RGB pool; omit white image ordinal210812.",
+  "checkpoint": {
+    "path": "/home/buildhub/shared/radio-moge/chongxi/data-expansion-attention-20261022/model-archive-feature-final232288-20261101/final.pt",
+    "sha256": "3d3920bcaf89b294ba8e3d5016797d8121a9dbd4a1d938f050661ad4e23c66ef"
+  }
+}
