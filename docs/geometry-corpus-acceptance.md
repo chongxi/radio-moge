@@ -2433,3 +2433,44 @@ exclusions. The merged exclusion SHA is
 `2ab2ee38c8c789b5cc1f86b2890fed3227103cbfa5b5c9254ab952b44067cf7f`.
 Only the earlier white Hypersim image remains excluded from RGB; no neighboring
 frames or active training artifacts were changed.
+
+### Stage 4 admitted and actually continuing from 2895
+
+`reviewed-stage4-request-01` and `reviewed-stage4-readiness-01` bind the completed
+598,298-image selection to final parent 2895. The 100,000-draw production sampler
+observed ARKit at 19.69% for a requested 20%, within the unchanged 0.5 percentage
+point tolerance; it covered all 1,478 ARKit visit groups and 25 ScanNet teacher
+scenes. Previous geometry source shares are scaled by 0.8. The 796,477-image
+RGB replay, losses, constant LR 1e-5, batch 1/accumulation 16 and 400x640 grid
+remain unchanged. Request SHA:
+`aa5b415cab16000d9a18bc1f73f2f15efc97c9df220e8dfa6ff7e45a964a50d4`;
+nonmodel plan SHA:
+`db2aebe4da67a240af313d2620349673f61da8041b726826799cec0db2e4bae0`.
+
+The actual parent-model probe passed **84 forward/backward cases across eight
+source/label strata**, including twelve ARKit measured-sensor cases. Each stratum
+has finite nonzero geometry gradients. The known sparse COCO ordinal 287969 at
+probe cursor 50 has zero observations, zero geometry and active feature loss;
+the other 83 cases exercise geometry. The frozen backbones, adapter and feature
+statistics remain unchanged and no optimizer was constructed. Model proof SHA:
+`fa8e5418c248587b2f862dd1e528ae75ec8abec5080d66582415e364f4f661b1`.
+
+The new seal SHA is
+`5d238e12ab80c2979f63496850b051aa66d72d409dba616ece195d65ad654be9`;
+runtime config SHA:
+`9baea9769b89a940204ed870f4f49337ab83c7f6c2470ecdf4181583046cd28f`.
+The existing immutable training implementation `8332c8c` launched a separate
+trainer, and its actual initial checkpoint was independently read back on CPU:
+all 100 Adam states remain at 2895; adapter, Adam, RNG, feature statistics and
+revisions are bitwise equal to the parent, with new stream cursor zero. Replay
+and heldout digests are unchanged. Startup proof SHA:
+`ca8112f3ac6824c9f0eefedc95cac43943e6f9b992b296283d702bd35213ec4b`.
+
+Actual optimizer updates have resumed in `reviewed-stage4-training-01`, online
+W&B run `6bddb43a`. Online provenance matches exactly. The API serializes only
+the spatial selection baseline one ULP above the immutable file; all remaining
+config values match. This is recorded without changing the runtime file.
+The stage allows at most 1,000 new updates (global 3895) or 7,200 new seconds.
+Cadence is relative to parent 2895: first save 2945 and first validation 3145.
+All earlier bests and the native-source jobs are preserved. Whole-corpus
+acceptance is still separate from this accepted seven-source training scope.
