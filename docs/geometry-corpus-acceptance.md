@@ -14,6 +14,58 @@ that a verified subset can be used without waiting for all 1,637,909 labels.
 The proposed subset still needs its own payload, source, coverage, heldout, loss
 and actual-model checks. No previous failed or unfinished check becomes a pass.
 
+### Priority start using already reviewed sources (November 3, 06:33 UTC)
+
+Chongxi subsequently asked why training had still not started. Waiting for the
+entire 870k snapshot had unnecessarily held back completed reviewed sources.
+The first optimization stage is now explicitly narrowed to those sources;
+preparation and review of the remaining sources continue separately.
+
+`reviewed-stage1-data-02` accounts for all 234,263 original inputs in COCO,
+Hypersim, IRS and NYUv2, selecting **234,036** images after 227 reviewed
+exclusions. Selected supervision is **55,462 native Hypersim synthetic GT** and
+**178,574 relative teacher labels**. The five source policies already completed
+their producer's full payload readback and source review. Accounting reuses
+those completed proofs, checks bound receipts and unchanged pack size/mtime,
+and preserves every native/external quarantine flag. Every actual training read
+still verifies RGB and geometry-member hashes and decodes the arrays. Receipt
+quantiles are reported as quantiles, not invented pixel histograms. Neither
+the unfinished snapshot census nor unfinished source reviews are prerequisites
+for this narrower stage. The broader snapshot remains unchanged.
+
+The canonical comparison covers all **796,477** replay RGB images from the
+seven completed RGB-census sources, after excluding the known white image.
+It checks all 190,954 heldout memberships, with zero exact raw/oriented pixel
+overlap and zero forbidden shared-scene rows. The incomplete ScanNet RGB census
+is not claimed complete or included in this first replay pool. All four geometry
+sources are contained within this checked RGB scope.
+
+Source/group sampling weights for geometry are COCO .35, Hypersim .35, IRS .25
+and NYU .05. Half the feature slots use the seven-source RGB replay mixture.
+The initial segment retains the prepared 400x640, adapter-only, archived-step
+232288 initialization, learning rate 1e-5 and batch1/accumulation16 settings.
+It logs every update, saves every50 and is bounded to1000 updates/two hours.
+The initial full validation sweep is deferred to the scheduled validation
+interval so it does not delay the first update.
+
+The actual loader checked50 seeded extreme/scene views. One COCO crop has no
+retained points; this is an explicit zero geometry contribution with feature
+supervision retained, as in the production loss. It is not filled or treated
+as measured geometry. The model preflight now exercises that path while still
+requiring positive geometry gradients in every source/label stratum. This
+targeted1/50 observation is not a corpus-wide prevalence estimate. Sixty-seven
+remote tests passed in6.95s, including the sparse path and a negative test that
+rejects a source with no geometry gradient.
+
+The old waiting eight-source launcher was stopped before any model ran.
+`reviewed-stage1-launch-01` uses the existing GPU lock and the four completed
+nonmodel gates, then runs the actual zero-update model preflight and seals only
+on success. To prioritize the requested training, ScanNet review-teacher
+generation was interrupted after110 closed packs/28,160 images. Its pause
+receipt preserves their exact hashes; remaining7,623 images must resume in a
+new attempt after recovery verification, without regenerating the entire set.
+Other native generation and the full RGB/payload censuses continue.
+
 `configs/geometry-stage1-candidates-20261103.json` lists all current primary,
 recovered and review-teacher sources, completed source reviews and the 238
 explicit geometry exclusions known at capture. `scripts/snapshot_geometry_candidates.py`
