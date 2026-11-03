@@ -1952,3 +1952,51 @@ Only white Hypersim image 210812 remains excluded from RGB. The nine existing
 FARO pages were not rerendered; their calibration/visibility limitations and
 ARKit's 2,618 producer rejection dispositions remain pending. This review does
 not admit the ARKit source or change the completed training artifacts.
+
+### Complete ARKit rejected-input dispositions
+
+`arkit-rejection-census-01` reproduces all **2,435** numeric failures from the
+five retained source members per image, using the original converter and
+unchanged thresholds. Source SHA256/CRC/receipts and every stored statistic
+match. These comprise 1,458 image-level RGB registration failures and 977
+images with insufficient final registered support. The latter range from zero
+to 4.9357% support, below the existing 5% minimum; failed image registration
+leaves zero final support.
+
+The other **183** exact native timestamps were independently found absent from
+the central directories of **106 publisher ZIP archives**. Exact directory
+bytes, member lists, offsets and hashes are retained. Missing local files were
+not treated as absence evidence. No native depth payload was downloaded or
+substituted, and no nearest timestamp was used. This verifies the current
+publisher directory snapshot, not a full archive hash or historical publisher
+state. Thirteen relevant tests passed locally and remotely; the 11-record
+preflight covered eight numeric cases and three publisher absence checks.
+
+All eight preflight pages and all **18 full-census extreme pages** were
+actually inspected, covering four rotations and both numeric failure types.
+Sparse cases contain no support or small disconnected patches. Several RGB
+gate failures concentrate on mosaics, carpet, stripes and printed texture,
+including borderline p90 failures. These are conservative correspondence
+failures under the existing policy, not proof that all pre-gate depths are
+physically wrong. Pre-gate depth remains diagnostic only. Census report SHA:
+`05a68aad07ecae8cff5bcfa613c34c6f3d14b88582e3a1a909dd47cc7c7c043e`;
+visual review SHA:
+`24355983a173568a77affe42a04962433bba59fc8448e383c1a2221919bfb3b4`.
+
+`arkit-rejection-decisions-01` explicitly excludes these 2,618 exact images
+from geometry only. Publication checked every frozen rejection identity,
+reparsed all 106 retained directory proofs, and found every original RGB in
+the unchanged accepted 796,477-image replay stream. Together with the three
+previous candidate exclusions, ARKit's 197,542 inputs now have **194,921
+remaining native candidates and 2,621 explicit geometry exclusions**. No
+rejected-input disposition remains unresolved, and neither source calibration
+nor overall source acceptance is inferred from this accounting.
+
+The latest global exclusions total **4,078**, SHA
+`a80a5da641bf914e0f590a9e9314e269bdae01e1ca1c54b1e68e7fce431c99c5`.
+Only white Hypersim image 210812 is excluded from RGB; all 4,077 geometry-only
+images retain RGB eligibility. The three mandatory ARKit candidate flags and
+existing FARO calibration/visibility limitations remain. The accepted 367,599
+geometry inputs, completed 2,000-update training segment and best checkpoints
+are unchanged. Reuse the finished census and visual reviews rather than
+repeating them during the remaining source-quality and crop-coverage work.
