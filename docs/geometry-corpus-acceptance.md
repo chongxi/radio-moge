@@ -33,6 +33,43 @@ memberships; full train/heldout comparison still awaits the training census.
 Source quality, final coverage and the real model zero-update gate remain
 incomplete; production optimizer updates remain zero.
 
+## Bounded TartanAir rejection review and IRS display correction (November 3)
+
+`tartanair-rejection-review-01` binds the 11 rejection records observed while
+the producer is still running to the frozen inventory and retained original
+left/right depth and RGB bytes. The unchanged producer converter reproduced
+every stored statistic exactly. All 11 diagnostic pages were inspected: these
+gascola Hard P002/P003 views point upward toward sky and boundary foliage.
+Only 11.06--18.23% of each image falls inside the existing 0.1--200 m task range;
+local stability and stereo checks leave 2.0221--4.7754% final support. The task
+range is not a publisher invalid-depth definition. No new downloads, threshold
+changes, hole filling, or teacher inference were used.
+
+`visual-review-01.json` records the decision to exclude these exact 11 images
+from geometry supervision under the unchanged 5% support threshold.
+`geometry-exclusions.jsonl` contains the hash-bound per-image decisions for
+eventual full accounting. This decision does not exclude their RGB from feature
+replay; RGB eligibility still needs its own identity, leakage and sampling gates.
+Other gascola images are unaffected. This is an explicit bounded review, not
+complete TartanAir source acceptance. The converter and evidence-reproduction
+tests passed: six tests, including wrong eye/frame, changed source bytes, changed
+RGB, mismatched statistics, sky support and original-array preservation.
+
+IRS's original contact sheets used separate p01/p99 color limits for each view.
+`shared-palette-flags-02` independently rereads all ten flagged RGB/member
+payloads and displays each unchanged depth divided by its valid median using
+one fixed logarithmic color range [0.25,16]. Every new full-resolution page was
+inspected. The broad wall/floor/shelf colors in Supermarket views 101/102 are
+now similar; the earlier global-background inconsistency argument based on
+colors is withdrawn. Local far values remain in the visible window behind the
+shelf. Neither the shared palette nor visual similarity verifies physical depth
+or multiview consistency. Bistro blurred-glazing blobs and Diner framed-panel
+depth ambiguity remain quarantined. The new review preserves all masks and
+explicitly leaves source acceptance false; no depth-ratio cutoff was applied.
+The first renderer attempt stopped on the publisher's opaque RGBA PNGs; v2
+verified alpha=255 and matched the producer's RGB conversion. The failed attempt
+and original reviews remain intact.
+
 ## Source review and unresolved checks
 
 | Source / training images | Label candidate | Required checks before admission |
