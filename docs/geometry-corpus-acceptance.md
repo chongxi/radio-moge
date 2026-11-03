@@ -1641,3 +1641,36 @@ preflight; no second-stage optimizer update was yet claimed. The ScanNet
 remainder supervisor is separately waiting for complete 28,160-member recovery,
 then will submit only the remaining 7,623 images from code v4 under the same
 existing GPU lock. Neither supervisor bypasses that lock.
+
+The second-stage actual model preflight subsequently completed **62 forward/
+backward cases**. All six dataset/label strata produced nonzero geometry
+gradients: twelve Structured3D native cases, ten cases in each Hypersim native,
+Hypersim pseudo, IRS and NYU stratum, and nine active COCO cases plus one
+explicit sparse feature-only case. Adapter, feature statistics and frozen
+backbone states were unchanged, with zero optimizer updates. Report SHA:
+`81328693eb9630a4b649a45f99b204293d2e31eaba8c325db6c167f85e6d193a`.
+
+The second segment is now actually optimizing in `reviewed-stage2-training-01`.
+At 09:35 UTC its latest optimizer step was 1,057, with finite losses and
+gradients. `reviewed-stage2-startup-01/report.json` inspected the new real
+trainer's initial state: all 100 Adam states, adapter tensors, feature statistics
+and RNG state exactly match the step-1,000 parent, while the new data cursor is
+zero. Replay and validation digests are unchanged; the geometry digest changes
+to the newly accepted five-source index. Its first-update proof records 26
+contiguous new updates and nonzero parameter-update norms. Runtime config SHA:
+`079bf5f6875fcd049334930fe8710e12eab5f6b42a3f5c4c02d38654f7be27ba`;
+acceptance SHA: `34f2413ea42b68970110805447762a581358ea90f656268d7bbae4745c54f954`.
+W&B run is `df4196ed`. The next paired validation is at step 1,250; no benefit
+from the expanded data is claimed before that measurement.
+Online SDK verification observed step 1,083 with exact provenance and matching
+configuration apart from a recorded one-ULP serialization difference in the
+summary checkpoint-selection baseline (0.9320206923933305 versus the service's
+0.9320206923933304). The immutable runtime file and acceptance hash are unchanged.
+Live local logs reached step 1,085 at 09:38 UTC; all 85 new records were finite.
+
+ScanNet review-teacher recovery also finished all 28,160 members in 110 closed
+packs with zero rejections. The existing remainder controller has submitted
+only the 7,623 remaining inputs from execution v4/`5228f12`; its child is waiting
+for the original GPU lock held by the active trainer. Do not relaunch either
+the recovery or the queued remainder, or run teacher inference alongside this
+training segment by bypassing that lock.
