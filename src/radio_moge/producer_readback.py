@@ -43,7 +43,9 @@ def member_summary(entry):
             or not math.isclose(entry['valid_fraction'], n / math.prod(shape), rel_tol=0, abs_tol=1e-12)
             or hashlib.sha256(canonical_json(meta)).hexdigest() != entry['key']):
         raise ValueError('Invalid completed-producer receipt statistics')
-    mode = source_supervision(meta)
+    # Classification only. Accounting retains and quarantines the original
+    # flag before selecting an image; do not mutate the stored metadata.
+    mode = source_supervision(dict(meta, source_needs_review=False))
     pseudo = mode == 'relative_pseudo'
     return dict(depth_quantiles=q, external_flag=False, coverage=dict(
         statistics_kind='producer_receipt_quantiles', supervision=mode,

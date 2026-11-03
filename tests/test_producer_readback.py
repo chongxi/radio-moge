@@ -9,6 +9,7 @@ import pytest
 from test_corpus_admission import admission_fixture
 from radio_moge.corpus_admission import build_accounting, file_ref
 from radio_moge.producer_readback import MODE
+from radio_moge.producer_readback import member_summary
 
 
 def prepare(tmp_path):
@@ -78,3 +79,12 @@ def test_producer_reuse_is_explicitly_scoped_and_preserves_quality_checks(tmp_pa
     plan['sources'][0]['review'] = file_ref(p)
     with pytest.raises(ValueError, match='source quality review'):
         build_accounting(plan, root / 'unreviewed')
+
+
+def test_receipt_classification_keeps_native_quarantine_intact(tmp_path):
+    root, plan, _ = admission_fixture(tmp_path, flagged=True)
+    p = Path(plan['sources'][0]['packs_index']['path']).parent / 'pack-000000.json'
+    entry = json.loads(p.read_text())['entries'][0]
+    value = member_summary(entry)
+    assert value['coverage']['supervision'] == 'metric_native'
+    assert entry['geometry_metadata']['source_needs_review'] is True
