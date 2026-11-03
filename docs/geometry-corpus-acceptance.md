@@ -1914,3 +1914,41 @@ geometry exclusions overall. The merged manifest SHA is
 `3dae6b787721a92e78c4828cbf1c1bf8724c78b5bd1fd45e3d16eea2fa812191`.
 Only white Hypersim image 210812 is excluded from RGB. The completed training
 configuration, index and checkpoint selection are unchanged by these decisions.
+
+### ARKit four-orientation native outcome review
+
+`arkit-outcome-visuals-01` reproduces all 36 previously selected native
+candidates from the five retained publisher members per input. Member SHA256,
+source SHA256/CRC/receipts, depth, valid mask, both cameras, camera transform
+and producer statistics agree exactly. Original conversion code and camera
+helpers match the producer policy. Sampling upright VGA RGB onto the native
+depth grid also agrees with sampling before rotation for 0/90/180/270 degrees;
+no depth resizing or filling is performed. Twelve tests passed locally and
+remotely, including shifted-camera and changed-array/provenance failures.
+
+All 36 six-panel pages were inspected through 18 contacts at two-thirds display
+scale, with three uncertain cases additionally inspected at full resolution.
+The fixed depth palette is 0.125–8 m. Low-support examples include glass,
+reflective floors, dark trees and nearby trim. High photometric-error cases
+often show carpet, stripes or printed texture; corresponding pixel holes are
+retained. No broad quarter-turn mismatch was observed in this selection. This
+is an extreme selection, not a prevalence estimate or independent physical
+calibration. The review SHA is
+`01726c9355f3d456a75f14277cf7620ecdab7fdc365213e0001c427ce450add0`.
+
+`arkit-candidate-decisions-01` explicitly excludes three exact images from
+geometry: **182561** (blurred reflected camera/hand), **153819** (mirrored
+wardrobe with sparse ambiguous surface support), and **167294** (fingers
+occluding the lens with uncertain foreground/background support). These are
+conservative quality dispositions, not claims of a measured physical bias.
+No depth-ratio, range or support threshold was added. A policy-specific
+quarantine register binds each exact RGB, receipt and cache member; the actual
+admission validator checked all three flags. All three unchanged RGB rows
+were found in the existing 796,477-image replay stream and remain there.
+
+The merged known geometry exclusions now total **1,460**, SHA
+`62e76a8189c8cfd53ad05c29645b1849796cd1114d6a57557f6aeeb299871aac`.
+Only white Hypersim image 210812 remains excluded from RGB. The nine existing
+FARO pages were not rerendered; their calibration/visibility limitations and
+ARKit's 2,618 producer rejection dispositions remain pending. This review does
+not admit the ARKit source or change the completed training artifacts.
