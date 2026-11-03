@@ -2353,3 +2353,18 @@ reuse. It will bind the expanded identities to the completed full canonical
 comparison. This launch is not completed accounting or a training seal;
 coverage, loss and an actual archived-model gate remain required. The active
 403,382-geometry / 796,477-RGB stage remains unchanged.
+
+The same CPU job subsequently **completed** all 602,337 source routes:
+598,298 selected, 4,039 excluded and zero unresolved. It preserved the exact
+35,783-image ScanNet subset and all native/external quarantine records.
+Accounting SHA:
+`a033a256479c68e3d7d9ba8485ea56b75df7db5d0bfed5096d712ace97a108e6`;
+index SHA:
+`c5ec2e5cf58f078519be7ccee54bc804baf1abce877e269f49bb63b146870b40`.
+The separate final isolation report binds all scoped identities to the completed
+canonical census, with zero exact overlap or forbidden shared-scene rows and
+the same 796,477 RGB replay; SHA
+`a4b7563743f32696146392aa94ded45ee7a3c6c20e1a8bc46f2d9c85fe72a207`.
+The intermediate data report retains its earlier `isolation_pending` stage;
+use the completed `isolation-report.json` as the later isolation result.
+Neither report opens the optimizer gate. No need to rerun this accounting.
