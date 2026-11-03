@@ -2482,3 +2482,62 @@ and 2910. First-updates proof SHA:
 At 16:33 UTC the stage had reached 2927, with 32 finite new updates and no OOM.
 Stage-4 evaluation gains have not yet been measured; compare 3145 to the same
 parent/initial images and protocols when that validation completes.
+
+### Stage 4 paired validation at 3145
+
+`reviewed-stage4-validation-3145-review-01` verifies the same original and
+400x640 image sets (1,268 each), LiDAR (120), DSLR (128), and known-camera laser
+cases (18), with unchanged protocols, frozen-teacher results and five heldout
+digests. Aggregates were recomputed from the saved per-image results; no model
+inference was repeated. Comparison SHA:
+`cc0f4c85925806978cdc717a42c4cccce62456847d85edb663e09f5a87183f79`.
+The five online validation metrics match their saved values exactly in W&B
+run `6bddb43a`; online proof SHA:
+`f4d4d62e278327eb6a113bbd72fe1372953ba7f3b0435e115176a2188d6a6366`.
+
+Original-resolution macro spatial cosine moves from 0.96011045 at parent
+2895 to 0.96003750, and summary cosine from 0.93197556 to 0.93192506; both
+remain below the archived feature baseline. NYU AbsRel improves 1.29% from
+the parent to **0.06819089**, a new observed best and 14.13% below the initial
+0.07941177. LiDAR AbsRel rises to **0.09990830**, 3.51% worse than the parent
+and 8.46% worse than initial. Known-camera laser AbsRel falls 5.33% from the
+parent to **0.12264333**. A separate exact protocol/image/support comparison
+with the earlier step-250 result, 0.12278013, confirms a narrowly lower mean
+(0.11%); this is not a significance or overall-improvement claim. Historical
+laser comparison SHA:
+`9c44b73f39097c5f222ac624b1b8f75aa00de55c184ebc5643891be9666c0ac4`.
+The 400x640 NYU result improves 0.19% from the parent; that protocol remains
+separate from original resolution.
+
+The selected NYU/laser checkpoint was hard-linked into
+`reviewed-stage4-best-nyu-laser-3145-01` before later selection could replace
+it. CPU readback confirms finite values in all 100 adapter tensors and 300
+optimizer tensors, all 100 Adam states at 3145, cursor 4000, and exact runtime
+config, stream digests and revisions. Feature statistics and an independent
+resume process were not re-tested in this checkpoint review. Checkpoint SHA:
+`2481da224014c0f3752fefaf2fc1876965c2b4196e98043d4b99286cd84ac845`;
+proof SHA:
+`bf75330542655f92b2cebc36e2808a1fbde413e5efb9f9565f86e60d27cfa607`.
+The active trainer, accepted inputs and all earlier best checkpoints continue
+unchanged. Next scheduled validation is 3395.
+
+### Four additional TartanAir Hard/P000 rejections
+
+`tartanair-rejection-review-09` reproduces only the four new exact inputs
+496469–496472 (seasidetown/Hard/P000, frames 000000–000003), preserving the
+earlier 56 dispositions. Retained stereo arrays, source receipts and rejection
+statistics match exactly. All four original six-panel pages were inspected
+individually. Sky and distant sea dominate the views; the task-range mask
+retains 14.89–19.63%, while final stereo support contracts to a narrow lower
+corner and covers only 2.06–4.11%, below the unchanged 5% threshold.
+
+These four exact inputs receive geometry-only exclusions. A full scan of the
+unchanged 796,477-image replay found each original RGB identity, hash and group
+exactly once. No arrays, thresholds, active training inputs or neighboring
+frames were changed. This is a task-support decision, not independent proof
+of physical depth error. Decision report SHA:
+`25be4c4244d752ab74483944d88653331a39063105a950a5cb47d97f7da7e347`.
+The snapshot now has 60 disposed TartanAir rejections and 4,099 known global
+geometry exclusions; only white Hypersim ordinal 210812 is excluded from RGB.
+Merged exclusion SHA:
+`8da1d75e2f5adf96ffd3c78290207011d1fda7f449f4c51acda0317a8d5a817a`.
