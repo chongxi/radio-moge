@@ -3896,3 +3896,56 @@ excluded from RGB. The temporary whole-COCO projection hold remains separate.
 All 19 candidate quarantines remain bound and unresolved for final routing; the
 70 support rejections no longer await a disposition. No whole scene is excluded,
 no source is admitted, and no training configuration or optimizer state changed.
+
+### ScanNet++ training practice checked against primary sources — November 4
+
+The user's request to check actual depth-training usage prompted a literature and
+implementation comparison. ScanNet++ is a demonstrated training source: MoGe-2
+Table A.1 reports 176K frames. Section 3.3/Figure 4 applies local mismatch filtering
+and synthetic-model-guided Poisson completion to ScanNet++ examples. Its frozen
+training config reads `depth_completed.png`; our unfilled native cache does not
+reproduce that refinement. The authors' May 29, 2026 comment says the refinement
+pipeline release was deferred. Exact MoGe DSLR selection and render clipping were
+not disclosed in the sources checked. These facts neither validate our candidate
+labels nor show that mesh-derived supervision is intrinsically unusable.
+
+Primary evidence:
+- [MoGe-2 paper, Section 3.3 and Table A.1](https://arxiv.org/html/2507.02546v1).
+- [Frozen MoGe training config](https://github.com/microsoft/MoGe/blob/74fbce054ebed49800de42d0ad0e83495065719a/configs/train/v2.json#L135-L152).
+- [Author's refinement-release statement](https://github.com/microsoft/MoGe/issues/81#issuecomment-4573435023).
+- [DUSt3R actual training commands](https://github.com/naver/dust3r#our-hyperparameters)
+  also include ScanNet++; this is point-map reconstruction training, rather than
+  evidence about a monocular-only model.
+
+Official ScanNet++ OpenGL `common/render.py` at revision
+`21ba1dc724e0d09c6a1f72b0d63944f5363eb675` uses near/far defaults 0.05/20 metres.
+The corresponding renderpy projection clips geometry before depth visibility.
+Our `CudaMeshDepth` uses 0.01/100 metres; its CPU check queries the nearest hit
+from the camera, then filters that hit to the same interval. Thus the observed
+1–3 cm candidates are outside this official OpenGL default interval. This is a
+confirmed implementation difference, not a completed same-image comparison or
+an explanation of every anomaly. Clipping before rendering is not equivalent to
+masking an already cached nearest depth; simply changing the GPU plane while
+keeping the CPU query unchanged would also fail to reproduce the clipped query.
+
+The official mesh path is the same `mesh_aligned_0.05.ply` (5% decimation, not
+5 cm resolution). Camera-Z depth agrees in definition. Official renderpy does not
+enable face culling in the inspected path; DUSt3R explicitly skips face culling,
+undistorts selected DSLR/iPhone images and renders with near/far 0.05/20 metres,
+then applies anonymity masks. No missing-backface-filter conclusion follows.
+The separate official PyTorch3D path does not explicitly set the same clipping
+interval, so 5 cm is not a universal ScanNet++ depth-validity rule. Official
+OpenGL defaults must not be attributed to MoGe's undisclosed preprocessing.
+
+- [Official render configuration](https://github.com/scannetpp/scannetpp/blob/21ba1dc724e0d09c6a1f72b0d63944f5363eb675/common/configs/render.yml#L14-L16).
+- [Official rendering entry point](https://github.com/scannetpp/scannetpp/blob/21ba1dc724e0d09c6a1f72b0d63944f5363eb675/common/render.py).
+- [Renderpy projection](https://github.com/liu115/renderpy/blob/57a9308d8d92b26b9714d8c7fa6b6103971eccd6/src/opengl/opengl_semantic.h#L568-L594).
+- [DUSt3R preprocessing](https://github.com/naver/dust3r/blob/main/datasets_preprocess/preprocess_scannetpp.py).
+- [Separate official PyTorch3D path](https://github.com/scannetpp/scannetpp/blob/21ba1dc724e0d09c6a1f72b0d63944f5363eb675/common/utils/rasterize.py).
+
+Next diagnostic priority is a bounded comparison of existing anomalous and
+control views using matched mesh, pose, pinhole rays and explicit clip semantics,
+with an upstream renderer as a reference. No result from that comparison exists
+yet. This research changed no label, exclusion, quarantine, admission or optimizer;
+19 candidate quarantines and 4,171 geometry exclusions remain. It identifies
+preprocessing differences, not a historical training-regression cause.
