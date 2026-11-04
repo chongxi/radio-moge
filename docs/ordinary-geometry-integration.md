@@ -122,3 +122,40 @@ Still pending: ordinary target construction, explicit camera/loss admission,
 missing/sparse geometry normalization, production observer/trainer integration,
 CUDA transport verification and actual-model paired gradient tests. Do not infer
 loss admission from an ordinary camera whose principal point happens to be centered.
+
+The first remote sidecar test exposed coarse filesystem timestamps: a rapid
+SQLite change did not always change the stat fingerprint. The unresolved row
+still failed the per-read check, but stat-only detection was insufficient. The
+reader now also checks the SQLite header/commit counter before and after queries,
+and only accepts a closed non-WAL index. A regression test holds all timestamps
+constant while changing a selected row to excluded; the lookup must fail.
+
+## Local-loss camera analysis (not yet implemented)
+
+In pinned upstream `moge/train/losses.py`, the scalar focal enters the local loss
+as `radius_3d = Z / (2 * level * focal)`. It influences anchor density, patch
+membership by physical XYZ distance, alignment weighting and error diagnostics.
+It does not perform ray projection. The existing training value is
+`focal = (fx**-2 + fy**-2)**-.5`, for normalized intrinsics. With square physical
+pixels it equals pixel focal divided by the full image diagonal. Inference
+focal uses the half-diagonal convention and is twice that value; do not replace
+the training scalar with inference focal without correcting that factor.
+
+For `K = [[A, c], [0, 1]]`, lateral normalized rays are `A^-1 (uv-c)` and their
+Jacobian is `J=A^-1`. Principal point c disappears from that derivative. Thus an
+off-center or outside-image principal point alone needs no local-radius change.
+The current inverse focal equals `||J||_F` when off-diagonal entries vanish.
+An explicit full-K extension could use `focal=1/||J||_F`, which reduces exactly
+to the existing scalar for zero skew and preserves reflection/skew-sign symmetry.
+For upper-triangular skew s its inverse square is
+`1/fx**2 + 1/fy**2 + s**2/(fx**2*fy**2)`.
+
+This would declare an RMS diagonal-radius convention: the mean squared lengths
+of transformed diagonals `(1,1)` and `(1,-1)` equals `||J||_F**2`. A single scalar
+does not reproduce every directional neighborhood of an anisotropic/skewed
+camera. Exact directional neighborhoods would require a larger upstream patch
+selection change. Any scalar extension must be opt-in to the ordinary contract,
+tested for the zero-skew reduction, center independence, reflection symmetry,
+physical ray displacement and finite gradients. Do not change XYZ or the fixed
+unknown-camera evaluation to conceal these distinctions. This analysis does not
+establish a historical regression cause or admit a geometry optimizer run.
