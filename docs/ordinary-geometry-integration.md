@@ -559,3 +559,14 @@ it requires exact8000 committed RGB pixels/keys/groups after removing only the
 new geometry annotation. Fifteen reviewer/input-pairing tests passed. A mirror
 mount lookup failed before output publication in reviewer v1; v2 resolves the
 same hash-bound metadata at the GPU mount. This did not affect training.
+
+At08:49UTC the B actual model gate completed:27 feature comparisons and30
+geometry cases, including all three dense32 plus staged-future32 shapes.
+Peak-adjusted free headroom was19.5156GiB. Frozen modules, source Adam and RNG
+checks passed; no optimizer was constructed by the observer. Model proof SHA:
+`224cd7a08c351ebfe8c2f5d0872b0f5534067e400aec88bedb38364573d385c1`.
+The existing controller then published the distinct admission and launched
+`projection-filtered-feature1-geometry1-01` at08:49:08. It is loading metadata
+and will verify the actual trainer initial checkpoint before updates. Zero B
+optimizer updates have been verified at this observation; do not confuse process
+launch with a completed update, and do not relaunch during metadata loading.
