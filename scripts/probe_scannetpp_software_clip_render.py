@@ -80,12 +80,15 @@ def preflight(pyrender, renderer):
     far_mesh = trimesh.Trimesh(vertices=(rear+[0, 0, 28]) @ pose[:3, :3].T+pose[:3, 3],
                               faces=faces[:2], process=False)
     far = render(pyrender, renderer, far_mesh, k, pose, h, w, .05, 20.)
+    far_visible = render(pyrender, renderer, far_mesh, k, pose, h, w, .05, 100.)
     errors = dict(front_max_error_m=float(np.max(abs(old-.02))),
                   rear_max_error_m=float(np.max(abs(clipped-expected))),
                   reversed_winding_max_error_m=float(np.max(abs(reversed_depth-clipped))),
-                  far_clipped_nonzero_pixels=int(np.count_nonzero(far)))
+                  far_clipped_nonzero_pixels=int(np.count_nonzero(far)),
+                  far_control_visible_pixels=int(np.count_nonzero(far_visible)))
     if (errors['front_max_error_m'] > 2e-5 or errors['rear_max_error_m'] > 2e-4
-            or errors['reversed_winding_max_error_m'] > 2e-4 or errors['far_clipped_nonzero_pixels']):
+            or errors['reversed_winding_max_error_m'] > 2e-4 or errors['far_clipped_nonzero_pixels']
+            or not errors['far_control_visible_pixels']):
         raise ValueError('Software rendering ray-grid/clipping fixture failed: '+json.dumps(errors))
     return dict(passed=True, errors=errors, offcenter_camera=True, slanted_rear_surface=True,
                 rotated_translated_camera=True, culling_disabled=True,
