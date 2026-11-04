@@ -7,6 +7,7 @@ from PIL import Image
 import pytest
 
 from review_scannetpp_support_rejections import REASON, attrition, bind_rejection, current_inputs
+from publish_scannetpp_support_decisions import checked_decision_scope
 from test_scannetpp_native_outcomes import support
 
 
@@ -100,3 +101,43 @@ def test_current_mask_is_not_labeled_original_geometry_support(tmp_path):
     row["sha256"] = "f" * 64
     with pytest.raises(ValueError):
         current_inputs(row, [8, 12])
+
+
+@pytest.mark.parametrize(
+    "change", ["duplicate", "not_viewed", "different_image", "claimed_reproduction"]
+)
+def test_publication_requires_exact_review_and_preserves_evidence_limits(change):
+    row = dict(
+        image="/frozen/a",
+        sha256="a" * 64,
+        dataset="scannetpp_dslr",
+        split="train",
+        width=640,
+        height=8,
+    )
+    rec = dict(
+        corpus_ordinal=42,
+        image=row,
+        reason=REASON,
+        page=dict(path="/frozen/page", sha256="b" * 64),
+        original_rejection=dict(path="/frozen/rejection", sha256="c" * 64),
+        producer_statistics=support(100),
+        attrition_counts=attrition(support(100), [8, 640]),
+        producer_statistics_reproduced=False,
+        final_depth_and_support_retained=False,
+        original_mask_hash_recorded=False,
+    )
+    choice = {k: rec[k] for k in ("corpus_ordinal", "image", "page", "original_rejection")}
+    choice.update(decision="exclude_geometry_supervision_retain_rgb", actual_page_viewed=True)
+    review = dict(records=[choice])
+    checked_decision_scope([rec], review)
+    if change == "duplicate":
+        review["records"].append(deepcopy(choice))
+    elif change == "not_viewed":
+        choice["actual_page_viewed"] = False
+    elif change == "different_image":
+        choice["image"] = dict(row, image="/changed/a")
+    else:
+        rec["producer_statistics_reproduced"] = True
+    with pytest.raises(ValueError):
+        checked_decision_scope([rec], review)
