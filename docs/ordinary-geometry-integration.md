@@ -239,7 +239,7 @@ It binds every runtime Python helper, configuration, performance profile, full
 1,637,908-row RGB manifest, archived232288 checkpoint, historical sidecar, complete
 8,000 presentation keys, heldout digests and the separate250-update budget. Both
 CPU integration and actual CUDA zero-update evidence must match these bindings.
-No publisher, actual-model evidence or successful seal has been produced yet.
+A separate publisher/endpoint wrapper now exists. No successful ordinary runtime seal has been issued; the actual CUDA gate remains pending.
 The later actual trainer also reads back its own initial checkpoint before any
 update and requires adapter/RMS/Adam/RNG equality, old Adam counters and cursor0.
 This hook is CPU readback in the trainer process; it does not claim an independent
@@ -303,3 +303,42 @@ negative case covers the same28 CPU tests. One CUDA-only unit test was skipped
 in the CPU invocation; actual device comparison belongs to the running model
 gate. Earlier164 CPU integration checks remain supporting evidence. No actual
 CUDA pass or new training admission is claimed here yet.
+
+
+## First CUDA gate failure and isolated repeatability diagnosis
+
+The first actual gate did not pass. On its first original32-image update,
+original-vs-annotated and original-vs-original parameter-gradient equality both
+failed. It exited with zero optimizer updates; no admission or training output
+was created. The publisher was exercised against that failed evidence and
+refused to publish. The new completion wrapper separately rejects incomplete
+update logs, changed RMS/Adam and short input accounting (7 tests local/remote).
+
+`ordinary-g0-repeatability-current-01` then repeated only the original feature
+path three times, with exact saved reference pixels and archive232288 weights,
+RMS and RNG. RADIO/teacher encoded outputs, adapter outputs, four feature losses,
+loss gradients at adapter outputs and RNG were all bitwise equal. Parameter
+gradients differed in78 of100 tensors: relative L2 differences were
+0.00099430565 and0.00097277541, with maximum absolute differences
+7.74278e-6 and8.55117e-6. This localizes the observed discrepancy to adapter
+backward, not RGB transport or the feature-loss output derivative.
+
+Global deterministic mode stopped at the existing CUDA median-with-indices
+operation. That failed diagnostic is not evidence that median values caused
+the discrepancy, and the original channel-cleaning formula was not replaced.
+A separate `ordinary-g0-repeatability-sdpa-math-01` changed only SDPA backend
+selection for diagnosis. All100 parameter-gradient tensors then matched exactly
+in both repeated comparisons, as did forwards/losses/RNG. Thus attention-backend
+selection explains repeatability in this bounded example. This does NOT establish
+a cause of historical cosine/LiDAR regression or a benefit from changing the
+training backend. No optimizer was constructed in any diagnostic.
+
+The revised gate (`ordinary-model-gate-02`, execution116e7f6) explicitly separates
+runtime-backend exact pixels/forward losses/RNG from exact gradient parity under
+the demonstrated repeatable math diagnostic backend. It restores the original
+backend before every geometry-on check. Training backend settings remain
+unchanged. Evidence fields now name these separate checks; no default-backend
+bitwise-gradient claim or relaxed numeric tolerance is emitted. Runtime code,
+candidate config and both repeatability reports are bound anew. The previous
+failed gate remains failed. Actual geometry gradients and full32 memory admission
+are still pending this revised run.
