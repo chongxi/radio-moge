@@ -3759,3 +3759,54 @@ exclusion or source admission follows. These two scenes contain 1,964 native
 candidates and one existing support rejection, not 1,964 demonstrated failures.
 No optimizer or training inputs changed; scanner panoramas were used solely as
 source evidence and never added to training.
+
+### Published scanner transforms and remaining scenes — November 4, 20:21 UTC
+
+The new source diagnostic initially rejected publisher-rounded scanner matrices
+at an orthogonality tolerance of 1e-6, despite the retained metadata contract
+allowing 1e-3. Its corrected implementation preserves the full published 3x3,
+uses an inverse solve for world-to-scanner targets, and leaves `R * unit_ray`
+unnormalized. The intersection parameter therefore remains scanner-local radial
+range; world Euclidean distance and normalized incidence are reported separately.
+No source matrix, cached depth, mask or training implementation changed. This
+diagnostic compatibility error is not evidence of a historical training cause.
+
+An audit of the saved first-two-scene comparisons, with no raw image reread,
+found a maximum range change of 8.036e-7 m across 141 comparable tested-angle
+intersections. All 27 nominal classifications and all nine-angle classifications
+remain unchanged. Eight observations on five triangles retain 1.2007–2.0871 m
+minimum range-patch clearance. The original saved pixels are retained; corrected
+full-grid nearest-pixel selection was not rerun or claimed identical.
+`scannetpp-scanner-pose-correction-audit-01/report.json` preserves the numerical
+differences and binds the previous evidence.
+
+The remaining three scenes were checked once with the corrected source helper:
+18 retained scanner views, 54 target selections, 51 unique (scene, scan, pixel,
+face) observations. Three duplicate selections retain their target provenance but
+count only once. The saved-data sensitivity auditor initially rejected those
+duplicates before publication; its follow-up explicitly merges only identical
+measurements and rejects conflicts. Twenty-four distinct targeted CPU tests now
+cover the helpers, including rounded transforms, invalid matrices, historical
+threshold-crossing decisions and duplicate/conflicting scanner evidence.
+
+In scene `d3ba8b4232`, two distinct stored rays in scanner view 1 hit triangle
+5589024 about 1.77 m before the measured patch even under all nine tested angle
+combinations. They share a face/view and are not independent acquisitions. The
+other two scenes have nominal discrepancies but no all-nine-angle beyond-triangle
+result in this sample; their existing quarantines are not cleared. Measurements
+before a selected triangle can be ordinary foreground occlusion and are not
+counted as evidence of a mesh error.
+
+Across all five examined scenes, 78 unique observations yield ten all-nine-angle
+discrepancies on six triangles in three scenes. These are selected local source
+comparisons, not an estimated population failure rate or physical ground truth.
+Mesh reconstruction, scanner registration, return behavior, transparency and
+acquisition changes remain unresolved explanations. All ten exact candidate
+quarantines and 4,101 prior geometry exclusions remain unchanged; no neighbors,
+whole scenes or other sources are automatically rejected or admitted.
+
+Evidence: `scannetpp-triangle-scanner-support-03/report.json` SHA256
+`efed038b89bbb73cff50c0aad985cdeab36ff11f952de8a8e9a48f0df5e4aa83`,
+`scannetpp-triangle-angle-sensitivity-04/report.json`, and the consolidated
+`scannetpp-native-source-diagnosis-02/report.json` SHA256
+`c08bfbf3a6025ce2ce58e6d2030b8d4ccb2948f1c468331d8acc1f13289b2631`.
