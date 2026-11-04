@@ -50,6 +50,9 @@ def software_backend():
     if 'llvmpipe' not in identity['renderer'].lower():
         renderer.delete()
         raise ValueError('CPU software reference backend not verified')
+    identity['pyrender_version'] = pyrender.__version__
+    identity['source_files'] = [file_ref(Path(pyrender.__file__).parent/name) for name in
+                                ('camera.py', 'renderer.py', 'platforms/osmesa.py')]
     return pyrender, renderer, identity
 
 

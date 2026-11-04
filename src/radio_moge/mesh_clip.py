@@ -40,7 +40,7 @@ class MeshClipContract:
         return asdict(self)
 
     def interior(self, z):
-        z = np.asarray(z)
+        z = np.asarray(z, dtype=np.float64)
         return (np.isfinite(z) & (z > self.near_m+self.boundary_guard_m)
                 & (z < self.far_m-self.boundary_guard_m))
 
@@ -99,8 +99,14 @@ def clipped_cpu_depth(intersector, intrinsics, c2w, selected, contract):
                 or np.any(z < contract.near_m-3*contract.boundary_guard_m)):
             raise ValueError('CPU intersections do not lie on forward clipped camera rays')
         positions = indices[hits]
-        near = z <= contract.near_m+contract.boundary_guard_m
-        far = z >= contract.far_m-contract.boundary_guard_m
+        # The saved float32 value must satisfy the same collar as the exact hit.
+        # A float64 interior value can round onto/into an excluded boundary.
+        with np.errstate(over='ignore'):
+            saved_z = z.astype(np.float32).astype(np.float64)
+        near = ((z <= contract.near_m+contract.boundary_guard_m)
+                | (saved_z <= contract.near_m+contract.boundary_guard_m))
+        far = ((z >= contract.far_m-contract.boundary_guard_m)
+               | (saved_z >= contract.far_m-contract.boundary_guard_m))
         good = ~(near | far)
         reason[positions[near]] = 2
         reason[positions[far]] = 3

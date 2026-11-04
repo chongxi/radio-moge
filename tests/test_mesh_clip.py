@@ -91,6 +91,18 @@ def test_empty_support_does_not_query_and_malformed_hits_fail():
         clipped_cpu_depth(Duplicate(), K, np.eye(4), np.ones((4, 6), bool), MeshClipContract())
 
 
+def test_saved_float32_boundary_cannot_escape_declared_guard():
+    contract = MeshClipContract()
+    # Both are strictly interior in float64 but round into the saved-depth guard.
+    for exact, expected_reason in [(np.nextafter(contract.near_m+contract.boundary_guard_m, np.inf), 2),
+            (np.nextafter(contract.far_m-contract.boundary_guard_m, -np.inf), 3)]:
+        assert contract.interior(exact)
+        assert not contract.interior(np.float32(exact))
+        d, reason = clipped_cpu_depth(PlaneIntersector([exact]), np.eye(3), np.eye(4),
+                                      np.ones((1, 1), bool), contract)
+        assert not d.any() and (reason == expected_reason).all()
+
+
 @pytest.mark.parametrize('change', [dict(near_m=0), dict(far_m=.05), dict(near_m=float('nan')),
     dict(far_m=float('inf')), dict(boundary_guard_m=0), dict(boundary_guard_m=.03),
     dict(schema_version=True), dict(visibility='original_camera_then_mask'),
