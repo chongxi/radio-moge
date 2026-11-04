@@ -3559,3 +3559,37 @@ source proofs remain complete and were not repeated.
 
 Evidence: `ordinary-trainer-integration-01/report.json`, SHA256
 `0e7ce51331309033a4ebb992f9fc77cd2521e9519413400aa4812d6d7b8d3faf`.
+
+### ScanNet++ native outcome auditor prepared — November 4, 10:35 UTC
+
+Immutable execution `code-scannet-native-outcomes-v1/78f1f15` provides the full
+native outcome reconciliation after the remaining producer finishes. It binds
+the recovered subset and current producer to their distinct policies, verifies
+exact frozen RGB rows, accounts for each input once, and retains source-review
+and low-support rejection reasons. Existing teacher replacements remain a
+separate route; they cannot inflate native counts. The label remains
+`laser_mesh_derived`, not direct per-DSLR-pixel measurement or independent
+physical calibration.
+
+The audit requires complete producer reports and producer array readback before
+creating its output. It then reads receipt/source-audit metadata with a temporary
+local SQLite index. It checks camera grids, normalized half-center intrinsics,
+units, unchanged support/error thresholds, receipt layout, source hashes and
+large-mesh face/pass counts. Publisher mask filenames come from the exact frozen
+row; they need not match the image stem. Source scene flags are retained.
+The result does not grant source eligibility or training admission, and does
+not repeat full pack payload reads or physical source audits.
+
+All 29 combined auditor/recovery tests passed locally (2.14s) and remotely
+(0.78s). A bounded compatibility check validated 256 actual closed receipt
+entries from each native policy and 229 actual rejection records, covering both
+`source_scene_pending_review` and `insufficient_verified_visible_support`.
+No RGB, geometry payload, mesh, model or checkpoint was read by that check.
+Evidence: `scannet-native-outcome-tooling-01/compatibility.json`, SHA256
+`1ac59ec71acc2d217b9fcc135007d25c5dfab659f4c1846b5f9930a42d01fa3e`.
+
+The full outcome audit has **not run**. At 10:31 UTC the existing producer was
+still generating: 660,847 new candidates plus 49,152 recovered candidates and
+28,345 native rejections. Its final report was absent. Preserve that producer
+and the viewer; run the auditor only after final generation/readback completion.
+No optimizer was started or training admission changed in this work.
