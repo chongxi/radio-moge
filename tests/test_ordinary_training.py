@@ -98,6 +98,7 @@ def fake_gate(config, source, performance):
 
 def test_ordinary_metadata_matches_serial_rows_digest_and_reports_verified_progress(tmp_path):
     config, _ = setup(tmp_path)
+    config['output_dir'] = str(tmp_path/'run'/'training')
     path = config['data']['train_manifest']
     expected = load_reference_records(path, workers=1)
     audit = object.__new__(OrdinaryTrainingAudit)  # Metadata-only fixture; no admission or model.
