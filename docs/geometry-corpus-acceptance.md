@@ -4069,3 +4069,78 @@ training loss is insufficient. Any tuning uses development validation; a final
 unseen confirmation is needed after repeated use of existing validation. No
 optimizer, cache replacement or new source admission was performed for this
 plan.
+
+### Native v2 development implementation and actual comparison — November 4, 23:30 UTC
+
+Following the user's authorization, the explicit clip contract and bounded
+development implementation have run. The 51 identities were frozen before new
+outputs: all 19 quarantines, 16 controls from other training scenes and 16
+confirmation views from separate training scenes. Confirmation images remain
+unread because the physical uncertainty/coverage contract is not yet frozen.
+The selection report is `scannetpp-native-v2-validation-01/report.json`, SHA256
+`37b957e897013bf3e58d9636b279d70ad1c1598c4f90f60bd7a89cae8d87c322`.
+
+The new CPU query shifts its origin to the clipping interval while retaining
+original-camera Z, rejects the declared 0.1 mm numerical guard bands, and
+checks that a second closest-hit query agrees. It does not skip additional
+near surfaces or enumerate a truncated hit list. An optional exact-policy
+check prevents recovery under changed semantics; a complete v2 bulk producer
+and version-aware outcome auditor are still pending. Historical processing
+remains the default for old callers and old artifacts are unchanged.
+
+The original remote CPU checks passed 44 cases, including six actual Embree
+fixtures. Five actual CUDA analytical cases passed, including clipped
+foreground/back surfaces, boundary rejection, reversed/chunked visibility and
+a triangle crossing the near plane. Execution `842e9c2` then rendered the
+35 development views with retained old/new raw depth, masks, reason codes,
+source identities and public CPU PyRender comparisons. All 35 exceed the
+unchanged 5% support floor, but **only 18 pass strict public numerical parity**:
+among 7,091,766 final supported pixels, 31 differ by more than 2 mm and one
+straddles the numerical clipping guard. The maximum difference is 24.519 mm.
+The support floor alone is not a pass.
+
+All 35 pages were actually inspected through 18 contact images, each original
+1440x850 page displayed at 1080x638. Some dominant near occluders disappear,
+revealing room walls and furniture. However, supported near blades, ribbons
+and patches remain in several known anomalies. Ordinary controls look broadly
+consistent at that display scale, which is not a physical accuracy certificate.
+No quarantine was cleared. The visual review is
+`scannetpp-native-v2-development-visual-review-01/report.json`, SHA256
+`9ffa049cea65e13660e8e60988b00e44c8939b724570f03705c6f0e429bd3857`.
+
+A separate CPU-only diagnostic (`7995fd9`) examined five fixed disagreement
+pixels without re-rendering the full source scenes. At ordinals 853213,
+1181343 and 1563104, isolated rendering of the exact CPU first-hit triangle
+produces no coverage at the pixel center. The projected closest edge is less
+than 0.001 pixel away; an analytical offset of 1/256 pixel selects a farther
+neighbor near the saved public depth. This demonstrates coverage disagreement
+in these three cases. At 851268 the isolated triangle matches CPU depth within
+1 micrometer; a nearby ray suggests a different, nearer covering triangle,
+but the exact full-render face identity was not captured. At 1461784 the same
+isolated triangle reproduces the public result exactly, just 0.119 micrometer
+across the guard from the CPU value. These findings do not explain all 32
+disagreements or establish any surface's physical accuracy.
+
+The actual llvmpipe context has 24 depth bits, 8 subpixel bits, zero sample
+buffers and zero samples. Its framebuffer path does not use PyRender's
+multisample resolve; do not attribute the failures to 4x MSAA. Current library
+version/source hashes are separately retained, without retroactively changing
+the original run's provenance. Diagnostic attempt 01 stopped before source
+reads because `GL_DEPTH_BITS` is removed from the core profile; attempt 02
+uses the actual depth-attachment query, verified on a 2 m CPU plane.
+
+A future guard fix (`7ca1fcc`) also checks the stored float32 depth against
+the declared boundary. Its 45 remote CPU checks pass. A read of all current
+saved supported values found zero affected pixels; the original execution is
+not relabeled as this newer code, and the newer version has no new actual CUDA
+admission. The strict 2 mm threshold is unchanged.
+
+The complete development closure is
+`scannetpp-native-v2-development-closure-01/report.json`, SHA256
+`3536059c0c3e14420c82bc4e331e1513757180b03e389c1cf607c6685ca85c16`;
+the five-pixel diagnostic is SHA256
+`35898bd7894fa5fa610c7878cf37e9d6b13fcb97b95d82d12b8991a55b1cee92`.
+Next work is numerical ambiguity diagnosis/handling and a fixed physical
+source-consistency gate, followed by the sealed confirmation set. There is no
+bulk regeneration, source admission, changed training input or optimizer run.
+The 19 quarantines and 4,171 geometry exclusions remain in force.
