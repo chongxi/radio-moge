@@ -19,6 +19,7 @@ from .ordinary_geometry import ORDINARY_CAMERA_CONTRACT, ORDINARY_LOCAL_RADIUS
 from .ordinary_geometry_data import GeometrySidecar
 from .rgb_input_audit import RGBInputAudit, load_reference_records
 from .checkpoint import atomic_json
+from .projection_fork import ordinary_projection_scope, normalize_projection_validation
 
 
 COUNT_KEYS = frozenset(('gt_supervised_images', 'gt_skipped_sparse_images',
@@ -125,7 +126,7 @@ def validate_ordinary_performance(config, performance):
     validate_performance(performance, config, constant_fork=True)
 
 
-def check_ordinary_data_fork(config, state, digests):
+def check_ordinary_data_fork(config, state, digests, projection_plan=None):
     # Parent must be original feature training, never a geometry checkpoint silently
     # normalized into one. General data-fork checks still bind all old eval IDs.
     previous = state['config']
@@ -134,7 +135,7 @@ def check_ordinary_data_fork(config, state, digests):
             or previous['loss'] != {key: 1. for key in FEATURE_LOSS_KEYS}
             or previous['data']['buckets'] != config['data']['buckets']):
         raise ValueError('Ordinary fork requires the original F1 permutation and resolution contract')
-    value = deepcopy(config)
+    value, scoped_digests = normalize_projection_validation(config, state, digests, projection_plan or {})
     value.pop('ordinary_geometry')
     for key in ('eval_at_start', 'log_every'):
         value['train'][key] = previous['train'][key]
@@ -142,7 +143,7 @@ def check_ordinary_data_fork(config, state, digests):
     value['data'].pop('compact_transport', None)
     if 'compact_transport' in previous['data']:
         value['data']['compact_transport'] = previous['data']['compact_transport']
-    check_data_fork(value, state, digests)
+    check_data_fork(value, state, scoped_digests)
 
 
 class OrdinaryTrainingAudit(RGBInputAudit):
@@ -165,7 +166,8 @@ class OrdinaryTrainingAudit(RGBInputAudit):
         if (config != self.config or state['step'] != self.seal['source_step']
                 or digests != self.seal['data_digests']):
             raise ValueError('Ordinary runtime config, source step or heldout identities changed')
-        check_ordinary_data_fork(config, state, digests)
+        scope, _ = ordinary_projection_scope(self.seal)
+        check_ordinary_data_fork(config, state, digests, scope)
 
     def before_updates(self, system, adapter, statistics, records, config, output):
         # Actual-model evidence is checked BEFORE model/optimizer construction by
@@ -208,8 +210,9 @@ def open_ordinary_training_gate(config, source, performance):
     if str(Path(source).resolve()) != seal['source_checkpoint']['path']:
         raise ValueError('Ordinary initial checkpoint path differs')
     checked_path(seal['source_checkpoint'])
+    _, expected_population = ordinary_projection_scope(seal)
     if (seal['manifest']['path'] != config['data']['train_manifest']
-            or seal['sidecar'] != spec['sidecar'] or seal['rgb_images'] != 1637908
+            or seal['sidecar'] != spec['sidecar'] or seal['rgb_images'] != expected_population
             or seal['source_step'] != 232288
             or seal['optimizer_updates'] != 250
             or config['train']['steps'] - seal['source_step'] != 250
@@ -226,6 +229,8 @@ def open_ordinary_training_gate(config, source, performance):
     binding = dict(**expected, source_checkpoint=seal['source_checkpoint'], manifest=seal['manifest'],
                    sidecar=seal['sidecar'], planned_keys=seal['planned_keys'],
                    data_digests=seal['data_digests'])
+    if 'projection_comparison' in seal:
+        binding['projection_comparison'] = seal['projection_comparison']
     for field, stage, required in (
         ('cpu_evidence', 'ordinary_production_loop_cpu_verified', CPU_REQUIREMENTS),
         ('model_evidence', 'ordinary_actual_model_zero_update_verified', MODEL_REQUIREMENTS)):

@@ -16,6 +16,7 @@ from .corpus_admission import checked_json, checked_path, readonly_db
 from .data import TrainingImages, image_rotation
 from .geometry_cache import HEX64
 from .rgb_geometry_batch import GeometrySlot, RGBGeometryBatch
+from .projection_sidecar import STAGE as PROJECTION_STAGE, checked_derivation
 
 
 def image_identity(row):
@@ -51,15 +52,23 @@ class GeometrySidecar:
     def __init__(self, acceptance_ref):
         self.acceptance_ref = deepcopy(acceptance_ref)
         gate = checked_json(self.acceptance_ref)
-        if (gate.get('schema_version') != 1 or gate.get('stage') != 'accepted_for_training'
+        filtered = gate.get('stage') == PROJECTION_STAGE
+        if filtered:
+            expected_counts = checked_derivation(gate)
+            total_images = gate['total_images']
+        elif (gate.get('schema_version') != 1 or gate.get('stage') != 'accepted_for_training'
                 or gate.get('training_admission') is not True):
             raise ValueError('Expected historical accepted geometry evidence')
-        accounting = checked_json(gate['accounting_report'])
-        if (accounting.get('stage') != 'accounting_verified_not_accepted'
-                or accounting.get('training_admission') is not False
-                or accounting.get('unresolved') != 0
-                or any(gate[k] != accounting[k] for k in ('index', 'manifest_sha256', 'selected_images'))):
-            raise ValueError('Historical acceptance and accounting identity differ')
+        else:
+            accounting = checked_json(gate['accounting_report'])
+            if (accounting.get('stage') != 'accounting_verified_not_accepted'
+                    or accounting.get('training_admission') is not False
+                    or accounting.get('unresolved') != 0
+                    or any(gate[k] != accounting[k] for k in ('index', 'manifest_sha256', 'selected_images'))):
+                raise ValueError('Historical acceptance and accounting identity differ')
+            total_images = accounting['total_images']
+            expected_counts = dict(selected=gate['selected_images'],
+                                   excluded=total_images - gate['selected_images'])
         self.index_ref = deepcopy(gate['index'])
         self.path = self.index_ref['path']
         self._fingerprint = fingerprint(self.path)
@@ -71,10 +80,14 @@ class GeometrySidecar:
             samples = db.execute('SELECT COUNT(*) FROM samples').fetchone()[0]
             bad = db.execute("SELECT COUNT(*) FROM samples s LEFT JOIN images i ON i.ordinal=s.ordinal "
                              "WHERE i.ordinal IS NULL OR i.disposition!='selected'").fetchone()[0]
-            if (set(counts) - {'selected', 'excluded'} or bad
+            if ({k: v for k, v in expected_counts.items() if v} != counts or bad
                     or counts.get('selected', 0) != gate['selected_images']
-                    or samples != gate['selected_images'] or sum(counts.values()) != accounting['total_images']):
+                    or samples != gate['selected_images'] or sum(counts.values()) != total_images):
                 raise ValueError('Historical geometry index counts or dispositions differ')
+            if filtered and db.execute("SELECT COUNT(*) FROM images WHERE "
+                    "(disposition='selected' AND dataset='coco2017') OR "
+                    "(disposition='projection_hold' AND dataset!='coco2017')").fetchone()[0]:
+                raise ValueError('Projection sidecar retained a selected held source or held another source')
         if fingerprint(self.path) != self._fingerprint:
             raise ValueError('Historical geometry index changed while opening')
 

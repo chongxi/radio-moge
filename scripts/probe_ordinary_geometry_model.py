@@ -25,6 +25,7 @@ from radio_moge.ordinary_training import (config_digest, digest, equal_state, im
 from radio_moge.prefetch import PreparedWindows, DeviceWindows, FloatLoader, normalize_uint8
 from radio_moge.rgb_input_audit import RGBInputAudit
 from radio_moge.system import build_system
+from radio_moge.projection_fork import ordinary_projection_scope
 from radio_moge.train import make_loader
 from verify_ordinary_rgb_pixels import selected_rows
 
@@ -124,7 +125,8 @@ def run(request_path, lock_path):
             or performance['gpu_prefetch'] is not True or performance['workers'] != 4):
         raise ValueError('Frozen ordinary model-observer request differs')
     planned = checked_json(binding['planned_keys'])
-    expected = [list(k) for batch in DeterministicBatches(1637908, 4, config['data']['buckets'],
+    projection_plan, population = ordinary_projection_scope(binding)
+    expected = [list(k) for batch in DeterministicBatches(population, 4, config['data']['buckets'],
                 config['train']['seed'], 0, 2000) for k in batch]
     if planned != expected:
         raise ValueError('Full ordinary permutation presentation plan differs')
@@ -170,7 +172,7 @@ def run(request_path, lock_path):
             if not torch.cuda.is_available():
                 raise ValueError('Actual observer requires CUDA')
             selected, count = selected_rows(binding['manifest'], chosen)
-            if count != 1637908:
+            if count != population:
                 raise ValueError('Changed original full RGB scope')
             records = OriginalIndexRecords(selected, count)
             for item in reference['actual_inputs']:
@@ -181,7 +183,7 @@ def run(request_path, lock_path):
             sidecar = GeometrySidecar(binding['sidecar'])
             progress('loading_checkpoint')
             state = torch.load(checked_path(binding['source_checkpoint']), map_location='cpu', weights_only=True, mmap=True)
-            check_ordinary_data_fork(config, state, binding['data_digests'])
+            check_ordinary_data_fork(config, state, binding['data_digests'], projection_plan)
             if state['step'] != 232288 or {int(v['step']) for v in state['optimizer']['state'].values()} != {232288}:
                 raise ValueError('Source Adam counters/checkpoint step differ')
             adam_before = state_digest(state['optimizer'])

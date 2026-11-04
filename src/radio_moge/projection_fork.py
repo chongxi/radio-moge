@@ -12,13 +12,17 @@ from .data import read_manifest, manifest_digest
 COMPARISON_SHA = '03994851303ea4af337a495b6534dbf204b347b353d85891d5484b65fb8ece78'
 
 
+def projection_comparison(ref):
+    if ref['sha256'] != COMPARISON_SHA:
+        raise ValueError('Unreviewed projection comparison plan')
+    return checked_json(ref)
+
+
 def projection_plan(plan):
     ref = plan.get('projection_comparison')
     if ref is None:
         return None
-    if ref['sha256'] != COMPARISON_SHA:
-        raise ValueError('Unreviewed projection comparison plan')
-    common = checked_json(ref)
+    common = projection_comparison(ref)
     hold = checked_json(common['hold'])
     heldout = checked_json(common['heldout'])
     if (plan['manifest'] != common['manifest']
@@ -31,6 +35,29 @@ def projection_plan(plan):
             or 'coco2017' in hold['rgb']['retained_counts']):
         raise ValueError('Projection scope differs from the reviewed paired plan')
     return common
+
+
+def ordinary_projection_scope(binding):
+    ref = binding.get('projection_comparison')
+    if ref is None:
+        return {}, 1637908
+    common = projection_comparison(ref)
+    source = {k: common['source_checkpoint'][k] for k in ('path', 'sha256')}
+    sidecar = checked_json(binding['sidecar'])
+    if (binding['source_checkpoint'] != source or binding['manifest'] != common['manifest']
+            or sidecar.get('projection_comparison') != ref
+            or sidecar.get('index') != common['candidate_geometry_index']
+            or sidecar.get('training_admission') is not False):
+        raise ValueError('Ordinary filtered scope differs from the paired comparison')
+    plan = dict(projection_comparison=ref, manifest=common['manifest'],
+        planned_inputs=common['planned_inputs'], source_checkpoint=common['source_checkpoint'],
+        reference_images=common['common']['population'])
+    projection_plan(plan)
+    planned = checked_json(common['planned_inputs'])
+    paired_keys = [[r['index'], r['augmentation_seed'], r['height'], r['width']] for r in planned]
+    if checked_json(binding['planned_keys']) != paired_keys:
+        raise ValueError('Ordinary geometry keys differ from the paired feature arm')
+    return plan, plan['reference_images']
 
 
 def validate_retained_validation(old_rows, new_rows, old_digest, new_digest):

@@ -75,3 +75,33 @@ def test_only_exact_slot_preserving_performance_wrapper_is_permitted(tmp_path):
     assert not original_component_matches(old, current, False)
     old.write_text(source.replace('compute_batch // size', 'compute_batch // size + 1'))
     assert not original_component_matches(old, current, True)
+
+
+def test_ordinary_scope_binds_parent_manifest_sidecar_and_all_paired_keys(tmp_path, monkeypatch):
+    from radio_moge import projection_fork as module
+    def save(name, value):
+        p = tmp_path / name
+        p.write_text(json.dumps(value))
+        return file_ref(p)
+    pair_ref = dict(path='/pinned-pair', sha256='a'*64)
+    keys = [[8, 43, 480, 640], [9, 44, 400, 640]]
+    common = dict(source_checkpoint=dict(path='/archive', sha256='b'*64, payload_reread=False),
+        manifest=dict(path='/rgb', sha256='c'*64), candidate_geometry_index=dict(path='/index', sha256='d'*64),
+        planned_inputs=save('inputs.json', [dict(index=i, augmentation_seed=s, height=h, width=w)
+                                         for i, s, h, w in keys]), common=dict(population=1597911))
+    sidecar = dict(projection_comparison=pair_ref, index=common['candidate_geometry_index'], training_admission=False)
+    binding = dict(projection_comparison=pair_ref, manifest=common['manifest'],
+        source_checkpoint={k: common['source_checkpoint'][k] for k in ('path', 'sha256')},
+        sidecar=save('sidecar.json', sidecar), planned_keys=save('keys.json', keys))
+    monkeypatch.setattr(module, 'projection_comparison', lambda _: common)
+    monkeypatch.setattr(module, 'projection_plan', lambda _: common)
+    _, population = module.ordinary_projection_scope(binding)
+    assert population == 1597911
+    for field in ('manifest', 'source_checkpoint'):
+        with pytest.raises(ValueError, match='paired comparison'):
+            module.ordinary_projection_scope(dict(binding, **{field: dict(path='/wrong', sha256='e'*64)}))
+    bad = dict(binding, sidecar=save('wrong-sidecar.json', dict(sidecar, training_admission=True)))
+    with pytest.raises(ValueError, match='paired comparison'):
+        module.ordinary_projection_scope(bad)
+    with pytest.raises(ValueError, match='paired feature arm'):
+        module.ordinary_projection_scope(dict(binding, planned_keys=save('wrong-keys.json', keys[::-1])))

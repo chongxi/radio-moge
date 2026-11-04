@@ -20,6 +20,7 @@ from radio_moge.geometry_cache import publish_json
 from radio_moge.ordinary_training import (CPU_REQUIREMENTS, MODEL_REQUIREMENTS, config_digest,
     digest, equal_state, implementation_digest, validate_ordinary_config, validate_ordinary_performance)
 from radio_moge.train import train
+from radio_moge.projection_fork import ordinary_projection_scope
 
 
 def model_backend_scope(model):
@@ -90,9 +91,10 @@ def prepare(gate_dir, execution_revision):
     if (root/'admission.json').exists() or (root/'run-request.json').exists():
         raise FileExistsError('Ordinary training preparation already published')
     root.mkdir(exist_ok=False)
+    _, population = ordinary_projection_scope(binding)
     seal = dict(stage='ordinary_rgb_geometry_training_accepted', schema_version=1,
         training_admission=True, **binding, **refs, source_step=232288, optimizer_updates=250,
-        rgb_images=1637908, rgb_digest=binding['data_digests']['train'],
+        rgb_images=population, rgb_digest=binding['data_digests']['train'],
         automatic_followup_training=False, no_new_baseline_inference=True,
         runtime_attention_modes=runtime_modes,
         exact_gradient_parity_backend='math_diagnostic_only',
