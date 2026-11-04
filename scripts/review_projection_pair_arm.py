@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import time
 
-from radio_moge.corpus_admission import checked_json, file_ref
+from radio_moge.corpus_admission import checked_json as checked_json_exact, file_ref
 from radio_moge.geometry_cache import publish_json
 from radio_moge.metrics import aggregate, dataset_metrics
 from review_corpus_controls import change, joint_result
@@ -14,6 +14,15 @@ from review_projection_filtered_metrics import normalized_manifest, identities
 
 
 VIEWS = ('original', 'native-640x400', 'dataset-scannetpp-lidar', 'dataset-scannetpp-dslr')
+
+
+def checked_json(ref):
+    # Reports can be mirrored between workspace and GPU mount roots. Retain
+    # their original identity and require the same content hash at either path.
+    resolved = dict(ref)
+    if not Path(ref['path']).exists() and ref['path'].startswith('/shared/'):
+        resolved['path'] = ref['path'].replace('/shared/', '/home/buildhub/shared/', 1)
+    return checked_json_exact(resolved)
 
 
 def metrics_for(rows):
