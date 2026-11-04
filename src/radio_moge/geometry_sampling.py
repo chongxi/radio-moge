@@ -174,6 +174,10 @@ def select_observations(depth, valid, k_depth, view):
     target.update(intrinsics=view['intrinsics'].copy(), output_shape=(oh, ow),
                   native_shape=(dh, dw), native_valid_count=int(valid.sum()),
                   visible_native_count=int(support.sum()))
+    # Never silently turn an ordinary crop into the legacy centered contract.
+    for key in ('camera_contract', 'camera_pixel_convention'):
+        if key in view:
+            target[key] = view[key]
     if len(ids) != len(np.unique(ids)) or len(ids) > valid.sum():
         raise AssertionError('Geometry observations were duplicated')
     return target

@@ -2,9 +2,9 @@
 
 This is a CPU preparation helper, not a new training or loss-admission path.
 It never warps RGB, interpolates depth, fits calibration, or centers a camera.
-The existing centered-camera corpus loss is deliberately unchanged. Before this
-view enters training, the target join, camera/loss contract and actual feature
-pixel/loss/gradient equivalence must be admitted separately.
+The legacy centered-camera entry point does not admit this contract. The new
+ordinary loss core and actual feature pixel/loss/gradient equivalence still
+require a separate training gate before this view enters a trainer.
 """
 
 import numpy as np
@@ -13,6 +13,7 @@ from .geometry_sampling import camera_matrix
 
 
 ORDINARY_CAMERA_CONTRACT = 'ordinary_rgb_crop_v1'
+ORDINARY_LOCAL_RADIUS = 'inverse_ray_jacobian_frobenius_v1'
 
 
 def ordinary_view(k_rgb, rgb_shape, output_shape, crop_box, flip=False):

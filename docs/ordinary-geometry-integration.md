@@ -67,8 +67,8 @@ not repeat the completed model gate or establish geometry-loss correctness.
    normalize by the number of labeled images or divide by 32 twice. Report
    missing and sparse counts separately, as actual integer counts.
 5. Propagate and validate an explicit camera contract from the sidecar through
-   the selected observations into the loss. `select_observations` currently
-   drops the new view's contract field; the old loss checks centered K only.
+   the selected observations into the loss. `select_observations` now carries the new view's contract field. The legacy
+   loss checks centered K and rejects any explicitly ordinary target.
    An ordinary crop that happens to yield centered K could pass that numeric
    check. Therefore absence of an off-center error is not admission. The current
    helper is not wired into training, and no old loss guard is removed.
@@ -118,9 +118,9 @@ bitwise. This is a synthetic regression test, not the actual RADIO/MoGe gate.
 through complete groups of 32, against saved compact pixel hashes and an ordinary
 prepared RGB loader. It reads RGB and index metadata only, not geometry arrays.
 
-Still pending: ordinary target construction, explicit camera/loss admission,
-missing/sparse geometry normalization, production observer/trainer integration,
-CUDA transport verification and actual-model paired gradient tests. Do not infer
+Still pending: training admission for the new ordinary target/loss core,
+production observer/trainer integration, CUDA transport verification and
+actual-model paired gradient tests. Do not infer
 loss admission from an ordinary camera whose principal point happens to be centered.
 
 The first remote sidecar test exposed coarse filesystem timestamps: a rapid
@@ -130,7 +130,7 @@ reader now also checks the SQLite header/commit counter before and after queries
 and only accepts a closed non-WAL index. A regression test holds all timestamps
 constant while changing a selected row to excluded; the lookup must fail.
 
-## Local-loss camera analysis (not yet implemented)
+## Local-loss camera convention (optional ordinary core)
 
 In pinned upstream `moge/train/losses.py`, the scalar focal enters the local loss
 as `radius_3d = Z / (2 * level * focal)`. It influences anchor density, patch
@@ -145,12 +145,12 @@ For `K = [[A, c], [0, 1]]`, lateral normalized rays are `A^-1 (uv-c)` and their
 Jacobian is `J=A^-1`. Principal point c disappears from that derivative. Thus an
 off-center or outside-image principal point alone needs no local-radius change.
 The current inverse focal equals `||J||_F` when off-diagonal entries vanish.
-An explicit full-K extension could use `focal=1/||J||_F`, which reduces exactly
+The explicit ordinary core uses `focal=1/||J||_F`, which reduces exactly
 to the existing scalar for zero skew and preserves reflection/skew-sign symmetry.
 For upper-triangular skew s its inverse square is
 `1/fx**2 + 1/fy**2 + s**2/(fx**2*fy**2)`.
 
-This would declare an RMS diagonal-radius convention: the mean squared lengths
+This declares an RMS diagonal-radius convention: the mean squared lengths
 of transformed diagonals `(1,1)` and `(1,-1)` equals `||J||_F**2`. A single scalar
 does not reproduce every directional neighborhood of an anisotropic/skewed
 camera. Exact directional neighborhoods would require a larger upstream patch
@@ -159,3 +159,33 @@ tested for the zero-skew reduction, center independence, reflection symmetry,
 physical ray displacement and finite gradients. Do not change XYZ or the fixed
 unknown-camera evaluation to conceal these distinctions. This analysis does not
 establish a historical regression cause or admit a geometry optimizer run.
+
+
+## Ordinary target construction and loss core
+
+`ordinary_geometry_targets.ordinary_target` now reads each bound member with its
+payload SHA and metadata checks, rechecks original RGB bytes/oriented dimensions,
+and requires the explicit native-to-RGB camera mapping for unequal grids. It
+reproduces `ordinary_crop_parameters` from the original key. `augment` is a
+required argument and must come from the actual original `TrainingImages`.
+Source metadata/flags are retained; a missing reference returns `None`. No RGB
+image, measured depth or support is warped/interpolated by this constructor.
+
+`ordinary_geometry_losses` is a separate opt-in core. It requires the ordinary
+camera, half-center pixel and local-radius contracts, verifies supported XYZ
+project back to their query UVs, and rejects invalid shapes, IDs, cameras or
+out-of-bounds queries even for sparse targets. The zero-skew special case uses
+the exact legacy focal arithmetic. The legacy entry rejects ordinary targets
+even if their principal point happens to be centered. Unknown-camera evaluation
+is unchanged. There is still no trainer or config acceptance for this new core.
+
+The loss mean counts all RGB slots, including missing and <32-observation slots.
+Coverage counters are separate integer counts. Native metric scale retains the
+upstream detached target; pseudo labels are median-normalized before clamps and
+never use predicted metric scale. Tests cover full32 normalization across compute
+groups. Upstream tests use96x128 geometry and assert finite nonzero gradients for
+each component, including local16 (the old32x32 fixture could never meet its
+32-point patch minimum). Zero-skew legacy/ordinary component losses and gradients
+are checked bitwise; summed float32 gradients are checked with a small numeric
+bound because separate graph branch accumulation need not be bitwise identical.
+This CPU core evidence is not an actual RADIO/MoGe gradient gate.
