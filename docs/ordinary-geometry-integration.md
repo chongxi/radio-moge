@@ -377,10 +377,10 @@ the full RGB denominator. No corpus mixture or extra replay stream is introduced
 The bound is250 updates to232538 or2700 seconds; a short budget endpoint cannot
 be reported as fixed250. No automatic follow-up or retry is configured.
 
-At launch it was still loading metadata and had no verified optimizer update.
-The real trainer must separately pass its actual saved initial-state comparison
-before updating. Full metadata startup is included in the time budget; the
-bounded observer does not establish its elapsed time.
+The real trainer subsequently passed its saved initial-state comparison:
+adapter, RMS, all100 Adam states and RNG matched archive232288 before its first
+update. Full metadata startup was included in the time budget. This proof is
+separate from the optimizer-free model observer.
 
 The evaluation contract compares fixed final232538 against both archive232288
 and `feature-original-reference-02`, verifies all8000 actual RGB pixels/keys/
@@ -391,3 +391,52 @@ baseline inference is repeated. Reviewer177f9f6 passed7 local/remote tests and
 an actual saved-reference self-comparison across159/159/77/93 metric fields,
 all exactly zero difference. This validates review compatibility, not training
 benefit. Historical regression causality and joint improvement remain unresolved.
+
+## Fixed250 result: matched inputs, joint target not met
+
+`ordinary-geometry-training-01` completed normally at232538 with250 finite
+updates, followed by its final evaluation. The stop reason was `step_limit`;
+total elapsed time was2569.49 seconds within2700. The runner verified the finite
+final adapter/Adam and unchanged RMS and preserved the fixed endpoint checkpoint
+with SHA `e7f4d236bccf7c13ed6981446a43fa70d8df669069ece7a45cca56679e5d91d9`.
+No further optimizer segment was launched.
+
+Reviewer177f9f6 verified all8000 actual CPU RGB pixel hashes, identities and
+prepared groups against `feature-original-reference-02`, removing only the
+geometry annotation. Both used the restored feature recipe and archive Adam/RNG.
+The current run had2910 geometry-supervised presentations (1876 metric and1034
+relative teacher),5089 without targets, and1 sparse skip. All8000 retained their
+feature branch and every update retained the full32 geometry denominator.
+
+| Fixed comparison | Original spatial cosine | Original summary cosine | Independent LiDAR AbsRel |
+| --- | ---: | ---: | ---: |
+| Archive232288 | 0.961692055 | 0.932300927 | 0.092118447 |
+| Restored feature-only,250 updates | 0.961659603 | 0.932249937 | 0.092032092 |
+| Restored feature+geometry,250 updates | 0.961565083 | 0.932253152 | 0.091780616 |
+
+Against archive, both original cosines declined and LiDAR AbsRel improved0.3667%.
+Against the matched feature-only endpoint, spatial cosine declined0.000094520,
+summary cosine increased0.000003215, and LiDAR AbsRel improved0.2732%.
+Neither comparison meets the predeclared joint target. Structured3D had the
+largest original spatial-cosine decline versus the feature-only endpoint among
+the seven sources in that macro; this identifies a location of the observed
+change, not its cause.
+
+All four saved evaluation views retained identical images, protocols and frozen
+teacher/model revisions, with all five heldout digests checked. No archive or
+reference inference was repeated. A new18-case final-checkpoint known-camera
+laser evaluation had AbsRel0.125318168 versus reference02's0.125379018, an
+observed0.0485% reduction; this remains separate from independent LiDAR and the
+joint criterion. Original-view NYU AbsRel improved7.9259% against archive and
+2.3384% against reference02, also a secondary result.
+
+W&B run `1f3ccc07` finished. All497 final validation values matched local records
+numerically;32 equivalent integer/float representations had zero numeric
+difference. `results-review-01/report.json` preserves the paired metrics and
+`results-closure-01.json` closes its pending online check. Closure SHA:
+`0db662b1e1c88eef366f6f9582fb5f475f013830f1355bd540a20ab0320804d2`.
+This single-seed comparison establishes neither statistical significance nor
+the historical regression cause. The documented default-backend gradient
+repeatability limitation remains; training did not switch to the diagnostic
+math backend. Existing reference, control, model-gate and startup proofs need
+not be repeated.
