@@ -176,7 +176,11 @@ def run(review_path, output, ordinals):
         target=output/f'{chosen["corpus_ordinal"]}.json'
         publish_json(target,case)
         results.append(file_ref(target))
-        publish_json(output/'status.json',dict(stage='probing',completed=len(results),expected=len(selected),gpu_used=False))
+        progress=output/'status.json.incoming'
+        with progress.open('x') as stream:
+            json.dump(dict(stage='probing',completed=len(results),expected=len(selected),gpu_used=False),stream)
+            stream.write('\n')
+        progress.replace(output/'status.json')
         print(json.dumps(dict(completed=len(results),corpus_ordinal=chosen['corpus_ordinal'],rays=len(records))),flush=True)
     checked_path(review_ref)
     for value in sources.values():
