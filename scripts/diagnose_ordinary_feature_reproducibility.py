@@ -4,6 +4,7 @@ This diagnosis does not admit training or relax the failed exact-parity gate.
 Current and deterministic numerical modes are separate explicit observations.
 """
 import argparse
+from contextlib import nullcontext
 from copy import deepcopy
 import fcntl
 import json
@@ -185,7 +186,7 @@ if __name__ == '__main__':
     parser.add_argument('--gate-dir', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--lock', required=True, type=Path)
-    parser.add_argument('--mode', required=True, choices=('current', 'deterministic'))
+    parser.add_argument('--mode', required=True, choices=('current', 'deterministic', 'sdpa_math'))
     args = parser.parse_args()
     if args.mode == 'deterministic':
         os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
@@ -193,4 +194,9 @@ if __name__ == '__main__':
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
     torch.set_num_threads(1)
-    run(args.gate_dir.resolve(), args.output.resolve(), args.lock.resolve(), args.mode)
+    # A separate isolated attention-backend diagnostic; do not alter global
+    # deterministic flags or replace the original median/channel-cleaning path.
+    from torch.nn.attention import sdpa_kernel, SDPBackend
+    context = sdpa_kernel(SDPBackend.MATH) if args.mode == 'sdpa_math' else nullcontext()
+    with context:
+        run(args.gate_dir.resolve(), args.output.resolve(), args.lock.resolve(), args.mode)
