@@ -262,3 +262,44 @@ slot permutation/metadata rejection and exclusion of unused prefetched windows.
 Stale/pending config, code, profile, budget, plan or actual-model reports reject
 before runtime construction. Synthetic test gates exist only as in-memory test
 substitutions; no production admission is written by those tests.
+
+
+## Actual CUDA observer (implemented; first run pending)
+
+`probe_ordinary_geometry_model.py` now binds a concrete F1/ordinary-geometry
+candidate, its original8000 permutation keys, complete runtime code digest,
+archive232288, historical sidecar and existing target/pixel evidence. It takes
+the existing GPU lock and explicitly forbids optimizer construction. It never
+issues a training seal or starts a trainer. The first execution is
+`ordinary-model-gate-01`, code `code-ordinary-model-v2` / `83c1803`.
+
+The observer compares plain and annotated actual CUDA pixels, all four feature
+losses, adapter gradients and RNG on the first three real32-image windows and
+96 separately labeled source/resolution diagnostic keys. A predefined plain vs
+plain repetition distinguishes nondeterminism from an annotation-path mismatch;
+either failure blocks the gate, without relaxing tolerances. Geometry checks
+use raw adapted features and independently differentiate the geometry objective.
+Every pseudo/missing/sparse slot has zero scale gradient even in mixed native
+batches. Targets are compared with their bound camera-proof identities, ray
+arrays and support counts; missing targets cannot pass a dense-case check.
+
+Memory diagnostics keep a full32 dense group and a future32 CUDA group resident
+at each of the three resolutions. Exact archived Adam tensor bytes and twice
+trainable parameter bytes are additionally reserved for moments/step workspace.
+The report checks peak-reservation-adjusted free memory with8GiB headroom;
+this conservative capacity observation is not an executed Adam update and
+other processes' future allocations cannot be guaranteed. No automatic shrinking
+or retry is permitted by the observer.
+
+Actual adapter/RMS initialization is compared against CPU archive tensors using
+bounded cross-device copies. Model state, source Adam bytes and RNG must remain
+unchanged after discarded backwards. Source Adam is not loaded into an optimizer
+by this observer; the separate real trainer initial-checkpoint hook still must
+prove its actual Adam restoration before its first update.
+
+The new observer/gate and production-loop regression selection passed28 tests
+remotely with Torch/BLAS1; the local combined run plus final added mixed-scale
+negative case covers the same28 CPU tests. One CUDA-only unit test was skipped
+in the CPU invocation; actual device comparison belongs to the running model
+gate. Earlier164 CPU integration checks remain supporting evidence. No actual
+CUDA pass or new training admission is claimed here yet.
