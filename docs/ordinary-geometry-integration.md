@@ -195,3 +195,35 @@ test therefore explicitly selects one thread and restores the previous setting;
 it retains zero tolerance. This observation does not explain historical model
 regression or establish deterministic GPU backward behavior.
 This CPU core evidence is not an actual RADIO/MoGe gradient gate.
+
+
+## Next trainer integration boundaries
+
+Keep original `make_loader`/`DeterministicBatches` and `TrainingImages`; the new
+path must not route through `CorpusImages`, mixture sampling or replay. Bind
+actual augmentation metadata explicitly, since `GeometrySlot` currently carries
+key/row/reference but not the underlying dataset's augment setting. The target
+builder requires that setting rather than guessing it from a centered camera.
+
+`RGBInputAudit` still assumes tensor-only samples. Extend its sample/collate and
+prepared-window checks to carry slots while hashing only the identical RGB
+pixels, verifying the slot permutation/identity and retaining its current
+commit-only publication. Prepared transport already supports the wrapper, but
+CUDA behavior has not been checked on this path.
+
+In the trainer, unwrap `.image` before the unchanged encode/adapter/four-feature
+loss sequence. Geometry-off must bypass sidecar payloads, decoder and geometry
+random work entirely. Geometry-on must decode raw adapter features, never RMS
+normalized features. Keep the outer `n/32` gradient weight. Integer coverage
+counts must be summed separately from weighted losses; the current generic
+metrics loop weights/casts every value and cannot correctly aggregate these
+counts without an explicit branch.
+
+Use a new config/code admission path. Retain existing reference and legacy corpus
+validators; do not let historical data acceptance stand in for the new runtime
+seal. Tests must exercise the real trainer branch and audit, including no-call
+assertions for geometry-off, cursor/Adam/RNG parity, and full32 normalization.
+Only then can a new actual-model zero-update gate check CUDA transport, frozen
+state and paired feature/geometry gradients. Existing original reference02 can
+supply the completed geometry-off comparison; its250-update input/evaluation
+proofs should not be repeated without a concrete new discrepancy.
