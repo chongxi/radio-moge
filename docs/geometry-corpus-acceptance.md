@@ -3593,3 +3593,37 @@ still generating: 660,847 new candidates plus 49,152 recovered candidates and
 28,345 native rejections. Its final report was absent. Preserve that producer
 and the viewer; run the auditor only after final generation/readback completion.
 No optimizer was started or training admission changed in this work.
+
+### ScanNet++ native visual tooling prepared — November 4, 11:17 UTC
+
+`code-scannet-native-visuals-v1/91a5174` can render the bounded native outcome
+selection after the full producer/readback and outcome audit complete. It binds
+each selected ordinal, frozen row, receipt, policy and metrics to the outcome
+index, then rechecks selected payload/RGB/mask bytes. Decoded K must match the
+frozen normalized half-center calibration. Original RGB is sampled through K
+onto the 640-wide native grid for display; identity normalized UV does not imply
+equal original/depth pixel coordinates. Depth and final support remain unchanged.
+
+The mask check uses float BOX area support followed by two default cross-shaped
+erosions, exactly matching the native producer. It does not substitute the
+teacher path's original-grid square erosion. Pages show original RGB, common
+metric and per-image depth palettes, a projected overlay, allowed anonymity
+support and unchanged final support. The report remains rendered-not-reviewed;
+at most 30 policy extrema do not establish all-scene coverage or independent
+physical accuracy of the mesh-derived labels.
+
+Twelve local display tests passed (0.63s); one producer-function test required
+the mesh dependencies. The first remote invocation used the model environment,
+which also lacks trimesh. Without changing code/assertions, all 15 selected tests
+passed in the existing native producer `prep-venv` (3.72s), with CUDA disabled.
+The compared producer script SHA exactly matches the active frozen policy:
+`f992bc87e3f20dc2d7b1937b1b19443da37e520ee014a80c4424dc62974fb9cd`.
+Tests cover actual fixture payloads, wrong K/units/range conventions, mask holes,
+optional ordinals and rejection of incomplete audit inputs.
+
+No actual corpus candidate was rendered or newly read back. Native generation
+was still running at 11:15 UTC: 672,239 new plus 49,152 recovered candidates,
+30,161 native rejection records, and no final report. Tooling evidence is
+`scannet-native-visual-tooling-01/report.json`, SHA256
+`a200021b1e9af61dd838ae5caab79ec9e47c547d467c0c7aace332a49945dde7`.
+No optimizer, source admission or exclusion changed.
