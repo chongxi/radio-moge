@@ -570,3 +570,37 @@ The existing controller then published the distinct admission and launched
 and will verify the actual trainer initial checkpoint before updates. Zero B
 optimizer updates have been verified at this observation; do not confuse process
 launch with a completed update, and do not relaunch during metadata loading.
+
+## Filtered B: actual startup verified (November 4, 09:30 UTC)
+
+The existing B process completed initialization and began optimizer updates at
+approximately09:26UTC. Its actual initial checkpoint readback verifies archive
+232288 adapter, RMS, all Adam state and RNG exactly, with cursor0. The initial
+proof SHA is `aee6bce5698a1c5b62f08a58be3255571cb4bbbce793071bf25880feaa5011a1`.
+No checkpoint payload or actual-model gate was repeated by this review.
+
+The first20 committed updates use640 actual RGB presentations whose pixels,
+keys and compute groups match A exactly after removing only geometry annotation.
+All four first-update feature components are equal to A. Coverage is232
+supervised,408 feature-only and0 sparse, including173 metric targets; every
+update retains the whole32-image denominator. Finite loss/gradients, weighted
+F+G arithmetic and nonzero parameter updates passed. Startup proof SHA:
+`f3ab29cf476ccde8486d9f1652f5df65bc5aca34805151e11d6fae78a6c92ef0`.
+
+W&B run `a938045c` is online. Configuration/provenance and all first20 training
+values match numerically, including optional update norms. Seven metadata and57
+training values differ only in equal integer/float representation. Online proof
+SHA `9628cd14010518b8b96ad0938358a79cfcdc331a12b359f97164e2d360036b77`.
+The first read-only online wrapper failed before publication because its recursive
+metadata helper expects string dictionary keys for optional per-step values.
+Wrapper02 converts both step-key maps to strings, preserving exact value checks;
+no training code or configuration changed.
+
+At09:30:26UTC there are66 finite updates, globalstep232354. Initialization used
+about2268 of the2700 elapsed-second budget, which includes loading and I/O.
+Consequently fixed250 completion is not yet established and may be prevented by
+the existing budget. The trainer checks that budget between updates, saves and
+evaluates its actual endpoint; the fixed250 wrapper rejects a partial endpoint.
+No automatic extension, retry or relabeling of partial results is authorized by
+this experiment. The first20 proof establishes correct startup, not final quality
+or a historical regression cause. A's completed fixed250 result remains unchanged.
