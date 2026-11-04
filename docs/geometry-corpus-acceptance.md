@@ -3222,3 +3222,64 @@ Restoring all four weights and disabling geometry still gives both cosines down
 and LiDAR AbsRel 3.80% above archive. Weight choice affects the observed results,
 but weight reduction alone is not a sufficient explanation. Other verified
 pipeline changes remain confounded; no new optimizer run has been launched.
+
+### Original-feature recovery check authorized and started — November 4
+
+The user explicitly requested restoration of the changed settings, feature
+weights of 1, and a training check. `feature-original-reference-01` now executes
+the missing reference using immutable `code-feature-reference-v2` / `5f56953`.
+The request SHA is
+`3cc53bc7418d8ef0b1be820b0fe5ce1ac6499a6546bddf6f8644815e8ce9acd3`;
+runtime config SHA is
+`a336dedb7b9f1398e4d555a4baaf5cf2ce6daf450c74a3c4b48a7cb7332eb7b7`.
+At launch it is reading metadata; no optimizer progress is inferred from the
+controller existing. The frozen endpoint is 232538: 250 new updates from the
+archived 232288 adapter, fixed RMS, Adam moments/counters and model RNG. The
+complete ordered RGB pool has 1,637,908 images, excluding only white 210812.
+Its fresh data cursor is explicit, so this is not bitwise uninterrupted resume.
+
+All four feature coefficients are 1. Ordinary aspect crop/flip/bilinear resize,
+three original resolutions, full-pool permutation and effective batch 32 are
+restored. Geometry and the separate replay branch are disabled. Runtime
+`eval_at_start=false` reuses the frozen baseline; obsolete tracking tags are
+removed. The sampler provenance now uses `mixture_weights`, exactly like the
+actual loader, rather than inferring it from `coverage_epochs`. The reference
+checker narrowly permits only baseline-evaluation/logging changes; general
+data-fork validation has not been loosened.
+
+Actual dataset keys, RGB identities, compact pixel hashes and compute grouping
+are observed. Only successfully synchronized optimizer windows are committed;
+unused prefetch is excluded. The full metadata pass uses four bounded threads,
+preserving original normalized record order and manifest-digest bytes, and all
+consumed RGB files are hash-checked. Forty-eight local and remote tests passed,
+including bitwise unchanged tiny-model adapter/Adam/RNG with observation enabled,
+pre-update rejection, changed pixels/keys, unused prefetch and metadata parity.
+These tests are not the actual-model gate. Before any update, a separate process
+must verify the actual trainer initial checkpoint against the archive, and the
+real model must pass 128 input presentations with original-execution pixel parity,
+finite backward gradients, unchanged parameters/buffers and restored model RNG.
+
+The budget is 2700 seconds in the trainer including loading and checks; final
+evaluation may extend it. An external 3600-second deadline with 120-second signal
+grace bounds the process. The original GPU lock and existing Scan/viewer jobs
+are preserved. No automatic retry or additional arm is launched.
+
+The predeclared evaluation contract SHA is
+`2e482043cfad04039c8eb111060f25f0ebc752de219ca31cf562fbac703b68b1`.
+Review all four RGB protocols at the fixed final endpoint, plus the same 18
+known-camera cases in a separate post-training evaluator. Do not enable geometry
+training merely to run that evaluator. All five heldout digests, ordered images,
+teacher results and fixed support must match. The joint target still requires
+both cosines above archive and independent LiDAR AbsRel below archive; NYU alone
+does not qualify. No archive laser baseline exists in the reference artifacts.
+
+For subsequent geometry work, keep this feature stream, weights, ordinary views,
+resolutions, effective batch and initial state fixed. Attach eligible geometry
+to the same RGB identities without resampling the feature stream. Images without
+an accepted geometry target retain feature supervision. Any ordinary crop/flip
+must transform depth, support and cameras consistently; prove actual feature
+pixels identical between geometry-off and geometry-on execution. Declare target
+coverage and geometry normalization separately, preserve native/pseudo source
+limitations, and require real nonzero geometry gradients and invalid-support
+tests before a new run. The current restoration experiment tests the whole
+recipe; it cannot by itself identify which historical change caused regression.
