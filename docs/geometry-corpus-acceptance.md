@@ -3854,3 +3854,45 @@ Unique physical cause and historical training-regression cause remain unresolved
 The 70 native support rejections and now 19 quarantined candidates still require
 reviewed routes before whole-source admission; existing teacher labels for 25
 other scenes do not resolve these five scenes.
+
+### Native support rejections reviewed — November 4, 21:46 UTC
+
+All 70 final `insufficient_verified_visible_support` outcomes were bound to the
+completed native audit, original per-image rejection receipts and unchanged 5%
+policy. Their RGB bytes, released cameras and four retained source proofs were
+checked. Current anonymity masks were inspected separately. All 18 pages covering
+the 70 images were actually viewed. The review and publication helpers passed
+16 targeted CPU tests locally and remotely; no GPU, model or mesh rerender ran.
+
+The historical counts distinguish three cases:
+- 67 views in scene `928c9da20c` have zero initial raster support. RGB shows a
+  furnished room, corridor and bathroom doorway across nearby perspectives.
+- Ordinals 1002326 (`75d29d69b8`) and 1475848 (`de7dc9993f`) have 205,030 and
+  186,070 CPU hits respectively, all rejected by the combined depth-range/parity
+  condition. Counts alone cannot distinguish its subconditions or physical cause.
+- Ordinal 888243 (`30966f4c6e`) has 15,341 initial pixels and 11,115 final verified
+  pixels: 4.0673% support, below the unchanged 5% requirement.
+
+Rejected final depth/support arrays were not retained. The rejection records also
+lack original mask hashes. A newly observed mask hash does not prove historical
+mask identity; the new panels explicitly show current anonymity support, never a
+fabricated final geometry mask. All current masks allow their interior, with
+98.4441% support after conservative resizing/erosion, but these observations are
+not a rerun of the original producer. These limitations are preserved in both
+the evidence report and exclusion decisions. No claim that all 70 have physically
+wrong depth or unusable RGB follows from the review.
+
+`scannetpp-support-rejection-review-01/report.json` SHA256
+`415f3fb8482a8c8c5954e50025a6b8e34b86d3a4bcde462becbc993e6d036718`
+and `visual-review.json` SHA256
+`3241b50e23590b43d1b1f4a121917a896eb97c6a97d12bb1c002bb8cbd5df46b`
+bind this completed review. `scannetpp-support-rejection-decisions-01/report.json`
+SHA256 `a2e1a0bbc60ffe7e8b0335b5f3b6503ed10299e034ab627b64851df177601605`
+publishes all 70 exact geometry-only exclusions and verifies that their original
+RGB identities remain in the unchanged 1,637,908-image candidate pool.
+
+Known geometry exclusions now total 4,171; only prior white image 210812 is also
+excluded from RGB. The temporary whole-COCO projection hold remains separate.
+All 19 candidate quarantines remain bound and unresolved for final routing; the
+70 support rejections no longer await a disposition. No whole scene is excluded,
+no source is admitted, and no training configuration or optimizer state changed.
