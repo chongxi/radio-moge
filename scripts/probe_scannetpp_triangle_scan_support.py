@@ -107,11 +107,16 @@ def compare_triangle(vertices, scanner_pose, direction_local, measurement):
         result["diagnostic"] = "stored_ray_misses_exact_triangle"
         return result
     hit = hits[0]
+    vertices = np.asarray(vertices, dtype=np.float64)
+    normal = np.cross(vertices[1] - vertices[0], vertices[2] - vertices[0])
     result.update(
         triangle_range_m=hit["t"],
         barycentrics=hit["barycentrics"],
         boundary_hit=hit["boundary_hit"],
         intersection_residual_m=hit["ray_triangle_residual_m"],
+        relative_determinant=hit["relative_determinant"],
+        absolute_cosine_incidence=float(abs(normal @ direction) / np.linalg.norm(normal)),
+        point_world=(pose[:3, 3] + hit["t"] * direction).tolist(),
     )
     if not measurement["stable_supported"] or hit["boundary_hit"]:
         result["diagnostic"] = "unsupported_or_boundary_measurement"
@@ -126,6 +131,38 @@ def compare_triangle(vertices, scanner_pose, direction_local, measurement):
         else "measurement_near_triangle"
     )
     return result
+
+
+def angle_sensitivity(vertices, scanner_pose, azimuth_millirad, polar_millirad, measurement):
+    """Nine explicit +/- one stored angular-unit probes, not a continuous proof.
+
+    Preserve the original 3x3 measured ranges. No image selection, calibration
+    fit or changed range threshold follows from sensitivity results.
+    """
+    samples = []
+    for da in (-1, 0, 1):
+        for dp in (-1, 0, 1):
+            result = compare_triangle(
+                vertices,
+                scanner_pose,
+                directions(azimuth_millirad + da, polar_millirad + dp),
+                measurement,
+            )
+            samples.append(
+                dict(azimuth_offset_millirad=da, polar_offset_millirad=dp, comparison=result)
+            )
+    all_hit = all(x["comparison"]["intersects_exact_triangle"] for x in samples)
+    clearance = None
+    if all_hit and measurement["stable_supported"]:
+        farthest_triangle = max(x["comparison"]["triangle_range_m"] for x in samples)
+        clearance = float(np.min(measurement["ranges_m"]) - farthest_triangle)
+    return dict(
+        samples=samples,
+        all_nine_rays_hit_exact_triangle=all_hit,
+        minimum_measured_patch_minus_maximum_tested_triangle_m=clearance,
+        all_angles_in_continuous_interval_proven=False,
+        scanner_pose_uncertainty_tested=False,
+    )
 
 
 def run(probe_path, root, output, ordinals):

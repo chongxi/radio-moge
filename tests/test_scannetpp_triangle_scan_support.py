@@ -2,11 +2,30 @@ import numpy as np
 import pytest
 
 from probe_scannetpp_triangle_scan_support import (
+    angle_sensitivity,
     compare_triangle,
     directions,
     nearest_angle_pixel,
     range_neighborhood,
 )
+
+
+def test_angle_sensitivity_distinguishes_robust_interior_from_thin_nominal_hit():
+    pose = np.eye(4)
+    measure = range_neighborhood(
+        np.full((3, 3), 3000, np.uint16), np.full((3, 3), 255, np.uint8), 1, 1
+    )
+    # Azimuth=0, polar=1571 mrad points nearly along +X. Plane lies at X=2.
+    broad = np.array([[2, -1, -1], [2, 1, -1], [2, 0, 1]], float)
+    result = angle_sensitivity(broad, pose, 0, 1571, measure)
+    assert result["all_nine_rays_hit_exact_triangle"]
+    assert result["minimum_measured_patch_minus_maximum_tested_triangle_m"] > 0.99
+    center = directions(0, 1571) * 2
+    thin = center + np.array([[0, -0.0001, -0.0001], [0, 0.0001, -0.0001], [0, 0, 0.0001]])
+    assert compare_triangle(thin, pose, directions(0, 1571), measure)["intersects_exact_triangle"]
+    result = angle_sensitivity(thin, pose, 0, 1571, measure)
+    assert not result["all_nine_rays_hit_exact_triangle"]
+    assert result["minimum_measured_patch_minus_maximum_tested_triangle_m"] is None
 
 
 def test_actual_angles_not_assumed_equirectangular_coordinates_and_seam():
