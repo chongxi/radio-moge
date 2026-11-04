@@ -89,6 +89,24 @@ def oriented_rgb(row, verify_hash=False):
     return image
 
 
+def ordinary_crop_parameters(rgb_shape, output_shape, seed, augment=True):
+    """The original RGB crop, expressed before pixels are transformed.
+
+    Shapes are (height, width) AFTER the declared image orientation. Keep Python
+    rounding and the two randint calls (including zero ranges) in this order:
+    their random draws are part of the archived feature-training input stream.
+    This descriptor does not select images or change the sampler.
+    """
+    ih, iw = rgb_shape
+    h, w = output_shape
+    rng = random.Random(seed)
+    cw, ch = min(iw, max(1, round(ih * w / h))), min(ih, max(1, round(iw * h / w)))
+    left = rng.randint(0, iw - cw) if augment else (iw - cw) // 2
+    top = rng.randint(0, ih - ch) if augment else (ih - ch) // 2
+    flip = augment and rng.random() < 0.5
+    return (left, top, left + cw, top + ch), bool(flip)
+
+
 class TrainingImages(Dataset):
     """A seeded crop is shared by teacher and student, including horizontal flips."""
 
@@ -101,15 +119,12 @@ class TrainingImages(Dataset):
 
     def __getitem__(self, key):
         index, seed, h, w = key
-        rng = random.Random(seed)
         image = oriented_rgb(self.records[index], verify_hash=getattr(self.records, 'verify_on_read', False))
         iw, ih = image.size
         # Largest crop at the chosen aspect ratio; random location, no geometric warping.
-        cw, ch = min(iw, max(1, round(ih * w / h))), min(ih, max(1, round(iw * h / w)))
-        left = rng.randint(0, iw - cw) if self.augment else (iw - cw) // 2
-        top = rng.randint(0, ih - ch) if self.augment else (ih - ch) // 2
-        image = image.crop((left, top, left + cw, top + ch))
-        if self.augment and rng.random() < 0.5:
+        crop_box, flip = ordinary_crop_parameters((ih, iw), (h, w), seed, self.augment)
+        image = image.crop(crop_box)
+        if flip:
             image = ImageOps.mirror(image)
         image = image.resize((w, h), Image.Resampling.BILINEAR)
         if self.compact_transport:

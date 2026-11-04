@@ -3357,3 +3357,18 @@ is not an isolated test of any individual setting and has twice its image
 presentations at the same 250-update budget. No statistical significance or
 historical root cause has been established. No additional optimizer run follows
 automatically. Reuse the completed gates and evaluations; do not rerun them.
+
+### Ordinary RGB geometry foundation — November 4
+
+The original crop parameters are now exposed without changing `TrainingImages`
+pixel operations or sampler choices. A separate CPU helper describes exact
+crop/flip calibration, preserving skew, off-center principal points and integer
+resize anisotropy. It is not connected to the trainer and does not relax the
+existing centered-camera loss admission. Synthetic pixel/projection/support
+tests and existing reference/prefetch regressions passed locally (76 checks);
+five additional tests cover the bounded real-pixel comparison verifier.
+
+The remaining target-join, grouping, all-image normalization and camera/loss
+requirements are recorded in [ordinary geometry integration](ordinary-geometry-integration.md).
+Actual-model feature-loss/gradient parity and a new geometry gate remain required.
+No optimizer or geometry model probe was started for this foundation work.
