@@ -186,8 +186,12 @@ never use predicted metric scale. Tests cover full32 normalization across comput
 groups. Upstream tests use96x128 geometry and assert finite nonzero gradients for
 each component, including local16 (the old32x32 fixture could never meet its
 32-point patch minimum). Zero-skew legacy/ordinary component losses and gradients
-and their sum are checked bitwise. An early combined invocation showed a maximum
-summed-gradient difference of7.3e-12;40 separate retained-graph CPU comparisons
-did not reproduce it (20 legacy/legacy and20 legacy/ordinary, exact throughout).
-Its cause is not established, and the final test retains zero tolerance.
+and their sum are checked bitwise using an explicit single-thread CPU fixture.
+The suite's `conftest.py` sets two PyTorch threads, overriding environment thread
+settings. At two threads even repeated legacy/legacy local4 backward differed
+by3.64e-12 (and its summed gradient by7.28e-12); legacy/ordinary showed the same
+effect. Forty single-thread comparisons were exact throughout. The arithmetic
+test therefore explicitly selects one thread and restores the previous setting;
+it retains zero tolerance. This observation does not explain historical model
+regression or establish deterministic GPU backward behavior.
 This CPU core evidence is not an actual RADIO/MoGe gradient gate.

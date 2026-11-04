@@ -39,6 +39,19 @@ def small_official(monkeypatch):
     monkeypatch.setattr('radio_moge.corpus_losses.official_functions', lambda _: functions)
 
 
+@pytest.fixture
+def single_thread_cpu():
+    # conftest sets two threads, overriding OMP_NUM_THREADS. Overlapping local
+    # patch backward can differ in last bits even for legacy-versus-legacy at
+    # two threads. Make this strict arithmetic comparison actually single-thread.
+    previous = torch.get_num_threads()
+    torch.set_num_threads(1)
+    try:
+        yield
+    finally:
+        torch.set_num_threads(previous)
+
+
 def test_focal_exact_zero_skew_and_independent_ray_diagonal_definition():
     k = torch.tensor([[.7, 0., -.4], [0., 1.3, 1.2], [0., 0., 1.]])
     _, target = fixture(k)
@@ -85,7 +98,7 @@ def test_explicit_dispatch_rejects_even_centered_or_sparse_ordinary(small_offici
 
 
 @pytest.mark.upstream
-def test_zero_skew_centered_special_case_matches_legacy_loss_gradients_rng(small_official):
+def test_zero_skew_centered_special_case_matches_legacy_loss_gradients_rng(small_official, single_thread_cpu):
     raw, target = fixture(torch.tensor([[.8, 0., .5], [0., 1.3, .5], [0., 0., 1.]]))
     legacy = {k: v for k, v in target.items() if k not in
               ('camera_contract', 'camera_pixel_convention', 'local_radius_contract')}
