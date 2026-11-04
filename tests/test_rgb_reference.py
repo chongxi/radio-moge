@@ -6,10 +6,10 @@ import pytest
 import torch
 
 from radio_moge.checkpoint import rng_state
-from radio_moge.data import read_manifest, DeterministicBatches
+from radio_moge.data import read_manifest, manifest_digest, DeterministicBatches
 from radio_moge.data_fork import check_data_fork
 from radio_moge.prefetch import PreparedWindows
-from radio_moge.rgb_input_audit import RGBInputAudit, pixels_sha
+from radio_moge.rgb_input_audit import RGBInputAudit, pixels_sha, load_reference_records
 from radio_moge.corpus_admission import file_ref
 from radio_moge.losses import FeatureStatistics
 from radio_moge.train import make_loader, train
@@ -77,6 +77,7 @@ def test_zero_successful_updates_has_empty_audit(tmp_path):
 
 class SmallReference(RGBInputAudit):
     check_fork = staticmethod(check_data_fork)
+    load_records = staticmethod(read_manifest)
 
     def before_updates(self, system, adapter, statistics, records, config, output):
         self.gate_was_called = True
@@ -150,6 +151,21 @@ def test_pixel_hash_observes_tensor_values():
 def test_annotated_checkpoint_reference_becomes_strict_evidence():
     assert checkpoint_ref(dict(source_checkpoint=dict(path='/x', sha256='a'*64,
                                                       payload_reread=False))) == dict(path='/x', sha256='a'*64)
+
+
+def test_bounded_metadata_pass_matches_original_rows_and_digest(tmp_path):
+    config, records = setup(tmp_path)
+    path = Path(config['data']['train_manifest'])
+    for row in records:
+        row['sha256'] = file_ref(row['image'])['sha256']
+    path.write_text('\n'.join(json.dumps(row) for row in records) + '\n\n')
+    plain = read_manifest(path)
+    actual = load_reference_records(path, workers=2)
+    assert actual == plain and actual.digest() == manifest_digest(plain)
+    assert actual.verify_on_read
+    path.write_text(path.read_text() + json.dumps(records[0]) + '\n')
+    with pytest.raises(ValueError, match='Duplicate'):
+        load_reference_records(path)
 
 
 @pytest.mark.parametrize('mutate', [False, True])

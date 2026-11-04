@@ -5,8 +5,12 @@ CUDA prefetch can run ahead; their unused records stay unpublished. Hashes cover
 the actual compact CPU tensors before the unchanged normalization/H2D pipeline.
 """
 from collections import Counter, deque
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
+import itertools
+import json
 from pathlib import Path
+import stat
 from threading import Lock
 
 import torch
@@ -14,6 +18,62 @@ import torch
 from .checkpoint import atomic_json
 from .corpus_admission import file_ref
 from .geometry_cache import canonical_json
+
+
+class ReferenceRecords(list):
+    """Same normalized records and digest as read_manifest + manifest_digest.
+
+    A bounded four-thread metadata pass avoids millions of serial NFS round trips.
+    The training sampler still sees the complete ordered list. Actual consumed
+    encoded images are hash-checked by TrainingImages on every read.
+    """
+    verify_on_read = True
+
+    def digest(self):
+        return self.metadata_sha256
+
+
+def load_reference_records(path, on_progress=None, workers=4):
+    if workers not in range(1, 5):
+        raise ValueError('Reference metadata reading uses one to four workers')
+    path = Path(path).resolve()
+    def read(line):
+        row = json.loads(line)
+        image_stat = None
+        for key in ('image', 'depth', 'geometry'):
+            if key in row:
+                target = (path.parent / row[key]).resolve()
+                info = target.stat()
+                if not stat.S_ISREG(info.st_mode):
+                    raise FileNotFoundError(str(target))
+                row[key] = str(target)
+                if key == 'image':
+                    image_stat = info
+        if image_stat is None:
+            raise ValueError('Every manifest row requires an image path')
+        if 'sha256' not in row:
+            raise ValueError('Reference inputs require encoded RGB identities')
+        return row, image_stat.st_size, image_stat.st_mtime_ns
+    result, seen, digest = ReferenceRecords(), set(), hashlib.sha256(b'[')
+    with path.open() as file, ThreadPoolExecutor(max_workers=workers) as pool:
+        lines = (line for line in file if line.strip())
+        while batch := list(itertools.islice(lines, 2048)):
+            # map only a bounded chunk: submitting 1.6M futures would exhaust RAM.
+            for row, size, mtime in pool.map(read, batch):
+                if row['image'] in seen:
+                    raise ValueError('Duplicate reference RGB paths')
+                if result:
+                    digest.update(b', ')
+                digest.update(json.dumps((row, size, mtime), sort_keys=True).encode())
+                seen.add(row['image'])
+                result.append(row)
+            if on_progress:
+                on_progress(len(result))
+    if not result:
+        raise ValueError('Empty reference manifest')
+    digest.update(b']')
+    result.metadata_sha256 = digest.hexdigest()
+    return result
 
 
 def pixels_sha(tensor):

@@ -28,7 +28,7 @@ from radio_moge.geometry_cache import publish_json
 from radio_moge.losses import weighted_loss
 from radio_moge.performance import grouped_window
 from radio_moge.prefetch import normalize_uint8
-from radio_moge.rgb_input_audit import RGBInputAudit, pixels_sha
+from radio_moge.rgb_input_audit import RGBInputAudit, pixels_sha, load_reference_records
 from radio_moge.train import train
 from verify_corpus_stage_startup import equal_finite
 
@@ -163,6 +163,25 @@ class ReferenceAudit(RGBInputAudit):
         self.planned = checked_json(self.plan['planned_inputs'])
         keys = [[r['index'], r['augmentation_seed'], r['height'], r['width']] for r in self.planned]
         super().__init__(self.config['output_dir'], 232288, 4, 8, 32, keys)
+
+    def load_records(self, path):
+        if path != self.plan['manifest']['path']:
+            raise ValueError('Reference metadata loader received another manifest')
+        started = time.time()
+        def progress(count):
+            atomic_json(dict(stage='reading_original_ordered_rgb_metadata', rows=count,
+                expected=self.plan['reference_images'], workers=4, started_at=started,
+                updated_at=time.time(), optimizer_updates=0),
+                self.request_path.parent / 'data-read-status.json')
+        records = load_reference_records(path, progress)
+        checked_path(self.plan['manifest'])
+        if len(records) != self.plan['reference_images']:
+            raise ValueError('Reference metadata scope changed')
+        publish_json(self.request_path.parent / 'data-read-report.json', dict(
+            stage='reference_rgb_metadata_complete', rows=len(records), digest=records.digest(),
+            manifest=self.plan['manifest'], unchanged_original_record_order=True,
+            actual_consumed_rgb_hash_verification=True, workers=4, seconds=time.time()-started))
+        return records
 
     def check_fork(self, config, state, digests):
         if config != self.config:

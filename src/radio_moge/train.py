@@ -355,7 +355,9 @@ def train(
             "the small CPU test suite does not load pretrained backbones."
         )
     set_seed(settings["seed"])
-    records = CorpusRecords(corpus_gate) if corpus_gate else read_manifest(config['data']['train_manifest'])
+    records = (CorpusRecords(corpus_gate) if corpus_gate else
+               reference.load_records(config['data']['train_manifest']) if reference else
+               read_manifest(config['data']['train_manifest']))
     if config.get('geometry_supervision') and not corpus_gate:
         validate_gt_records(records)
     val_path = config["data"].get("val_manifest")
