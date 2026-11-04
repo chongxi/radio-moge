@@ -41,17 +41,19 @@ def select(db, quarantines):
                     old_receipt=json.loads(evidence), old_metrics=json.loads(details))
     result = [record(i, 'known_quarantine') for i in sorted(quarantines)]
     excluded = {r['group'] for r in result}
-    groups = {g: n for g, n in db.execute('SELECT scene_group,COUNT(*) FROM images '
-        "WHERE outcome='native_candidate' GROUP BY scene_group") if g not in excluded}
+    # One sequential metadata pass; avoid repeated unindexed NFS point scans.
+    groups = {}
+    for ordinal, group in db.execute('SELECT ordinal,scene_group FROM images '
+                                     "WHERE outcome='native_candidate' ORDER BY ordinal"):
+        if group not in excluded:
+            groups.setdefault(group, []).append(ordinal)
     selected_groups = sorted(groups, key=lambda g: (rank('scene:'+g), g))[:32]
     if len(selected_groups) != 32:
         raise ValueError('Need thirty-two disjoint nonquarantined training scenes')
     for number, group in enumerate(selected_groups):
-        offset = int(rank('frame:'+group), 16) % groups[group]
-        row = db.execute("SELECT ordinal FROM images WHERE outcome='native_candidate' "
-                         'AND scene_group=? ORDER BY ordinal LIMIT 1 OFFSET ?',
-                         (group, offset)).fetchone()
-        result.append(record(row[0], 'ordinary_control' if number < 16 else 'confirmation'))
+        offset = int(rank('frame:'+group), 16) % len(groups[group])
+        result.append(record(groups[group][offset],
+                             'ordinary_control' if number < 16 else 'confirmation'))
     if len({r['corpus_ordinal'] for r in result}) != 51:
         raise ValueError('Frozen validation identities must be unique')
     return result
