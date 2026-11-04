@@ -77,16 +77,26 @@ def conservative_visibility(depth, valid, shifted):
 
 
 class CudaMeshDepth:
-    def __init__(self, vertices, faces, device='cuda', near=.01, far=100., max_faces_per_pass=1048576):
+    def __init__(self, vertices, faces, device='cuda', near=None, far=None,
+                 max_faces_per_pass=1048576, *, clip_contract=None):
+        if clip_contract is not None:
+            from radio_moge.mesh_clip import MeshClipContract
+            if not isinstance(clip_contract, MeshClipContract) or near is not None or far is not None:
+                raise ValueError('Use one explicit clip contract without separate bounds')
+            near, far = clip_contract.near_m, clip_contract.far_m
+        else:
+            near, far = .01 if near is None else near, 100. if far is None else far
         import nvdiffrast.torch as dr
         vertices, faces = np.asarray(vertices), np.asarray(faces)
         if (vertices.ndim != 2 or vertices.shape[1] != 3 or not np.isfinite(vertices).all()
                 or faces.ndim != 2 or faces.shape[1] != 3 or faces.dtype.kind not in 'iu'
                 or not len(faces) or faces.min() < 0 or faces.max() >= len(vertices)
-                or not 0 < near < far or type(max_faces_per_pass) is not int
+                or not np.isfinite([near, far]).all() or not 0 < near < far
+                or type(max_faces_per_pass) is not int
                 or not 1 <= max_faces_per_pass <= 1048576):
             raise ValueError('Invalid finite mesh or clip bounds')
         self.dr, self.device, self.near, self.far = dr, device, near, far
+        self.clip_contract = clip_contract
         self.max_faces_per_pass = max_faces_per_pass
         self.context = dr.RasterizeCudaContext(device=device)
         self.vertices = torch.as_tensor(np.array(vertices, np.float32), device=device)
@@ -148,4 +158,6 @@ class CudaMeshDepth:
             mesh_faces=len(self.faces), max_faces_per_pass=self.max_faces_per_pass,
             raster_passes_per_ray_grid=(len(self.faces) + self.max_faces_per_pass - 1) // self.max_faces_per_pass,
             visibility_policy='5x5 stable (.02+.02Z m); four quarter-pixel rays (.005+.01Z m)')
+        if self.clip_contract is not None:
+            quality['clip_contract'] = self.clip_contract.as_dict()
         return np.where(support, depth, 0), support, triangles, quality

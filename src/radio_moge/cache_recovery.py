@@ -1,4 +1,5 @@
 """Explicit recovery into a new attempt; never alter a failed cache or admit it."""
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -8,7 +9,7 @@ import time
 from .geometry_cache import canonical_json, publish_json, read_geometry_member, sha_file
 
 
-def recovered_rows(root, name, dataset, manifest):
+def recovered_rows(root, name, dataset, manifest, *, expected_policy_sha256=None):
     if name is None:
         return set(), None
     if Path(name).name != name:
@@ -19,6 +20,11 @@ def recovered_rows(root, name, dataset, manifest):
             or report.get('dataset') != dataset or report.get('manifest_sha256') != manifest
             or report.get('training_admission') is not False or report.get('optimizer_updates') != 0):
         raise ValueError('A completed, reread, explicitly recovered subset is required')
+    if expected_policy_sha256 is not None:
+        policy = json.loads((path.parent / 'packs/policy.json').read_text())
+        actual = hashlib.sha256(canonical_json(policy)).hexdigest()
+        if (actual != expected_policy_sha256 or report.get('policy_sha256') != actual):
+            raise ValueError('Recovered processing policy differs from the new producer')
     scope = path.parent / 'scope.jsonl'
     if sha_file(scope) != report['scope_sha256']:
         raise ValueError('Recovered subset changed')

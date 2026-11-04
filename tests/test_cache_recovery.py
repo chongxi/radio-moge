@@ -79,3 +79,14 @@ def test_teacher_recovery_allows_only_recorded_execution_code_changes():
                        ('teacher', {'revision': 'other'}), ('label_kind', 'synthetic_renderer')]:
         with pytest.raises(ValueError, match='policy differs'):
             validate_teacher_recovery_policy(previous, dict(current, **{key: value}))
+
+
+def test_new_native_policy_cannot_silently_skip_old_recovered_labels(tmp_path):
+    config, _, row = fixture(tmp_path)
+    report = recover_closed_packs(config, 'failed', 'recovered')
+    ids, _ = recovered_rows(tmp_path, 'recovered', 'nyuv2', config['manifest_sha256'],
+                            expected_policy_sha256=report['policy_sha256'])
+    assert ids == {row['sha256']}
+    with pytest.raises(ValueError, match='processing policy differs'):
+        recovered_rows(tmp_path, 'recovered', 'nyuv2', config['manifest_sha256'],
+                       expected_policy_sha256='a'*64)
