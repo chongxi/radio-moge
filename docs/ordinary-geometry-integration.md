@@ -466,3 +466,41 @@ new candidate index. `projection-filtered-candidates-01` is a data correction,
 not a training seal. No historical config or result is rewritten, and no new
 optimizer segment is authorized by an old unfiltered seal. Input contamination
 is confirmed; its effect on the observed cosine/LiDAR changes remains untested.
+
+### Projection-filtered paired continuation, 2026-11-04 08:12 UTC
+
+The user authorized starting the corrected, COCO-held comparison. Arm A is the
+pure original-feature path (all four feature weights 1, no geometry branch),
+independently forked from archived step232288 with its Adam/RMS/RNG. Immutable
+execution `code-projection-feature-run-v2` / `83efb10` runs
+`projection-filtered-feature1-geometry0-02`, PID236620, W&B `06adaa78`.
+At08:11UTC all250 updates reached232538; final evaluation was still running.
+The wrapper's loading status remains stale until final completion; actual
+`training/train.jsonl` is authoritative for successful update counts.
+
+The new validator permits only the exact ordered removal of COCO from main
+validation (1268 to1012), checking both runtime file digests. Other validation
+views remain unchanged. The1597911-image permutation and all8000 planned keys
+were checked. The actual initial adapter/RMS/all100Adam states/RNG matched the
+archive; actual116 image presentations and24 zero-update backward cases passed.
+The first20 successful updates/640 actual RGB identities matched the plan with
+no COCO. Their online loss/gradient/cursor values matched exactly; metadata had
+only equal integer/float representations. Nonzero update norm at232300 was
+0.0326720551. Startup evidence SHA:
+`ecb9f926f6331571b352132308fcac820606db8a4b914591192a495019bc4339`.
+
+Preparation attempt01 stopped before any process launch because the old
+byte-identity guard rejected the optional batch-container wrapper in
+`performance.py`. V2 binds the exact two-line wrapper change and helper hash;
+plain tensors still use the original `torch.cat`. No feature formula or runtime
+backend was changed.21 related tests passed locally and remotely.
+
+Arm B is not yet admitted or launched. Code `1f01a7b` adds a data-only filtered
+geometry sidecar (558314 selected;39984 held;4039 previously excluded) and binds
+ordinary model/runtime gates to the same comparison, manifest, parent and all
+8000 keys. It retains mandatory fresh CPU/CUDA/model evidence and original
+camera/loss checks.75 tests passed remotely. Sidecar publication is in progress;
+128 saved A pixel presentations have been assembled for the next CPU checks,
+without new image/model reads. This preparation does not establish improvement
+or identify the historical cause. Compare fixed final endpoints against the
+saved six-source baseline and unchanged iPhone/LiDAR view; preserve old results.
