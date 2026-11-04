@@ -3810,3 +3810,47 @@ Evidence: `scannetpp-triangle-scanner-support-03/report.json` SHA256
 `scannetpp-triangle-angle-sensitivity-04/report.json`, and the consolidated
 `scannetpp-native-source-diagnosis-02/report.json` SHA256
 `c08bfbf3a6025ce2ce58e6d2030b8d4ccb2948f1c468331d8acc1f13289b2631`.
+
+### Five-scene scope and additional visual findings — November 4, 21:07 UTC
+
+The existing native outcome index was inspected for the five flagged scenes,
+without rereading all payloads: 5,441 candidates and one support rejection.
+Twenty-one candidates have a supported-depth median below 0.1 m. This is a
+descriptive screening signature, not 21 independently established bad labels or
+a population error estimate. The metadata helper passed nine local and remote
+CPU tests; the subsequent bounded renderer passed five local and remote tests.
+
+Thirteen previously unreviewed candidates were selected from low medians, high
+support among low-median candidates, and scene-median controls. Every actual
+RGB/payload/mask/camera identity and every rendered page was checked, and all
+13 pages were visually inspected. Nine additional exact candidates now require
+quarantine: 853213, 853224, 853227, 1002327, 1002328, 1284720, 1461783, 1461784,
+and 1470794. In office sample 1002327, 98.40% of pixels have valid depth, yet all
+valid depths lie between 0.01007 and 0.02746 m despite an RGB view of a room.
+Sample 853213, selected as a scene-median control, has a 1.194 m median but
+contains implausible supported near patches across ceiling and desk surfaces.
+Consequently, median depth and support percentage alone cannot exclude local
+label failures. The other four controls showed no obvious contradiction in
+visible supported fragments; this does not establish source eligibility.
+
+`scannetpp-native-visual-review-02/report.json` SHA256
+`bede90a51962d081e49a6366b9db743ac5cbed04f0d5fc06f4add3b30deb7d60`
+records all 40 reviewed candidates and preserves the old evidence. Validated
+policy-specific registers now bind 19 exact candidates: seven recovered and
+twelve newly produced. All ten previous flags and their evidence remain intact.
+No new independent ray/scanner comparisons were performed for these nine images;
+prior same-scene comparisons are not substituted for per-image measurement.
+No whole-scene quarantine or permanent exclusion was added. The 4,101 prior
+geometry exclusions, all RGB inputs, raw geometry and training state are unchanged.
+
+Evidence: `scannetpp-flagged-scene-scope-01/report.json` SHA256
+`578bcfa0b4bf612571feff1993b8fad72ce2229fc187266d44f061c397bb5de4`,
+`scannetpp-flagged-scene-visuals-01/report.json` SHA256
+`4a760fa68853cef47c677965e5cbb7d1ae94a3a696caa112616e36e2973737f2`,
+and `scannetpp-native-visual-review-02/quarantine-validation.json`.
+The new 13-case viewer is `.kanna/visualizations/scannet-native-scope-followup.html`;
+its shared immutable copy is in `scannetpp-scope-viewer-01`.
+Unique physical cause and historical training-regression cause remain unresolved.
+The 70 native support rejections and now 19 quarantined candidates still require
+reviewed routes before whole-source admission; existing teacher labels for 25
+other scenes do not resolve these five scenes.
