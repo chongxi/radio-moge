@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import time
 
-from radio_moge.corpus_admission import checked_json as checked_json_exact, file_ref
+from radio_moge.corpus_admission import checked_json as checked_json_exact, checked_path, file_ref
 from radio_moge.geometry_cache import publish_json
 from radio_moge.metrics import aggregate, dataset_metrics
 from review_corpus_controls import change, joint_result
@@ -133,9 +133,70 @@ def run(root, output):
     return report
 
 
+def close_pair(a_path, b_path, output):
+    """Compare the predeclared arms only after both fixed endpoints are reviewed."""
+    from review_ordinary_geometry_training import compare_input_rows
+    refs = {k: file_ref(p) for k, p in (('A', a_path), ('B', b_path))}
+    a, b = (checked_json(refs[k]) for k in ('A', 'B'))
+    if (a['stage'] != 'filtered_pair_arm_fixed250_reviewed' or a['stage'] != b['stage']
+            or a['pair_plan'] != b['pair_plan'] or a['saved_archive_scope'] != b['saved_archive_scope']):
+        raise ValueError('Two fixed endpoints from the same predeclared pair are required')
+    completions = [checked_json(x['completion']) for x in (a, b)]
+    configs = [checked_json(checked_json(x['request'])['config']) for x in completions]
+    spec = deepcopy(configs[1]).pop('ordinary_geometry', None)
+    if spec is None or spec['multiplier'] != 1 or 'ordinary_geometry' in configs[0]:
+        raise ValueError('Expected feature-only A and ordinary geometry B')
+    normalized = deepcopy(configs[1])
+    normalized.pop('ordinary_geometry')
+    normalized['data'].pop('compact_transport')
+    for key in ('output_dir', 'tracking'):
+        normalized[key] = configs[0][key]
+    if normalized != configs[0]:
+        raise ValueError('Paired configurations differ outside declared geometry/transport/metadata')
+    provenances = [checked_json(x['provenance']) for x in (a, b)]
+    if any(provenances[0][k] != provenances[1][k] for k in ('data_digests', 'revisions', 'adapter')):
+        raise ValueError('Paired model/data identities differ')
+    audits = [checked_json(x['actual_inputs']) for x in (a, b)]
+    records = [[json.loads(line) for line in checked_path(x['records']).read_text().splitlines()]
+               for x in audits]
+    compare_input_rows(records[0], records[1])
+    views = {}
+    for view in VIEWS:
+        old, new = a['views'][view], b['views'][view]
+        if old['archive'] != new['archive'] or old['images'] != new['images']:
+            raise ValueError('Paired evaluation scope differs')
+        paired_rows(checked_json(old['files']['per_image']), checked_json(new['files']['per_image']))
+        if checked_json(old['files']['protocol']) != checked_json(new['files']['protocol']):
+            raise ValueError('Paired evaluation protocol differs')
+        if old['metrics'].keys() != new['metrics'].keys():
+            raise ValueError('Paired metric coverage differs')
+        views[view] = {k: change(old['metrics'][k]['final'], new['metrics'][k]['final']) for k in old['metrics']}
+    before = {k: v['final'] for k, v in a['primary']['metrics'].items()}
+    after = {k: v['final'] for k, v in b['primary']['metrics'].items()}
+    output.mkdir(exist_ok=False)
+    result = dict(stage='filtered_pair_fixed250_comparison_complete', arm_reviews=refs,
+        actual_input_records=[x['records'] for x in audits], actual8000_rgb_pixels_keys_groups_exact=True,
+        ignored_input_fields=['logical_images[*].ordinary_geometry'], views_B_vs_A=views,
+        primary_A_vs_archive=a['primary'], primary_B_vs_archive=b['primary'],
+        primary_B_vs_A=joint_result(before, after), model_inference=False,
+        checkpoint_payload_read=False, optimizer_updates_by_reviewer=0,
+        historical_cause_established=False, replication_required=True,
+        completed_at=time.time(), reviewer=file_ref(Path(__file__)))
+    publish_json(output/'report.json', result)
+    print(json.dumps(dict(report=file_ref(output/'report.json'), primary_B_vs_A=result['primary_B_vs_A'])))
+    return result
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--arm', type=Path, required=True)
+    parser.add_argument('--arm', type=Path)
+    parser.add_argument('--A-review', type=Path)
+    parser.add_argument('--B-review', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    run(args.arm.resolve(), args.output.resolve())
+    if args.arm and not (args.A_review or args.B_review):
+        run(args.arm.resolve(), args.output.resolve())
+    elif args.A_review and args.B_review and not args.arm:
+        close_pair(args.A_review.resolve(), args.B_review.resolve(), args.output.resolve())
+    else:
+        parser.error('Provide one arm, or both completed A/B reviews')
