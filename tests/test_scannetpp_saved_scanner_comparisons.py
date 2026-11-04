@@ -5,7 +5,13 @@ import pytest
 
 from audit_scannetpp_saved_scanner_comparisons import audit
 from radio_moge.corpus_admission import file_ref
-from probe_scannetpp_triangle_scan_support import compare_triangle, directions, range_neighborhood
+from probe_scannetpp_triangle_scan_support import (
+    angle_sensitivity,
+    compare_triangle,
+    directions,
+    range_neighborhood,
+)
+from probe_scannetpp_native_near_surfaces import analytic_hits
 
 
 def fixture(tmp_path):
@@ -80,3 +86,56 @@ def test_saved_sensitivity_cannot_be_bound_to_other_source(tmp_path):
     with pytest.raises(ValueError, match="different source"):
         audit(source_path, tmp_path / "out", previous)
     assert not (tmp_path / "out").exists()
+
+
+def test_valid_previous_nine_angles_report_changed_decisions_at_threshold(tmp_path):
+    source_path, _ = fixture(tmp_path)
+    source = json.loads(source_path.read_text())
+    scan_path = tmp_path / "scan.json"
+    scan = json.loads(scan_path.read_text())
+    saved = scan["measurements"][0]
+    pose = np.array(json.loads((tmp_path / "poses.json").read_text())[0])
+    vertices = saved["target"]["vertices_world"]
+    measurement = dict(stable_supported=True, range_m=2.0502, ranges_m=[[2.0502] * 3] * 3)
+    sensitivity = angle_sensitivity(vertices, pose, 0, 1571, measurement)
+    # Reproduce historical world-normalized parameterization independently.
+    for sample in sensitivity["samples"]:
+        d = pose[:3, :3] @ directions(
+            sample["azimuth_offset_millirad"], 1571 + sample["polar_offset_millirad"]
+        )
+        d /= np.linalg.norm(d)
+        hit = analytic_hits(vertices, np.array([[0, 1, 2]]), pose[:3, 3], d)["first_hits"][0]
+        c = sample["comparison"]
+        c["triangle_range_m"] = hit["t"]
+        c["measured_minus_triangle_range_m"] = measurement["range_m"] - hit["t"]
+        assert 0 < c["measured_minus_triangle_range_m"] < 0.05
+        c["diagnostic"] = "measurement_near_triangle"
+        if sample["azimuth_offset_millirad"] == sample["polar_offset_millirad"] == 0:
+            saved["comparison"] = c
+    scan_path.write_text(json.dumps(scan))
+    source["scans"] = [file_ref(scan_path)]
+    source_path.write_text(json.dumps(source))
+    previous = tmp_path / "previous.json"
+    previous.write_text(
+        json.dumps(
+            dict(
+                source=file_ref(source_path),
+                records=[
+                    dict(
+                        scene=scan["scene"],
+                        scan=scan["scan"],
+                        pixel_yx=saved["pixel_yx"],
+                        target=saved["target"],
+                        source=file_ref(scan_path),
+                        sensitivity=sensitivity,
+                        all_nine_tested_angles_retain_range_disagreement=False,
+                    )
+                ],
+            )
+        )
+    )
+    result = audit(source_path, tmp_path / "out", previous)
+    assert result["nominal_diagnostic_changes"] == result["robust_nine_angle_changes"] == 1
+    assert result["angle_diagnostic_changes"] == result["tested_angle_compared_intersections"] == 9
+    assert 0.0003 < result["tested_angle_range_change_max_abs_m"] < 0.0005
+    assert result["robust_nine_angle_observations"] == 1

@@ -164,8 +164,10 @@ def audit(source_path, output, previous_sensitivity=None):
         ),
         robust_gap_min_m=min(gaps) if gaps else None,
         robust_gap_max_m=max(gaps) if gaps else None,
-        nominal_range_change_max_abs_m=max(nominal_deltas, default=0),
-        tested_angle_range_change_max_abs_m=max(sensitivity_deltas, default=0)
+        nominal_compared_intersections=len(nominal_deltas),
+        tested_angle_compared_intersections=len(sensitivity_deltas) if previous_ref else None,
+        nominal_range_change_max_abs_m=max(nominal_deltas, default=None),
+        tested_angle_range_change_max_abs_m=max(sensitivity_deltas, default=None)
         if previous_ref
         else None,
         robust_nine_angle_changes=sum(r["robust_nine_angle_changed"] for r in records)
