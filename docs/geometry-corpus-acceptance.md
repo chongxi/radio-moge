@@ -3414,3 +3414,42 @@ normalization, trainer/observer integration, CUDA transport and the actual-model
 paired gate remain pending. The centered loss guard and evaluation protocols
 remain intact. See [ordinary geometry integration](ordinary-geometry-integration.md)
 for the camera-radius analysis and required next checks.
+
+### Ordinary target and camera-loss core — November 4
+
+The optional ordinary target builder now verifies bound member payloads and
+original RGB bytes, reproduces the exact original crop/flip, and projects native
+observations without interpolating depth. It retains source flags and requires
+the actual dataset augmentation setting. The separate ordinary loss entry point
+requires explicit camera/pixel/radius contracts, validates supported rays and IDs
+before sparse skipping, and uses the full-K inverse-ray Jacobian norm for its
+declared RMS local-radius convention. The zero-skew case preserves legacy focal
+arithmetic. The legacy centered entry rejects ordinary-tagged targets even when
+their principal point happens to be centered; evaluation protocols are unchanged.
+
+Tests cover per-component upstream gradients including local16 at96x128,
+relative-pseudo scale invariance and absence of metric-scale gradients, missing
+and sparse zero contributions, integer counters, and a full32-image denominator
+across compute groups. All137 tests passed locally and remotely under819312d.
+An early strict equality failure also reproduced in legacy/legacy at two CPU
+threads: local4 backward differed by3.64e-12. Pytest's common fixture overrode the
+environment's one-thread setting. The strict comparison now explicitly selects
+one CPU thread and restores the previous setting, retaining zero tolerance for
+component and summed gradients. This numerical test issue is not evidence of a
+historical training-regression cause or deterministic GPU behavior.
+
+The real CPU payload/camera probe used immutable execution
+`code-ordinary-targets-v2/00ae5f8`; its implementation bytes match the final tested
+source. It reused the128 saved RGB presentation keys, reading89 bound geometry
+members:19 measured-sensor,29 synthetic and41 relative-pseudo targets. All89 had
+at least32 selected observations;39 missing references stayed feature-only.
+The checked views include77 off-center cameras and61 flips. Supported XYZ/UV,
+native IDs, bounds, member hashes and unchanged Torch RNG passed. These bounded
+counts do not estimate full-stream coverage. No RGB comparison, model inference,
+archived checkpoint readback or optimizer run was repeated.
+
+Target proof SHA:
+`3c6263fd87d62594b8d405f1e9f9237bdd0edce9d63ea3e1831e9631d28baa46`.
+Next are trainer/audit integration, unweighted integer coverage aggregation,
+CUDA transport and a new config/code-bound actual-model gate. Neither historical
+acceptance nor this CPU evidence admits the new optimizer path.
