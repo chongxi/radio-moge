@@ -7,6 +7,7 @@ memory; they must never publish a training admission.
 from copy import deepcopy
 import hashlib
 from pathlib import Path
+import time
 
 import torch
 
@@ -156,10 +157,19 @@ class OrdinaryTrainingAudit(RGBInputAudit):
     def load_records(self, path):
         if path != self.seal['manifest']['path']:
             raise ValueError('Ordinary RGB manifest path changed')
-        records = load_reference_records(path, workers=1)
+        # Match the original-feature reference's bounded ordered metadata pass.
+        # These are I/O threads, not image-loader workers or sampler changes.
+        started = time.time()
+        status_path = Path(self.config['output_dir']).parent/'data-read-status.json'
+        def progress(count, stage='reading_original_ordered_rgb_metadata'):
+            atomic_json(dict(stage=stage, rows=count, expected=self.seal['rgb_images'],
+                workers=4, started_at=started, updated_at=time.time(), optimizer_updates=0), status_path)
+        progress(0)
+        records = load_reference_records(path, on_progress=progress, workers=4)
         checked_path(self.seal['manifest'])
         if len(records) != self.seal['rgb_images'] or records.digest() != self.seal['rgb_digest']:
             raise ValueError('Ordinary full RGB scope, order or identity changed')
+        progress(len(records), 'ordered_rgb_metadata_verified')
         return records
 
     def check_fork(self, config, state, digests):

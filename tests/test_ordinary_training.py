@@ -19,7 +19,7 @@ from radio_moge.losses import FEATURE_LOSS_KEYS
 from radio_moge.ordinary_geometry import ORDINARY_CAMERA_CONTRACT, ORDINARY_LOCAL_RADIUS
 from radio_moge.ordinary_geometry_data import GeometrySidecar
 from radio_moge.ordinary_training import (validate_ordinary_config, validate_ordinary_performance,
-    check_ordinary_data_fork, verify_initial_state, COUNT_KEYS)
+    check_ordinary_data_fork, verify_initial_state, COUNT_KEYS, OrdinaryTrainingAudit)
 from radio_moge.prefetch import PreparedWindows
 from radio_moge.rgb_input_audit import RGBInputAudit, load_reference_records
 from radio_moge.rgb_geometry_batch import RGBGeometryBatch
@@ -94,6 +94,26 @@ def fake_gate(config, source, performance):
     validate_ordinary_config(config)
     validate_ordinary_performance(config, performance)
     return SyntheticAudit(config, performance)
+
+
+def test_ordinary_metadata_matches_serial_rows_digest_and_reports_verified_progress(tmp_path):
+    config, _ = setup(tmp_path)
+    path = config['data']['train_manifest']
+    expected = load_reference_records(path, workers=1)
+    audit = object.__new__(OrdinaryTrainingAudit)  # Metadata-only fixture; no admission or model.
+    audit.config = config
+    audit.seal = dict(manifest=file_ref(path), rgb_images=len(expected), rgb_digest=expected.digest())
+    actual = audit.load_records(path)
+    assert actual == expected and actual.digest() == expected.digest()
+    progress_path = Path(config['output_dir']).parent/'data-read-status.json'
+    progress = json.loads(progress_path.read_text())
+    assert progress['stage'] == 'ordered_rgb_metadata_verified'
+    assert progress['rows'] == progress['expected'] == len(expected)
+    assert progress['workers'] == 4 and progress['optimizer_updates'] == 0
+    audit.seal['rgb_digest'] = '0'*64
+    with pytest.raises(ValueError, match='scope, order or identity'):
+        audit.load_records(path)
+    assert json.loads(progress_path.read_text())['stage'] != 'ordered_rgb_metadata_verified'
 
 
 @pytest.mark.parametrize('workers', [0, 2])

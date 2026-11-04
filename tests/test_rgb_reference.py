@@ -153,14 +153,15 @@ def test_annotated_checkpoint_reference_becomes_strict_evidence():
                                                       payload_reread=False))) == dict(path='/x', sha256='a'*64)
 
 
-def test_bounded_metadata_pass_matches_original_rows_and_digest(tmp_path):
+@pytest.mark.parametrize('workers', [1, 2, 4])
+def test_bounded_metadata_pass_matches_original_rows_and_digest(tmp_path, workers):
     config, records = setup(tmp_path)
     path = Path(config['data']['train_manifest'])
     for row in records:
         row['sha256'] = file_ref(row['image'])['sha256']
     path.write_text('\n'.join(json.dumps(row) for row in records) + '\n\n')
     plain = read_manifest(path)
-    actual = load_reference_records(path, workers=2)
+    actual = load_reference_records(path, workers=workers)
     assert actual == plain and actual.digest() == manifest_digest(plain)
     assert actual.verify_on_read
     path.write_text(path.read_text() + json.dumps(records[0]) + '\n')
