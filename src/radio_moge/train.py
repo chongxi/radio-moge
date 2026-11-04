@@ -49,7 +49,7 @@ from .feature_replay import (validate_feature_replay, load_replay_records, make_
                              is_replay_batch, replay_feature_losses)
 
 
-def make_loader(records, config, start, count, calibration=False):
+def make_loader(records, config, start, count, calibration=False, reference=None):
     data, train = config["data"], config["train"]
     if data.get("mixture_weights"):
         sampler = MixtureBatches(
@@ -72,14 +72,18 @@ def make_loader(records, config, start, count, calibration=False):
                if config.get('geometry_supervision') and not calibration else
                TrainingImages(records, data['augment'] and not calibration,
                               compact_transport=compact))
+    if reference is not None:
+        dataset = reference.wrap_dataset(dataset)
     loader = DataLoader(
         dataset,
         batch_sampler=sampler,
         num_workers=data["workers"],
         pin_memory=torch.cuda.is_available(),
         generator=torch.Generator().manual_seed(train["seed"]),
-        collate_fn=collate_corpus if corpus else None,
+        collate_fn=reference.collate if reference is not None else collate_corpus if corpus else None,
     )
+    if reference is not None:
+        loader = reference.wrap_loader(loader)
     if compact:
         from .prefetch import FloatLoader
         return FloatLoader(loader)
@@ -299,11 +303,17 @@ def train(
     resolution_fork=False,
     data_fork=False,
     lr_adjustment=None,
+    reference=None,
 ):
     """Single-device experiment runner. system_adapter allows small CPU integration tests."""
     invocation_started = time.monotonic()
     elapsed_before = 0.0
     validate_config(config)
+    if reference is not None and (not fork_from or not data_fork or resume or init
+            or config.get('geometry_supervision') or config.get('feature_replay')
+            or not performance or performance.get('data_pipeline') != 'prepared'
+            or not performance.get('compact_transport')):
+        raise ValueError('Reference observation requires an explicit prepared compact RGB data fork')
     if config.get('corpus_loss_control') and (resume or fork_from or extension
             or config['train']['batch_size'] != 1):
         raise ValueError('Controlled corpus comparisons use fresh one-image initialization, not resume or fork')
@@ -431,6 +441,8 @@ def train(
             check = check_data_fork if data_fork else check_resolution_fork if resolution_fork else check_lr_fork
             if corpus_gate:
                 check_corpus_data_fork(config, state, digests, corpus_gate)
+            elif reference is not None:
+                reference.check_fork(config, state, digests)
             else:
                 check(config, state, digests)
             if (resolution_fork or data_fork) and performance:
@@ -525,7 +537,7 @@ def train(
                 parent_digests=state['data_digests'], digests=digests,
                 parent_manifest=state['config']['data']['train_manifest'],
                 manifest=config['data']['train_manifest'],
-                sampling='permutation' if config['data'].get('coverage_epochs') else 'source/scene mixture')
+                sampling='source/scene mixture' if config['data'].get('mixture_weights') else 'permutation')
             fork_provenance['restored'].remove('cursor')
             fork_provenance['reset'].append('data_cursor_for_new_manifest')
         atomic_json(fork_provenance, output / "fork-state.json")
@@ -691,7 +703,8 @@ def train(
     if performance:
         loader_config['data']['workers'] = performance['workers']
         loader_config['data']['compact_transport'] = performance.get('compact_transport', False)
-    loader = make_loader(records, loader_config, cursor, max(0, total - step) * accumulation)
+    loader = make_loader(records, loader_config, cursor, max(0, total - step) * accumulation,
+                         reference=reference)
     prepared_windows = None
     gpu_prefetch = bool(performance and performance.get('gpu_prefetch', False))
     if performance and performance.get('data_pipeline') == 'prepared':
@@ -699,7 +712,8 @@ def train(
         if gpu_prefetch and accelerator.device.type != 'cuda':
             raise ValueError('GPU prefetch requires CUDA')
         prepared_windows = PreparedWindows(loader, accumulation, performance['compute_batch'],
-                                           max(0, total - step), pin=accelerator.device.type == 'cuda')
+                                           max(0, total - step), pin=accelerator.device.type == 'cuda',
+                                           observer=reference.observe_window if reference else None)
         if gpu_prefetch:
             prepared_windows = DeviceWindows(prepared_windows, accelerator.device)
         iterator = None
@@ -821,6 +835,8 @@ def train(
                 link_selection('initial.pt', 'best.pt')
             if best_metrics:
                 atomic_json(best_metrics, output / 'checkpoint-selection.json')
+        if reference is not None:
+            reference.before_updates(system, raw_adapter, statistics, records, config, output)
         if validation and not resume and (not fork_from or resolution_fork or data_fork) and settings.get("eval_at_start", False):
             validate()
         while step < total and not stop and not budget_exhausted():
@@ -932,6 +948,8 @@ def train(
             if coverage is not None:
                 coverage.advance(cursor)
             synchronize_update()
+            if reference is not None:
+                reference.commit(step, cursor)
             elapsed = time.perf_counter() - started
             optimizer_seconds += elapsed
             row = {
@@ -1032,9 +1050,13 @@ def train(
                 raise AssertionError("Frozen models accumulated gradients or became trainable")
         if input_audit is not None:
             atomic_json(input_audit.report(), output / 'control-input-audit.json')
+        if reference is not None:
+            reference.finish(step, cursor)
         success = True
         return output / "latest.pt"
     finally:
+        if reference is not None:
+            reference.close()
         if input_audit is not None:
             input_audit.close()
         if prepared_windows is not None:

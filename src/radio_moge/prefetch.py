@@ -56,7 +56,7 @@ class PreparedWindows:
     """
 
     def __init__(self, loader, accumulation, compute_batch, count, ahead=2, pin=False,
-                 measure=False, compact_grouping=True):
+                 measure=False, compact_grouping=True, observer=None):
         if ahead not in (1, 2) or count < 0:
             raise ValueError('Expected one or two bounded prepared windows')
         # Group compact logical batches before normalization. This avoids concatenating
@@ -86,6 +86,8 @@ class PreparedWindows:
                     if measure:
                         wall_start, cpu_start = time.perf_counter(), time.thread_time()
                     tensors = list(grouped_window(self.iterator, accumulation, compute_batch))
+                    if observer is not None:
+                        observer(tensors)
                     if grouped_uint8:
                         tensors = [normalize_uint8(t, pin=pin) for t in tensors]
                     elif pin:
