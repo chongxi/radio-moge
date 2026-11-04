@@ -16,8 +16,8 @@ from test_corpus_losses import small_official as small_official
 from test_training import config_for, tiny_system
 
 
-def fixture(tmp_path):
-    root, plan, rows = admission_fixture(tmp_path)
+def fixture(tmp_path, *, pseudo_source='coco2017'):
+    root, plan, rows = admission_fixture(tmp_path, pseudo_source=pseudo_source)
     accounting = build_accounting(plan, root / 'account')
     config = config_for(tmp_path)
     config['data']['train_manifest'] = str(root / 'train.jsonl')

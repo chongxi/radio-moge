@@ -67,7 +67,7 @@ def implementation_hashes():
     directory = Path(__file__).parent
     names = ('corpus_admission.py', 'corpus_data.py', 'geometry_sampling.py',
              'corpus_losses.py', 'geometry_cache.py', 'official_gt.py', 'train.py',
-             'data.py', 'feature_replay.py', 'decoder.py', 'system.py', 'losses.py',
+             'data.py', 'feature_replay.py', 'projection_hold.py', 'decoder.py', 'system.py', 'losses.py',
              'adapters.py', 'architecture_screen.py', 'spatial_heads.py',
              'feature_refinement.py', 'upstream.py', 'config.py', 'tracking.py', 'corpus_coverage.py',
              'snapshot_readback.py', 'producer_readback.py', 'corpus_model_probe.py', 'corpus_control.py')

@@ -15,11 +15,12 @@ from radio_moge.corpus_admission import (FINAL_CHECKS, SOURCE_CHECKS, build_acco
 from radio_moge.geometry_cache import GeometryPackWriter, publish_json, sha_file
 
 
-def admission_fixture(tmp_path, *, flagged=False, missing=False, extra_coco=False):
+def admission_fixture(tmp_path, *, flagged=False, missing=False, extra_coco=False,
+                      pseudo_source='coco2017'):
     root = tmp_path / 'fixture'
     root.mkdir()
     rows = []
-    datasets = ('hypersim', 'coco2017') + (('coco2017',) if extra_coco else ())
+    datasets = ('hypersim', pseudo_source) + (('coco2017',) if extra_coco else ())
     for i, dataset in enumerate(datasets):
         path = root / f'rgb-{i}.png'
         Image.fromarray(np.full((24, 32, 3), 64 + i, np.uint8)).save(path)
@@ -53,7 +54,7 @@ def admission_fixture(tmp_path, *, flagged=False, missing=False, extra_coco=Fals
         directory.mkdir()
         policy = dict(dataset=dataset, manifest_sha256=manifest_hash)
         writer = GeometryPackWriter(directory / 'packs', policy)
-        pseudo = dataset == 'coco2017'
+        pseudo = dataset in ('coco2017', 'irs')
         shape = (24, 32) if pseudo else (12, 16)
         k = np.array([[1., 0, .5], [0, 1., .5], [0, 0, 1.]])
         kind = 'teacher_pseudo' if pseudo else 'synthetic_renderer'
@@ -272,7 +273,7 @@ def test_corpus_trainer_routes_list_targets_replay_and_exact_resume(tmp_path, mo
     from radio_moge.train import train
     from test_training import config_for, tiny_system
 
-    root, plan, _ = admission_fixture(tmp_path)
+    root, plan, _ = admission_fixture(tmp_path, pseudo_source='irs')
     accounting = build_accounting(plan, root / 'account')
     config = config_for(tmp_path)
     config['data']['train_manifest'] = str(root / 'train.jsonl')

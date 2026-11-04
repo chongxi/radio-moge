@@ -28,6 +28,40 @@ coverage and admission must bind the filtered inputs. COCO needs individual
 projection review before re-admission; future validation also needs projection
 screening without silently changing historical comparisons.
 
+The forward `train()` entry now rejects COCO in primary RGB/corpus samples,
+replay, ordinary/geometry/variant validation and training probes before model
+and optimizer construction. Corpus checks use actual sample membership, so
+retained historical hold/exclusion rows remain readable. There is no bypass
+switch. The guard is included in implementation hashes. Historical standalone
+evaluation remains available; immutable old execution copies are evidence, not
+approved launch paths for future runs.
+
+`projection-heldout-audit-02/visual-review-01.json` records actual review of all
+512 heldout COCO images and17 full originals. Seven are confirmed incompatible
+composites: five multi-photo collages and two stitched panoramas, including five
+in the1268-image primary validation. Suspected lens/motion cases and a painting
+are recorded separately; no raw spherical panorama was confirmed in this512.
+Unflagged images are not thereby camera-certified. The new candidate validation
+retains all1012 non-COCO rows, with six equally weighted sources. Source-based
+filtering did not use model scores.
+
+`projection-filtered-metrics-01/report.json` reaggregates saved fixed evaluations
+without inference. All36 saved files match bound hashes; original macros,
+ordered image identities and protocols reproduce exactly. New six-source
+primary cosines are:
+
+| Fixed model | Spatial cosine | Summary cosine | Independent LiDAR AbsRel |
+| --- | ---: | ---: | ---: |
+| Archived232288 | 0.964774093 | 0.935661359 | 0.092118447 |
+| Restored feature reference02 | 0.964724611 | 0.935601806 | 0.092032092 |
+| Corrected ordinary geometry250 | 0.964608632 | 0.935604679 | 0.091780616 |
+
+Both continuations still have lower primary cosines than the archive. LiDAR is
+unchanged by this filter and improves slightly; the joint target remains unmet.
+These are post-hoc diagnostics with new baselines, not replacements for the
+historical seven-source criteria or proof of a regression cause. No model has
+been retrained on the filtered pool yet.
+
 The independent LiDAR AbsRel baseline0.092118447 is a different route:
 120 rectified **iPhone RGB + measured iPhone depth** pairs from30 scenes.
 It does not use scanner panoramas. Actual file hashes, dimensions and source

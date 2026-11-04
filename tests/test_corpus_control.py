@@ -110,7 +110,7 @@ def test_actual_input_hash_covers_targets_replay_and_does_not_consume_rng(tmp_pa
 @pytest.mark.upstream
 @pytest.mark.usefixtures('small_official')
 def test_fresh_train_controls_share_inputs_rng_and_initial_state_but_not_updates(tmp_path):
-    root, accounting, base, _, _ = fixture(tmp_path)
+    root, accounting, base, _, _ = fixture(tmp_path, pseudo_source='irs')
     base['train'].update(steps=2, accumulation=2, eval_every=2, save_every=2)
     system, adapter = tiny_system()
     initial = root / 'model-fixture.pt'

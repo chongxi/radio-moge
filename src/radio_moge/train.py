@@ -49,6 +49,7 @@ from .planes import FLATNESS_MODES, PlaneConfig, detect_planes, plane_losses
 from .system import build_system
 from .tracking import ExperimentTracker, preserve_rng
 from .selection import validate_selections, selection_winners
+from .projection_hold import require_unheld_sources
 from .feature_replay import (validate_feature_replay, load_replay_records, make_replay_loader,
                              is_replay_batch, replay_feature_losses)
 
@@ -380,16 +381,19 @@ def train(
     records = (CorpusRecords(corpus_gate) if corpus_gate else
                reference.load_records(config['data']['train_manifest']) if reference else
                read_manifest(config['data']['train_manifest']))
+    require_unheld_sources(records, 'primary training')
     if config.get('geometry_supervision') and not corpus_gate:
         validate_gt_records(records)
     val_path = config["data"].get("val_manifest")
     validation = read_manifest(val_path) if val_path else []
+    require_unheld_sources(validation, 'validation')
     check_split(records, validation)
     geometry_validation = []
     if config['data'].get('geometry_val_manifest'):
         if not config.get('geometry_supervision'):
             raise ValueError('Measured geometry validation requires the GT stage')
         geometry_validation = read_manifest(config['data']['geometry_val_manifest'])
+        require_unheld_sources(geometry_validation, 'geometry validation')
         validate_gt_records(geometry_validation, split='val')
         check_split(records, geometry_validation)
     dataset_validation = {}
@@ -398,13 +402,16 @@ def train(
                 or set(view) != {'manifest', 'num_tokens', 'max_side'}):
             raise ValueError('Invalid fixed dataset validation view')
         extra_records = read_manifest(view['manifest'])
+        require_unheld_sources(extra_records, f'dataset validation {name}')
         check_split(records, extra_records)
         check_split(validation, extra_records)
         dataset_validation[name] = extra_records
     replay_records = load_replay_records(
         config, [validation, geometry_validation, *dataset_validation.values()])
+    require_unheld_sources(replay_records, 'feature replay')
     probe_path = config['data'].get('train_probe_manifest')
     train_probe = read_manifest(probe_path) if probe_path else []
+    require_unheld_sources(train_probe, 'training probe')
     probe_subset = (all(records.contains_selected(r) for r in train_probe) if corpus_gate else
                     not train_probe or {r['image'] for r in train_probe} <= {r['image'] for r in records})
     if not probe_subset:

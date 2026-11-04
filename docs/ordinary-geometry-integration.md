@@ -1,5 +1,14 @@
 # Geometry attached to the restored feature stream
 
+November4 projection correction: the historical1,637,908-row stream below is
+superseded for future launches by the COCO hold. Materialized candidates contain
+1,597,911 RGB rows and558,314 geometry targets; primary validation retains1012
+non-COCO images. `train()` rejects old COCO inputs before model/Adam construction.
+The new sidecar scope, sampler plan, config and acceptance proofs still need
+their own bindings; do not relabel the candidate index as accepted or reuse old
+seals. Historical pixel/loss parity proofs remain evidence of their original
+scope only. See the projection correction in `geometry-corpus-acceptance.md`.
+
 This is an implementation contract for later geometry integration. It does not
 admit another optimizer run. The completed original-feature reference remains
 the comparison: all four feature weights are 1, the original ordered RGB pool
