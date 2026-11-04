@@ -3713,3 +3713,49 @@ explain them. This narrows the diagnosis but does not distinguish mesh defects
 from incorrect camera registration or establish the extent in other images.
 Keep all ten candidate flags, original arrays and RGB unchanged. Do not replace
 near hits with farther surfaces or infer a historical training regression cause.
+
+### Local native mesh/scanner inconsistency — November 4, 19:50 UTC
+
+A new bounded check uses retained scanner ranges and stored azimuth/polar angles
+to test exact source triangles previously intersected by DSLR cases #1002329,
+#1284721 and #1284776. Six scanner views across two scenes give 27 distinct
+(scene, scan, pixel, face) observations: 11 stable nominal rays measure farther
+than the triangle, two agree within 5 mm, eight miss the exact triangle, and six
+have unsupported/unstable measurements. No existing DSLR ray probe or image
+rendering was repeated. Seven math/support tests passed locally and remotely.
+
+The original stored angles are quantized in milliradians. A separate saved-data
+sensitivity check applies nine combinations of +/-1 milliradian offsets. Eight
+observations on five distinct triangles continue to intercept those triangles
+at least 1.2007–2.0871 m before the minimum measured 3x3 range patch. The original
+nominal hit is within 0.384 mm of the selected source target. The farther-surface
+control agrees within 0.746 mm and 4.602 mm in two scans. Three other nominal
+contradictions lose triangle support under perturbation and are not counted as
+robust across all nine probes. The new sensitivity test passed locally/remotely
+(eight tests total). No continuous angular guarantee or scanner-pose uncertainty
+bound is claimed.
+
+Evidence:
+- `scannetpp-triangle-scanner-support-01/report.json`, SHA256
+  `379b2d39f958189df471dceaa02715738818cdd4490d48934848130b06736e6d`;
+- `scannetpp-triangle-angle-sensitivity-01/report.json`, SHA256
+  `9bcec16073611da244dcba5cc795dd23110254ad8acc806a6bfda6b7f680fd09`;
+- `scannetpp-native-source-diagnosis-01/report.json` records the interpretation,
+  remaining uncertainty, publisher references and unchanged quarantine scope.
+
+This establishes a local inconsistency between released mesh triangles and
+retained scanner returns under the tested directions. The comparison does not
+use DSLR poses beyond selecting triangles, so a DSLR-only conversion error does
+not explain it. It does not uniquely distinguish mesh reconstruction artifacts,
+scanner registration, beam/return behavior, transparency or acquisition changes.
+Both inputs come from the same acquisition, not independent absolute calibration.
+
+The publisher mesh anonymity files are empty for both examined scenes; those
+files contain anonymized vertex indices, not geometric validity masks. Official
+`mesh_aligned_0.05` means five-percent decimation, not five-centimeter resolution.
+No near-hit skipping, pose fitting, mesh edit or farther-depth substitution was
+made. All ten existing exact quarantines remain; no automatic scene/neighborhood
+exclusion or source admission follows. These two scenes contain 1,964 native
+candidates and one existing support rejection, not 1,964 demonstrated failures.
+No optimizer or training inputs changed; scanner panoramas were used solely as
+source evidence and never added to training.
