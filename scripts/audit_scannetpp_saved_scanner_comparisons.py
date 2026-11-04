@@ -52,7 +52,8 @@ def audit(source_path, output, previous_sensitivity=None):
             if key in previous:
                 raise ValueError("Repeated previous comparison identity")
             previous[key] = record
-    records, seen, pose_refs = [], set(), {}
+    records, seen, pose_refs = [], {}, {}
+    target_shifts, saved_target_selections = [], 0
     nominal_deltas, sensitivity_deltas = [], []
     for scan_ref in source["scans"]:
         scan = checked_json(scan_ref)
@@ -96,11 +97,35 @@ def audit(source_path, output, previous_sensitivity=None):
                 nominal_diagnostic_changed=old_comparison["diagnostic"] != current["diagnostic"],
                 nominal_hit_changed=old_comparison["intersects_exact_triangle"]
                 != current["intersects_exact_triangle"],
+                equivalent_target_selections=[],
             )
+            saved_target_selections += 1
+            target_shifts.append(record["inverse_vs_transpose_target_shift_m"])
             key = identity(record)
             if key in seen:
-                raise ValueError("Repeated saved comparison identity")
-            seen.add(key)
+                existing = seen[key]
+                if (
+                    existing["source"] != scan_ref
+                    or existing["comparison"] != current
+                    or existing["sensitivity"] != sensitivity
+                    or existing["original_comparison"] != old_comparison
+                    or existing["target"]["vertices_world"] != target["vertices_world"]
+                ):
+                    raise ValueError("Conflicting measurements for repeated scanner ray and face")
+                # Different DSLR targets can select the same scanner pixel/face.
+                # Retain their provenance, but count the measured ray only once.
+                existing["equivalent_target_selections"].append(
+                    dict(
+                        target=target,
+                        corrected_angular_error_for_same_saved_pixel_rad=current_angle,
+                        original_angular_error_rad=saved["angular_error_rad"],
+                        inverse_vs_transpose_target_shift_m=record[
+                            "inverse_vs_transpose_target_shift_m"
+                        ],
+                    )
+                )
+                continue
+            seen[key] = record
             if current["intersects_exact_triangle"] and old_comparison["intersects_exact_triangle"]:
                 delta = current["triangle_range_m"] - old_comparison["triangle_range_m"]
                 nominal_deltas.append(abs(delta))
@@ -154,6 +179,8 @@ def audit(source_path, output, previous_sensitivity=None):
         previous_sensitivity=previous_ref,
         records=records,
         unique_observations=len(records),
+        saved_target_selections=saved_target_selections,
+        duplicate_target_selections=saved_target_selections - len(records),
         scanner_poses=list(pose_refs.values()),
         nominal_diagnostic_counts=dict(Counter(r["comparison"]["diagnostic"] for r in records)),
         nominal_diagnostic_changes=sum(r["nominal_diagnostic_changed"] for r in records),
@@ -176,9 +203,7 @@ def audit(source_path, output, previous_sensitivity=None):
         angle_diagnostic_changes=sum(len(r["angle_diagnostic_changes"]) for r in records)
         if previous_ref
         else None,
-        inverse_vs_transpose_target_shift_max_m=max(
-            r["inverse_vs_transpose_target_shift_m"] for r in records
-        ),
+        inverse_vs_transpose_target_shift_max_m=max(target_shifts),
         same_saved_pixels_used=True,
         corrected_full_grid_pixel_selection_verified=False,
         continuous_angular_bound_proven=False,

@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 
 import numpy as np
 import pytest
@@ -139,3 +140,28 @@ def test_valid_previous_nine_angles_report_changed_decisions_at_threshold(tmp_pa
     assert result["angle_diagnostic_changes"] == result["tested_angle_compared_intersections"] == 9
     assert 0.0003 < result["tested_angle_range_change_max_abs_m"] < 0.0005
     assert result["robust_nine_angle_observations"] == 1
+
+
+@pytest.mark.parametrize("conflicting", [False, True])
+def test_same_measured_ray_keeps_all_targets_without_inflating_support(tmp_path, conflicting):
+    source_path, _ = fixture(tmp_path)
+    scan_path = tmp_path / "scan.json"
+    scan = json.loads(scan_path.read_text())
+    duplicate = deepcopy(scan["measurements"][0])
+    duplicate["target"]["corpus_ordinal"] = 8
+    if conflicting:
+        duplicate["comparison"]["measurement"]["range_m"] += 0.001
+    scan["measurements"].append(duplicate)
+    scan_path.write_text(json.dumps(scan))
+    source = json.loads(source_path.read_text())
+    source["scans"] = [file_ref(scan_path)]
+    source_path.write_text(json.dumps(source))
+    if conflicting:
+        with pytest.raises(ValueError, match="Conflicting measurements"):
+            audit(source_path, tmp_path / "out")
+        return
+    result = audit(source_path, tmp_path / "out")
+    assert result["saved_target_selections"] == 2
+    assert result["unique_observations"] == result["robust_nine_angle_observations"] == 1
+    assert result["duplicate_target_selections"] == 1
+    assert result["records"][0]["equivalent_target_selections"][0]["target"]["corpus_ordinal"] == 8
