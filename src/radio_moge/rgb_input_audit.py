@@ -18,6 +18,15 @@ import torch
 from .checkpoint import atomic_json
 from .corpus_admission import file_ref
 from .geometry_cache import canonical_json
+from .rgb_geometry_batch import GeometrySlot, RGBGeometryBatch
+
+
+def slot_identity(slot, key, row):
+    if (not isinstance(slot, GeometrySlot) or slot.key != tuple(key)
+            or slot.rgb_row != row or type(slot.augment) is not bool):
+        raise ValueError('Geometry slot differs from actual RGB key/identity/augmentation')
+    return dict(augment=slot.augment,
+                reference_sha256=hashlib.sha256(canonical_json(slot.geometry)).hexdigest())
 
 
 class ReferenceRecords(list):
@@ -92,17 +101,29 @@ class AuditedImages:
         return len(self.dataset)
 
     def __getitem__(self, key):
-        image = self.dataset[key]
+        sample = self.dataset[key]
+        annotated = isinstance(sample, tuple)
+        image, slot = sample if annotated else (sample, None)
         row = self.dataset.records[key[0]]
         identity = dict(key=list(key), image=row['image'], sha256=row.get('sha256'),
                         dataset=row.get('dataset'), group=row.get('group'),
                         image_rotation_cw=row.get('image_rotation_cw', 0),
                         compact_rgb_sha256=pixels_sha(image))
-        return image, identity
+        if annotated:
+            identity['ordinary_geometry'] = slot_identity(slot, key, row)
+        return sample, identity
 
 
 def collate_audited(samples):
-    return torch.stack([x for x, _ in samples]), [r for _, r in samples]
+    annotated = [isinstance(x, tuple) for x, _ in samples]
+    if any(annotated):
+        if not all(annotated):
+            raise ValueError('Cannot mix annotated and plain audited images')
+        from .ordinary_geometry_data import collate_geometry_attached
+        image = collate_geometry_attached([x for x, _ in samples])
+    else:
+        image = torch.stack([x for x, _ in samples])
+    return image, [r for _, r in samples]
 
 
 class ObservedLoader:
@@ -173,11 +194,23 @@ class RGBInputAudit:
         for tensor, slots in zip(tensors, expected, strict=True):
             if len(tensor) != len(slots):
                 raise ValueError('Prepared compute batch size changed')
-            for image, slot in zip(tensor, slots, strict=True):
+            annotated = isinstance(tensor, RGBGeometryBatch)
+            rgb = tensor.image if annotated else tensor
+            for i, (image, slot) in enumerate(zip(rgb, slots, strict=True)):
                 if pixels_sha(image) != flat[slot]['compact_rgb_sha256']:
                     raise ValueError('Prepared pixels changed or image identity was reordered')
+                expected_geometry = flat[slot].get('ordinary_geometry')
+                if annotated != (expected_geometry is not None):
+                    raise ValueError('Prepared geometry annotation disappeared or was introduced')
+                if annotated:
+                    actual = tensor.slots[i]
+                    row = flat[slot]
+                    if (any(actual.rgb_row.get(k, 0 if k == 'image_rotation_cw' else None) != row[k]
+                            for k in ('image', 'sha256', 'dataset', 'group', 'image_rotation_cw'))
+                            or slot_identity(actual, row['key'], actual.rgb_row) != expected_geometry):
+                        raise ValueError('Prepared geometry reference or slot order changed')
             groups.append(dict(logical_image_slots=slots, shape=list(tensor.shape),
-                               compact_tensor_sha256=pixels_sha(tensor)))
+                               compact_tensor_sha256=pixels_sha(rgb)))
         value = dict(update=self.source_step+self.prepared+1, logical_images=flat,
                      compute_groups=groups)
         with self.lock:

@@ -39,7 +39,11 @@ from .official_gt import OFFICIAL_GT_KEYS, OFFICIAL_GT_WEIGHTS, official_ground_
 from .gt_data import GroundTruthImages, geometry_digest, validate_gt_records
 from .corpus_admission import open_training_gate
 from .corpus_data import CorpusRecords, CorpusImages, collate_corpus
-from .corpus_losses import corpus_geometry_losses
+from .corpus_losses import corpus_geometry_losses, ordinary_geometry_losses
+from .ordinary_geometry_targets import ordinary_target
+from .ordinary_geometry_data import GeometryAttachedImages, collate_geometry_attached
+from .ordinary_training import validate_ordinary_config, open_ordinary_training_gate, COUNT_KEYS
+from .rgb_geometry_batch import RGBGeometryBatch
 from .corpus_control import geometry_multiplier, InputAudit
 from .planes import FLATNESS_MODES, PlaneConfig, detect_planes, plane_losses
 from .system import build_system
@@ -49,7 +53,7 @@ from .feature_replay import (validate_feature_replay, load_replay_records, make_
                              is_replay_batch, replay_feature_losses)
 
 
-def make_loader(records, config, start, count, calibration=False, reference=None):
+def make_loader(records, config, start, count, calibration=False, reference=None, sidecar=None):
     data, train = config["data"], config["train"]
     if data.get("mixture_weights"):
         sampler = MixtureBatches(
@@ -72,6 +76,13 @@ def make_loader(records, config, start, count, calibration=False, reference=None
                if config.get('geometry_supervision') and not calibration else
                TrainingImages(records, data['augment'] and not calibration,
                               compact_transport=compact))
+    ordinary = config.get('ordinary_geometry') is not None and not calibration
+    if ordinary:
+        if sidecar is None or corpus or config.get('geometry_supervision') or data.get('mixture_weights'):
+            raise ValueError('Ordinary loader requires an admitted sidecar on original permutation RGB')
+        dataset = GeometryAttachedImages(dataset, sidecar)
+    elif sidecar is not None:
+        raise ValueError('Geometry sidecar supplied outside the ordinary RGB path')
     if reference is not None:
         dataset = reference.wrap_dataset(dataset)
     loader = DataLoader(
@@ -80,7 +91,8 @@ def make_loader(records, config, start, count, calibration=False, reference=None
         num_workers=data["workers"],
         pin_memory=torch.cuda.is_available(),
         generator=torch.Generator().manual_seed(train["seed"]),
-        collate_fn=reference.collate if reference is not None else collate_corpus if corpus else None,
+        collate_fn=(reference.collate if reference is not None else
+                    collate_geometry_attached if ordinary else collate_corpus if corpus else None),
     )
     if reference is not None:
         loader = reference.wrap_loader(loader)
@@ -104,6 +116,7 @@ def validate_config(config, *, corpus_preflight=False):
     the offline protocol while still requiring all the same training settings.
     The trainer never sets this flag.
     """
+    validate_ordinary_config(config)
     validate_selections(config.get('evaluation', {}).get('checkpoint_metrics', {}))
     validate_feature_replay(config)
     train, data = config["train"], config["data"]
@@ -311,9 +324,18 @@ def train(
     validate_config(config)
     if reference is not None and (not fork_from or not data_fork or resume or init
             or config.get('geometry_supervision') or config.get('feature_replay')
+            or config.get('ordinary_geometry') is not None
             or not performance or performance.get('data_pipeline') != 'prepared'
             or not performance.get('compact_transport')):
         raise ValueError('Reference observation requires an explicit prepared compact RGB data fork')
+    ordinary_gate = None
+    if config.get('ordinary_geometry') is not None:
+        if (not fork_from or not data_fork or resume or init or extension or resolution_fork
+                or lr_adjustment or budget_started_at is not None):
+            raise ValueError('Ordinary geometry requires a separately admitted original-feature data fork')
+        # This must precede Accelerator, model and Adam construction and tuning.
+        ordinary_gate = open_ordinary_training_gate(config, fork_from, performance)
+        reference = ordinary_gate
     if config.get('corpus_loss_control') and (resume or fork_from or extension
             or config['train']['batch_size'] != 1):
         raise ValueError('Controlled corpus comparisons use fresh one-image initialization, not resume or fork')
@@ -706,7 +728,7 @@ def train(
         loader_config['data']['workers'] = performance['workers']
         loader_config['data']['compact_transport'] = performance.get('compact_transport', False)
     loader = make_loader(records, loader_config, cursor, max(0, total - step) * accumulation,
-                         reference=reference)
+                         reference=reference, sidecar=ordinary_gate.sidecar if ordinary_gate else None)
     prepared_windows = None
     gpu_prefetch = bool(performance and performance.get('gpu_prefetch', False))
     if performance and performance.get('data_pipeline') == 'prepared':
@@ -847,6 +869,7 @@ def train(
             synchronize_update()
             started = time.perf_counter()
             totals = {}
+            count_totals = {}
             if prepared_windows is not None:
                 batches = next(prepared_windows)
             elif performance:
@@ -855,7 +878,8 @@ def train(
             else:
                 batches = (next(iterator) for _ in range(accumulation))
             for cpu_batch in batches:
-                cpu_image = cpu_batch['image'] if isinstance(cpu_batch, dict) else cpu_batch
+                cpu_image = (cpu_batch.image if isinstance(cpu_batch, RGBGeometryBatch) else
+                             cpu_batch['image'] if isinstance(cpu_batch, dict) else cpu_batch)
                 weight = len(cpu_image) / (settings['batch_size'] * accumulation)
                 image = cpu_image.to(accelerator.device, non_blocking=True)
                 with amp(), torch.no_grad():
@@ -863,6 +887,20 @@ def train(
                 with amp():
                     prediction = adapter(features)
                 losses = statistics.loss(prediction, target)
+                ordinary_weighted = None
+                if ordinary_gate is not None:
+                    if not isinstance(cpu_batch, RGBGeometryBatch):
+                        raise ValueError('Ordinary training lost its target slots')
+                    if config['ordinary_geometry']['multiplier']:
+                        if any(type(slot.augment) is not bool for slot in cpu_batch.slots):
+                            raise ValueError('Ordinary targets require actual RGB augmentation metadata')
+                        targets = [ordinary_target(slot, augment=slot.augment) for slot in cpu_batch.slots]
+                        # Raw adapted features, before RMS loss normalization. G=0
+                        # never enters payload/decoder/loss code or consumes its RNG.
+                        predicted_raw = system.decoder(prediction, image.shape[-2:])
+                        losses.update(ordinary_geometry_losses(predicted_raw, targets,
+                            config['models'].get('moge_source'), seed=settings['seed'] + cursor))
+                        ordinary_weighted = sum(losses[k] * v for k, v in OFFICIAL_GT_WEIGHTS.items())
                 cpu_replay = None
                 if replay_iterator is not None:
                     gt_features = {f'gt_feature_{key}': value.detach() for key, value in losses.items()}
@@ -923,10 +961,21 @@ def train(
                 if input_audit is not None:
                     input_audit.add(cursor, cpu_batch, cpu_replay)
                 loss = weighted_loss(losses, config["loss"])
+                if ordinary_gate is not None:
+                    losses['feature_weighted'] = loss
+                    losses['geometry_weighted'] = (ordinary_weighted if ordinary_weighted is not None
+                                                    else loss.detach().new_zeros(()))
+                    if ordinary_weighted is not None:
+                        loss = loss + ordinary_weighted
                 if not performance and not torch.isfinite(loss):
                     raise FloatingPointError(f"Nonfinite loss before optimizer step {step + 1}")
                 accelerator.backward(loss * weight)
                 for key, value in {**losses, "total": loss}.items():
+                    if ordinary_gate is not None and key in COUNT_KEYS:
+                        if value.dtype != torch.int64 or value.ndim != 0:
+                            raise ValueError('Ordinary coverage must be scalar integer counts')
+                        count_totals[key] = count_totals.get(key, 0) + value.detach()
+                        continue
                     detached = value.detach() if performance else value.detach().item()
                     totals[key] = totals.get(key, 0.0) + detached * weight
                 cursor += len(cpu_image) // settings['batch_size']
@@ -936,6 +985,10 @@ def train(
                 totals = dict(zip(keys, values, strict=True))
                 if not all(math.isfinite(v) for v in values):
                     raise FloatingPointError("Nonfinite loss; optimizer update cancelled")
+            if count_totals:
+                keys = list(count_totals)
+                counts = torch.stack([count_totals[k] for k in keys]).cpu().tolist()
+                totals.update(zip(keys, counts, strict=True))
             norm = accelerator.clip_grad_norm_(adapter.parameters(), settings["clip_grad"])
             if not torch.isfinite(norm):
                 raise FloatingPointError("Nonfinite adapter gradients; optimizer update cancelled")

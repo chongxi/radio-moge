@@ -13,6 +13,7 @@ class GeometrySlot:
     key: tuple
     rgb_row: dict
     geometry: dict | None
+    augment: bool | None = None  # Bound by the actual TrainingImages wrapper, never inferred from K.
 
 
 @dataclass(frozen=True)

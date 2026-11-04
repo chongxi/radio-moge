@@ -1,7 +1,7 @@
 """Read historical accepted target references without resampling original RGB.
 
 The historical acceptance binds DATA only here. It cannot admit this new camera,
-batching or training implementation. No trainer uses this module yet.
+batching or training implementation. The ordinary trainer requires its own gate.
 """
 from copy import deepcopy
 import json
@@ -143,6 +143,14 @@ class GeometryAttachedImages(Dataset):
             raise TypeError('Expected original compact hash-verified RGB and bound geometry sidecar')
         self.images, self.sidecar = images, sidecar
 
+    @property
+    def records(self):
+        return self.images.records
+
+    @property
+    def compact_transport(self):
+        return self.images.compact_transport
+
     def __len__(self):
         return len(self.images)
 
@@ -150,7 +158,7 @@ class GeometryAttachedImages(Dataset):
         row = deepcopy(self.images.records[key[0]])
         geometry = self.sidecar.lookup(row)
         image = self.images[key]
-        return image, GeometrySlot(tuple(key), row, geometry)
+        return image, GeometrySlot(tuple(key), row, geometry, self.images.augment)
 
 
 def collate_geometry_attached(samples):

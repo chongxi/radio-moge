@@ -228,7 +228,8 @@ def validate_request(request_path):
             or config['loss'] != dict(spatial=1., summary=1., cosine=1., summary_cosine=1.)
             or config['train']['steps'] != 232538 or config['train']['max_seconds'] != 2700
             or 'mixture_weights' in config['data'] or 'geometry_supervision' in config
-            or 'feature_replay' in config or 'coverage_epochs' in config['data']):
+            or 'feature_replay' in config or 'ordinary_geometry' in config
+            or 'coverage_epochs' in config['data']):
         raise ValueError('Only the frozen bounded original-feature reference is authorized')
     checked_path(plan['manifest'])
     checked_path(plan['old_execution_data'])

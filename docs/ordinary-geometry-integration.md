@@ -70,8 +70,7 @@ not repeat the completed model gate or establish geometry-loss correctness.
    the selected observations into the loss. `select_observations` now carries the new view's contract field. The legacy
    loss checks centered K and rejects any explicitly ordinary target.
    An ordinary crop that happens to yield centered K could pass that numeric
-   check. Therefore absence of an off-center error is not admission. The current
-   helper is not wired into training, and no old loss guard is removed.
+   check. Therefore absence of an off-center error is not admission. The ordinary trainer is separately gated; no old loss guard is removed.
 6. Define and test skew/anisotropy treatment in local losses. Their existing
    scalar focal radius cannot silently stand for a full arbitrary camera.
    Preserve physical XYZ and unchanged RGB; do not shear XYZ, recenter K or
@@ -107,7 +106,7 @@ Index replacement or metadata change after initial hashing fails. The optional
 `RGBGeometryBatch` carries all slots, including `None`, through the existing
 shape grouping and normalization with the same tensor operations. Device
 transport methods retain CPU references; CUDA behavior still needs actual gate
-testing. No production trainer/observer is wired to these containers yet.
+testing. The trainer/observer now accept these containers only through the new ordinary gate.
 
 CPU tests compare both paths across worker and background preparation modes,
 resumed cursors and mixed target availability. A tiny frozen-backbone model test
@@ -118,8 +117,8 @@ bitwise. This is a synthetic regression test, not the actual RADIO/MoGe gate.
 through complete groups of 32, against saved compact pixel hashes and an ordinary
 prepared RGB loader. It reads RGB and index metadata only, not geometry arrays.
 
-Still pending: training admission for the new ordinary target/loss core,
-production observer/trainer integration, CUDA transport verification and
+Still pending: actual training admission for the new ordinary target/loss core,
+CUDA transport verification and
 actual-model paired gradient tests. Do not infer
 loss admission from an ordinary camera whose principal point happens to be centered.
 
@@ -177,7 +176,7 @@ project back to their query UVs, and rejects invalid shapes, IDs, cameras or
 out-of-bounds queries even for sparse targets. The zero-skew special case uses
 the exact legacy focal arithmetic. The legacy entry rejects ordinary targets
 even if their principal point happens to be centered. Unknown-camera evaluation
-is unchanged. There is still no trainer or config acceptance for this new core.
+is unchanged. The new trainer/config gate is implemented; no accepted runtime seal has been issued.
 
 The loss mean counts all RGB slots, including missing and <32-observation slots.
 Coverage counters are separate integer counts. Native metric scale retains the
@@ -197,27 +196,23 @@ regression or establish deterministic GPU backward behavior.
 This CPU core evidence is not an actual RADIO/MoGe gradient gate.
 
 
-## Next trainer integration boundaries
+## Trainer integration boundaries
 
 Keep original `make_loader`/`DeterministicBatches` and `TrainingImages`; the new
-path must not route through `CorpusImages`, mixture sampling or replay. Bind
-actual augmentation metadata explicitly, since `GeometrySlot` currently carries
-key/row/reference but not the underlying dataset's augment setting. The target
-builder requires that setting rather than guessing it from a centered camera.
+path must not route through `CorpusImages`, mixture sampling or replay. The wrapper now binds the actual `TrainingImages.augment` Boolean in every
+`GeometrySlot`. The target builder receives that setting rather than guessing it from K.
 
-`RGBInputAudit` still assumes tensor-only samples. Extend its sample/collate and
-prepared-window checks to carry slots while hashing only the identical RGB
-pixels, verifying the slot permutation/identity and retaining its current
-commit-only publication. Prepared transport already supports the wrapper, but
+`RGBInputAudit` now carries annotated samples through collation and prepared
+windows while hashing only RGB pixels. It separately binds each slot key, RGB
+identity, augmentation setting and full reference hash. Publication remains commit-only. Prepared transport already supports the wrapper, but
 CUDA behavior has not been checked on this path.
 
 In the trainer, unwrap `.image` before the unchanged encode/adapter/four-feature
 loss sequence. Geometry-off must bypass sidecar payloads, decoder and geometry
 random work entirely. Geometry-on must decode raw adapter features, never RMS
 normalized features. Keep the outer `n/32` gradient weight. Integer coverage
-counts must be summed separately from weighted losses; the current generic
-metrics loop weights/casts every value and cannot correctly aggregate these
-counts without an explicit branch.
+counts now sum in a separate int64 branch; only loss metrics receive the n/32
+weight, and coverage is converted to JSON integers after the complete update.
 
 Use a new config/code admission path. Retain existing reference and legacy corpus
 validators; do not let historical data acceptance stand in for the new runtime
@@ -227,3 +222,43 @@ Only then can a new actual-model zero-update gate check CUDA transport, frozen
 state and paired feature/geometry gradients. Existing original reference02 can
 supply the completed geometry-off comparison; its250-update input/evaluation
 proofs should not be repeated without a concrete new discrepancy.
+
+
+## Separately gated trainer and CPU integration checks
+
+The top-level `ordinary_geometry` configuration keeps geometry separate from the
+four feature weights, which must all equal 1. It requires the ordinary camera,
+pixel and local-radius contracts, an exact historical sidecar and a NEW admission
+reference. It rejects old paired/corpus objectives, replay, mixture sampling,
+coverage-epoch switches, baseline inference and automatic tuning. The runtime
+requires an explicit original-feature data fork and the prepared effective32
+profile. The historical feature-reference runner explicitly rejects this key.
+
+`open_ordinary_training_gate` executes before Accelerator/model/Adam construction.
+It binds every runtime Python helper, configuration, performance profile, full
+1,637,908-row RGB manifest, archived232288 checkpoint, historical sidecar, complete
+8,000 presentation keys, heldout digests and the separate250-update budget. Both
+CPU integration and actual CUDA zero-update evidence must match these bindings.
+No publisher, actual-model evidence or successful seal has been produced yet.
+The later actual trainer also reads back its own initial checkpoint before any
+update and requires adapter/RMS/Adam/RNG equality, old Adam counters and cursor0.
+This hook is CPU readback in the trainer process; it does not claim an independent
+verifier process or replace the earlier actual-model gate.
+
+The actual training loop now unwraps `.image` for the unchanged encode, adapter
+and feature-loss sequence. G=0 bypasses payload reads, decoder and geometry core
+entirely. G=1 reads the exact carried targets and decodes raw adapted features.
+It adds the pinned official geometry sum separately from F1. Missing/sparse
+images remain in the feature batch and the whole-update denominator.
+
+New tests exercise the production loop with tiny CPU models and real fixture
+cache members, including synthetic native and relative teacher targets,
+sparse/absent labels and multiple resolutions. G=0 checks bitwise four feature
+losses, per-update gradients, adapter/RMS/Adam/scheduler/RNG and cursor against the
+ordinary feature path, with geometry payload/decoder/loss calls forbidden. G=1
+checks actual payload construction, raw decoder input identity, full32 weighting
+and integer counts. Two-worker audit tests verify identical pixel/group hashes,
+slot permutation/metadata rejection and exclusion of unused prefetched windows.
+Stale/pending config, code, profile, budget, plan or actual-model reports reject
+before runtime construction. Synthetic test gates exist only as in-memory test
+substitutions; no production admission is written by those tests.
