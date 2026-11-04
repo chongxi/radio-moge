@@ -3283,3 +3283,32 @@ coverage and geometry normalization separately, preserve native/pseudo source
 limitations, and require real nonzero geometry gradients and invalid-support
 tests before a new run. The current restoration experiment tests the whole
 recipe; it cannot by itself identify which historical change caused regression.
+
+The first reference attempt stopped during W&B initialization, before the actual
+initial checkpoint, model gate or optimizer loop. It inherited a temporary W&B
+service socket from the launcher, and that service had already exited. The
+reviewed replacement `feature-original-reference-02` drops only those inherited
+service tokens and lets the trainer create its own service. It uses the same
+immutable `5f56953` implementation, plan, training parameters and fixed endpoint;
+only output/evidence paths differ. Its request SHA is
+`8e482b9904aef7fd9bce88c618ec3fdbd0b19929ccaa42c808a4d043fd35670e`.
+The failed attempt is retained. This is an explicitly reviewed launch repair,
+not an automatic retry or evidence of training regression.
+
+Future geometry integration has an additional unresolved implementation boundary.
+`CorpusImages` changes the RGB view to a centered ray warp, and its selected
+records change the feature stream. Neither is a drop-in replacement for the
+restored ordinary RGB pipeline. Geometry needs an optional path-and-SHA-bound
+lookup on original RGB identities, with explicit feature-only handling for
+missing or unaccepted targets. Original prepared batching is also tensor-only;
+target metadata must follow the exact same grouping without reordering pixels.
+
+Ordinary crop/flip preserves a generally off-center principal point. The current
+corpus loss requires centered K; its raw XYZ decoder can represent other rays,
+but removing that guard alone would not establish a valid camera contract.
+An extension must verify crop/flip ray projection, physical camera coordinates,
+native observation uniqueness, skew/anisotropy handling and loss gradients.
+The unknown-camera inference path separately assumes a centered optical axis
+when recovering focal/shift and force-projecting points. Keep that evaluation
+protocol fixed and do not equate raw known-camera improvements with gains in it.
+No such geometry extension has been implemented or admitted by this reference.
