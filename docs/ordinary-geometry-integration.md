@@ -604,3 +604,48 @@ evaluates its actual endpoint; the fixed250 wrapper rejects a partial endpoint.
 No automatic extension, retry or relabeling of partial results is authorized by
 this experiment. The first20 proof establishes correct startup, not final quality
 or a historical regression cause. A's completed fixed250 result remains unchanged.
+
+## Filtered B stopped at133: partial result preserved (November4 09:48 UTC)
+
+B stopped updating at global232421 after133 updates/4256 presentations. The
+stop reason is `wall_clock_budget`: optimizer stopping elapsed2706.566s versus
+the2700s limit; final evaluation and saving completed at2903.142s. All133 log
+records are finite. The trainer finished and W&B closed normally; the outer
+fixed250 wrapper then correctly rejected the incomplete endpoint. There is no
+`completed.json`, no fixed250 pair result, and no automatic restart/extension.
+
+Separate reviewer `code-projection-partial-review-v1/c070988` passed two focused
+tests locally and remotely and preserved `partial-step232421.pt` by hardlink.
+CPU readback checks finite adapter/all100 Adam states at232421, scheduler133,
+cursor1064, unchanged RMS/model/data/config/provenance and original runtime
+limits. It reuses the already completed initial restoration proof. All4256
+actual input pixels/keys/groups match A's corresponding prefix. Saved four-view
+identity/protocol/teacher-scalar/aggregate/log checks pass without inference.
+The checkpoint SHA is
+`8ae81b398dab992d565e8988a1d7b9cdfae9d0f6918b3f1d14e57763b9435398`;
+partial review SHA is
+`53003deb0829084bd3a825ca20ceba0e701a2137772b86526c180f3e6db4d43d`.
+
+Descriptive133-step metrics versus the same archive baseline are spatial
+0.9645058395 versus0.9647740929, summary0.9355873813 versus0.9356613590,
+and LiDAR AbsRel0.0923453629 versus0.0921184475 (+0.24633%). These are not an
+equal-update comparison against A250 or completion of the predeclared endpoint.
+W&B `a938045c` is finished; all475 final values match numerically, with7 metadata
+and30 metric equal integer/float representations. Online partial proof SHA:
+`92f7438a891d27e075f71d94817228a8afc360e932c4c9ad7d4db9f582e4f15e`.
+
+Future-only source revision2382b57 restores the same bounded four-thread ordered
+metadata pass used by A and adds a progress file. Manifest hash/count/digest
+checks remain mandatory. It changes neither image-loader workers, sample order,
+augmentation, model/loss, runtime budget nor optimizer state. Four focused CPU
+checks pass locally and remotely in final snapshot `code-ordinary-metadata-v2`
+at6a1f7e2, including workers1/2/4 equality with original records/digest and
+failure-before-verified-progress on a wrong digest. The first remote test failed
+because its fixture inherited the workspace-specific output directory; the
+fixture now uses its temporary directory, with runtime bytes unchanged. Its
+test-only local progress file was retained under a separate evidence name.
+
+The new metadata code has not run on the full corpus or been admitted for a new
+optimizer run. Its implementation digest differs, so existing training seals
+must not be reused. Neither the expected startup speedup nor a historical
+model-regression explanation is established by these CPU tests.
