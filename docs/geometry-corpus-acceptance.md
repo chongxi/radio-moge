@@ -3949,3 +3949,51 @@ with an upstream renderer as a reference. No result from that comparison exists
 yet. This research changed no label, exclusion, quarantine, admission or optimizer;
 19 candidate quarantines and 4,171 geometry exclusions remain. It identifies
 preprocessing differences, not a historical training-regression cause.
+
+### Bounded clipping diagnostic and CPU public-renderer comparison — November 4
+
+All 53 previously saved rays contain their complete positive intersection lists
+(at most eight each), so the 5 cm / 20 m interval could be evaluated without
+rereading meshes, RGB or cached arrays. The new helper rejects truncated lists
+and marks clipping-boundary cases ambiguous. Eleven targeted tests passed locally
+and remotely. One initial test fixture had a rear triangle too small for its
+oblique ray; enlarging that fixture fixed the expected intersection, without
+changing the runtime helper or tolerance.
+
+`scannetpp-saved-clip-intervals-01/report.json` records 27 changed first hits,
+20 unchanged, four with no surviving hit and two originally empty rays. Among
+the 36 rays whose old cache support was valid, 18 change to farther hits, two
+become empty and 16 retain their first hit. These are deliberately selected
+diagnostic rays, not a prevalence estimate or replacement labels.
+
+An isolated CPU environment was then prepared using extracted Ubuntu Mesa
+packages and PyRender 0.1.45, without changing the training environments.
+OSMesa reports `llvmpipe (LLVM 15.0.7, 256 bits)`. Before any source rendering,
+off-center pixel rays, a rotated/translated camera, a slanted rear plane,
+disabled face culling, near clipping and a visible far-plane control passed.
+Maximum slanted-plane depth error was 0.000013915 m. CUDA was disabled.
+
+`scannetpp-software-clip-render-01` uses the DUSt3R PyRender mesh/camera/render
+core on three existing fixed pinhole grids, with intervals 0.01–100, 0.05–100
+and 0.05–20 m. It does not reproduce DUSt3R's end-to-end selection/undistortion
+or the official renderpy backend. All 16 saved ray centers / 48 interval checks
+agree with the retained analytical intersections within 0.000017631 m.
+Changing near clipping changes more than 2 mm at 103,994 pixels in bedroom
+1284721, 59,223 in office 853223 and 243,535 in office 1002329. Subsequently
+changing far clipping produces no differences over 2 mm in these three views.
+These raw renders omit production visibility/anonymity/CPU-parity masks.
+
+All three original comparison PNGs were actually inspected. The large near
+occluder in office 1002329 disappears at 5 cm, exposing room structure. The
+bedroom's large near sheet also recedes, but thin nearby surfaces remain. Office
+853223 retains suspect foreground fragments. Existing sampled hits around
+5.7–8.4 cm demonstrate why 5 cm clipping cannot remove every near-surface issue.
+The visual review is bound by SHA256
+`a8fc98a77ea16309bbc71357859e82ae62e1883350ed5e1af80e2a66664bfb48`.
+The selectable viewer is `.kanna/visualizations/scannet-near-clip-comparison.html`.
+
+This establishes a controlled effect of clipping on these mesh renders, not
+physical accuracy, whole-source eligibility or a cause of historical training
+regression. No cached depth, RGB, training state or source flag changed; all
+19 candidate quarantines and 4,171 geometry exclusions remain. Farther mesh
+hits are not automatically admitted as replacement supervision.
