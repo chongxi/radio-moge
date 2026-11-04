@@ -3384,3 +3384,33 @@ foundation report:
 `1f9fe70e6f7215c4b3c37b35d508df9bc3936098f1be13fdaa65685fd5092ae9`.
 This proves the crop refactor's RGB compatibility on the checked inputs; it
 does not admit ordinary-camera geometry loss or establish a regression cause.
+
+### Optional geometry references on the original RGB stream — November 4
+
+Execution `code-ordinary-sidecar-v2/7e8862f` adds a path-and-SHA-bound optional
+geometry lookup and carries every RGB slot through the existing resolution
+grouping and normalization. Missing/excluded targets remain feature-only slots;
+they do not change sampling. Known-path identity mismatches fail. The historical
+acceptance, accounting and SQLite index are checked; referenced geometry payloads
+have not yet been read by this helper. A remote test exposed coarse filesystem
+timestamps, so index-change detection now also checks SQLite's header/commit
+counter and rejects WAL indexes. The failed first test attempt was retained.
+
+All 58 related tests passed on the remote CPU, including a tiny frozen-model
+test of exact feature losses, adapter gradients and RNG with geometry absent.
+This is not a RADIO/MoGe model gate. The real CPU verifier then checked 128 saved
+reference presentations across all eight sources, three resolutions and four
+complete diagnostic groups of 32. Their compact pixel hashes and normalized
+prepared RGB tensors matched the ordinary loader exactly, with unchanged Torch
+RNG. Of these bounded presentations, 89 had accepted geometry references and
+39 remained feature-only (13 TartanAir and 26 ScanNet++). These counts do not
+estimate full-stream coverage or expand the historical accepted index.
+
+Real-input report SHA:
+`21d284682262a5857eec24f56df0f469653dd6b2f51d1b6a99740385b7374215`.
+No model inference, archived checkpoint readback or optimizer update was run.
+Target construction, explicit ordinary-camera loss admission, missing/sparse
+normalization, trainer/observer integration, CUDA transport and the actual-model
+paired gate remain pending. The centered loss guard and evaluation protocols
+remain intact. See [ordinary geometry integration](ordinary-geometry-integration.md)
+for the camera-radius analysis and required next checks.
