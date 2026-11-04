@@ -125,6 +125,29 @@ def test_changed_index_or_disposition_and_stale_acceptance_rejected(tmp_path):
         GeometrySidecar(ref)
 
 
+def test_same_timestamp_commit_is_detected_before_it_can_hide_selected_geometry(tmp_path, monkeypatch):
+    from radio_moge import ordinary_geometry_data as module
+    rows, ref = fixture(tmp_path)
+    sidecar = GeometrySidecar(ref)
+    stamp = sidecar._fingerprint[:5]
+    actual_fingerprint = module.fingerprint
+    monkeypatch.setattr(module, 'fingerprint', lambda path: stamp + actual_fingerprint(path)[5:])
+    with sqlite3.connect(tmp_path / 'index.sqlite') as db:
+        db.execute("UPDATE images SET disposition='excluded' WHERE ordinal=101")
+    with pytest.raises(ValueError, match='changed after verification'):
+        sidecar.lookup(rows[1])
+
+
+def test_wal_index_is_not_treated_as_a_single_sealed_file(tmp_path):
+    _, ref = fixture(tmp_path)
+    path = tmp_path / 'index.sqlite'
+    with sqlite3.connect(path) as db:
+        db.execute('PRAGMA journal_mode=WAL')
+    ref = bind_fixture(tmp_path, path)
+    with pytest.raises(ValueError, match='non-WAL'):
+        GeometrySidecar(ref)
+
+
 @pytest.mark.parametrize('mutation', ['entry', 'pack', 'membership', 'accounting'])
 def test_inconsistent_bound_index_metadata_fails(tmp_path, mutation):
     rows, ref = fixture(tmp_path)

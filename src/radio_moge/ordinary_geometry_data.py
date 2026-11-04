@@ -27,8 +27,15 @@ def image_identity(row):
 
 
 def fingerprint(path):
-    info = Path(path).stat()
-    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+    # Some deployment filesystems expose timestamps too coarse for back-to-back
+    # commits. SQLite's header also contains its commit change counter. A sealed
+    # index must use the ordinary rollback journal, never an unbound WAL sidecar.
+    with Path(path).open('rb') as file:
+        info = os.fstat(file.fileno())
+        header = file.read(100)
+    if len(header) != 100 or header[:16] != b'SQLite format 3\x00' or header[18:20] != b'\x01\x01':
+        raise ValueError('Expected a closed non-WAL SQLite geometry index')
+    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, header
 
 
 class GeometrySidecar:
@@ -54,8 +61,10 @@ class GeometrySidecar:
                 or any(gate[k] != accounting[k] for k in ('index', 'manifest_sha256', 'selected_images'))):
             raise ValueError('Historical acceptance and accounting identity differ')
         self.index_ref = deepcopy(gate['index'])
-        self.path = str(checked_path(self.index_ref))
+        self.path = self.index_ref['path']
         self._fingerprint = fingerprint(self.path)
+        checked_path(self.index_ref)
+        self._assert_unchanged()
         self._local = threading.local()
         with readonly_db(self.path) as db:
             counts = dict(db.execute('SELECT disposition,COUNT(*) FROM images GROUP BY disposition'))
@@ -71,8 +80,7 @@ class GeometrySidecar:
 
     @property
     def db(self):
-        if fingerprint(self.path) != self._fingerprint:
-            raise ValueError('Historical geometry index changed after verification')
+        self._assert_unchanged()
         if getattr(self._local, 'pid', None) != os.getpid():
             old = getattr(self._local, 'connection', None)
             if old is not None:
@@ -80,6 +88,10 @@ class GeometrySidecar:
             self._local.connection = readonly_db(self.path)
             self._local.pid = os.getpid()
         return self._local.connection
+
+    def _assert_unchanged(self):
+        if fingerprint(self.path) != self._fingerprint:
+            raise ValueError('Historical geometry index changed after verification')
 
     def __getstate__(self):
         return dict(self.__dict__, _local=None)
@@ -100,6 +112,7 @@ class GeometrySidecar:
         identity = image_identity(row)
         value = self.db.execute('SELECT ordinal,sha256,row_json,disposition,pack,entry_json '
                                 'FROM images WHERE image=?', (identity[0],)).fetchone()
+        self._assert_unchanged()
         if value is None:
             return None  # Outside the historical accepted scope; RGB still participates.
         ordinal, sha, encoded, disposition, pack, entry_json = value
@@ -114,6 +127,7 @@ class GeometrySidecar:
         if image_identity(entry['image']) != identity:
             raise ValueError('Selected geometry receipt has a different RGB identity')
         checksum = self.db.execute('SELECT sha256 FROM packs WHERE path=?', (pack,)).fetchone()
+        self._assert_unchanged()
         if checksum is None or not HEX64.fullmatch(checksum[0]):
             raise ValueError('Selected geometry has no bound pack identity')
         return dict(corpus_ordinal=ordinal, pack=dict(path=pack, sha256=checksum[0]),
