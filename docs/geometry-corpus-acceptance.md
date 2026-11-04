@@ -3179,3 +3179,32 @@ tests passed locally and remotely (12). Execution snapshots are respectively
 and crop work noted above. The qualified policy-bound TartanAir source review
 and explicit quarantine register have not yet been published; active accepted
 training artifacts remain unchanged. No model or optimizer ran in this work.
+
+### TartanAir qualified source eligibility complete — November 4
+
+`tartanair-source-review-01/report.json`, SHA
+`b6102a07d8f6cf0b1dd58f9901cdc46f325038b341e9550f155ac909c8e29c4b`,
+now accounts for all 229,924 frozen source images as **229,862 eligible native
+synthetic candidates and 62 geometry-only exclusions**. The source review binds
+the immutable policy, full producer readback/outcome audit, the earlier primary
+documentation and preflight review, all 113 actual candidate source/visual
+checks, 339 actual crop checks and the exact sparse-view disposition. It records
+an explicit empty candidate-quarantine register. The 62 existing exclusions
+retain RGB and their exact rejection evidence, including legacy records without
+redundant statistics. No exclusion or threshold has changed.
+
+Execution `code-tartanair-source-review-v1` / `8c53638` made one sequential
+source-route pass over a verified temporary local copy of the completed index.
+It did not repeat source-array generation, full payload readback, visual review
+or model inference. All 36 source-disposition/evidence-binding tests passed
+locally and remotely, and the actual 113/339 metadata scope matched the validator.
+The source has 24 bundles, 12 environment names and 11 leakage families;
+272 trajectories are not independent scenes. Synthetic reflection/translucency
+and the limits of same-renderer consistency remain explicit.
+
+This completes the pending qualified source review above, not a new corpus
+admission or training run. The accepted 598,298-geometry / 796,477-RGB artifacts
+remain unchanged. No optimizer ran. The user-facing root-cause conclusion also
+remains unchanged: verified training-contract differences and a missing
+original-pipeline continuation reference do not establish the cause of cosine
+and LiDAR regression. The prepared reference has not been run.
