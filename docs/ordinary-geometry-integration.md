@@ -342,3 +342,52 @@ bitwise-gradient claim or relaxed numeric tolerance is emitted. Runtime code,
 candidate config and both repeatability reports are bound anew. The previous
 failed gate remains failed. Actual geometry gradients and full32 memory admission
 are still pending this revised run.
+
+## Completed CUDA gate and the bounded corrected training attempt
+
+`ordinary-model-gate-02` completed with zero optimizer updates. Report SHA
+`d09810e27547d469c49b16da672519bba9ce797e0f0f6ab898b44c8652670213`
+binds execution116e7f6 and the exact runtime candidate. All27 feature comparisons
+passed the separately named runtime-forward and diagnostic-math-backward checks.
+All30 geometry cases passed, including actual first96 stream presentations,
+source/resolution diagnostics and dense32-plus-future32 at all three resolutions.
+Measured-sensor, synthetic-renderer and relative-teacher targets were covered;
+pseudo/missing/sparse slots did not acquire a metric-scale gradient. Frozen
+models, adapter/RMS, source Adam bytes and restored RNG remained unchanged.
+
+Peak allocated memory was105,486,952,448 bytes and peak reserved memory was
+118,459,727,872 bytes. Peak-adjusted free memory was20,956,774,400 bytes,
+above the8GiB gate, with source Adam/workspace reservation included. This was
+an optimizer-free capacity test, not a completed Adam update or a promise about
+future allocations by other processes.
+
+The runner separately binds the recorded runtime attention flags at publication
+and launch. It rejects a report that claims default-backend bitwise gradient
+equality or uses the math diagnostic backend for training. Its12 local/remote
+tests include scope mislabeling and incomplete fixed250 endpoints. Runtime
+package bytes remain identical to the actual model gate.
+
+`ordinary-geometry-training-01` was admitted with a new seal
+`c2902f84c58cae2cbe00dccc917574f3265c4d2097109e7344cce0b5c0f07e3c`
+and launched from immutable runner executione71ab8c. It preserves F1, the full
+1,637,908-image RGB permutation, ordinary crops, three resolutions, effective
+batch32, and archive232288 adapter/RMS/Adam/RNG. Geometry is joined by exact
+RGB identity, with missing/excluded targets retaining their feature slots and
+the full RGB denominator. No corpus mixture or extra replay stream is introduced.
+The bound is250 updates to232538 or2700 seconds; a short budget endpoint cannot
+be reported as fixed250. No automatic follow-up or retry is configured.
+
+At launch it was still loading metadata and had no verified optimizer update.
+The real trainer must separately pass its actual saved initial-state comparison
+before updating. Full metadata startup is included in the time budget; the
+bounded observer does not establish its elapsed time.
+
+The evaluation contract compares fixed final232538 against both archive232288
+and `feature-original-reference-02`, verifies all8000 actual RGB pixels/keys/
+prepared groups against that reference, and retains all four protocols. Both
+original-resolution cosines must rise and independent LiDAR AbsRel must fall.
+Known-camera laser remains a separate18-case post-training evaluation. No
+baseline inference is repeated. Reviewer177f9f6 passed7 local/remote tests and
+an actual saved-reference self-comparison across159/159/77/93 metric fields,
+all exactly zero difference. This validates review compatibility, not training
+benefit. Historical regression causality and joint improvement remain unresolved.
