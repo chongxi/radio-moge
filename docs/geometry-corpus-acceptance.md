@@ -3372,3 +3372,15 @@ The remaining target-join, grouping, all-image normalization and camera/loss
 requirements are recorded in [ordinary geometry integration](ordinary-geometry-integration.md).
 Actual-model feature-loss/gradient parity and a new geometry gate remain required.
 No optimizer or geometry model probe was started for this foundation work.
+
+Execution `code-ordinary-geometry-v1/fa2bfdb` subsequently passed all 81 tests on
+the remote host. Its CPU-only comparison checked 128 real presentations across
+all eight sources and all three resolutions against both archived `90a6821`
+RGB code and the completed reference's saved pixel hashes. Every uint8 tensor
+matched bitwise. The manifest was hash-checked in one sequential pass; no model
+inference, archived checkpoint readback or optimizer was repeated. Pixel report:
+`58b185baa37e0b4a3b96786e51e86162f63bb481a23fbe30711c290e1e43695c`;
+foundation report:
+`1f9fe70e6f7215c4b3c37b35d508df9bc3936098f1be13fdaa65685fd5092ae9`.
+This proves the crop refactor's RGB compatibility on the checked inputs; it
+does not admit ordinary-camera geometry loss or establish a regression cause.
