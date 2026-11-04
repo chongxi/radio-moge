@@ -31,8 +31,12 @@ def investigate(directory, output):
     pyrender, renderer, identity = backend()
     from OpenGL import GL
     identity.update({name: int(GL.glGetIntegerv(value)) for name, value in (
-        ('depth_bits', GL.GL_DEPTH_BITS), ('sample_buffers', GL.GL_SAMPLE_BUFFERS),
+        ('sample_buffers', GL.GL_SAMPLE_BUFFERS),
         ('samples', GL.GL_SAMPLES), ('subpixel_bits', GL.GL_SUBPIXEL_BITS))})
+    # GL_DEPTH_BITS is removed from this core profile; query the actual default
+    # framebuffer attachment rather than assuming the requested OSMesa format.
+    identity['depth_bits'] = int(GL.glGetFramebufferAttachmentParameteriv(
+        GL.GL_FRAMEBUFFER, GL.GL_DEPTH, GL.GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE))
     identity['supports_framebuffers'] = renderer._platform.supports_framebuffers()
     identity['additional_sources'] = [file_ref(Path(pyrender.__file__).parent/n)
                                       for n in ('offscreen.py', 'mesh.py', 'primitive.py')]
