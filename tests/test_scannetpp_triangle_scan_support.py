@@ -7,6 +7,8 @@ from probe_scannetpp_triangle_scan_support import (
     directions,
     nearest_angle_pixel,
     range_neighborhood,
+    scanner_local_target,
+    scanner_pose_diagnostics,
 )
 
 
@@ -89,6 +91,86 @@ def test_missing_exact_triangle_or_mask_does_not_become_a_contradiction():
         == "unsupported_or_boundary_measurement"
     )
     assert (
-        compare_triangle(verts, np.eye(4), [2, 0, 1], measurement)["diagnostic"]
+        compare_triangle(verts, np.eye(4), np.array([2, 0, 1]) / np.sqrt(5), measurement)[
+            "diagnostic"
+        ]
         == "stored_ray_misses_exact_triangle"
     )
+
+
+def test_rounded_published_matrix_preserves_local_radial_parameter_and_inverse():
+    pose = np.eye(4)
+    pose[:3, :3] = [
+        [0.999999, -0.000001, 0],
+        [0.000001, 1.0000005, 0.0000004],
+        [0, -0.0000004, 1.0000006],
+    ]
+    pose[:3, 3] = [10, 20, 30]
+    original = pose.copy()
+    local_vertices = np.array([[-1, -1, 2], [1, -1, 2], [0, 1, 2]], float)
+    vertices = local_vertices @ pose[:3, :3].T + pose[:3, 3]
+    measurement = range_neighborhood(
+        np.full((3, 3), 2000, np.uint16), np.full((3, 3), 255, np.uint8), 1, 1
+    )
+    result = compare_triangle(vertices, pose, [0, 0, 1], measurement)
+    assert 1e-6 < result["scanner_pose_diagnostics"]["rotation_orthogonality_max_abs"] < 1e-3
+    assert result["triangle_range_m"] == pytest.approx(2, abs=5e-14, rel=0)
+    assert result["triangle_world_distance_m"] == pytest.approx(
+        2 * np.linalg.norm(pose[:3, 2]), abs=5e-14, rel=0
+    )
+    assert abs(result["triangle_world_distance_m"] - result["triangle_range_m"]) > 1e-6
+    np.testing.assert_array_equal(result["direction_world"], pose[:3, 2])
+    assert result["diagnostic"] == "measurement_near_triangle"
+    normal = np.cross(vertices[1] - vertices[0], vertices[2] - vertices[0])
+    expected_cosine = abs(normal @ pose[:3, 2]) / (
+        np.linalg.norm(normal) * np.linalg.norm(pose[:3, 2])
+    )
+    assert result["absolute_cosine_incidence"] == expected_cosine
+    local_point = np.array([0.2, -0.3, 2.0])
+    world = pose[:3, :3] @ local_point + pose[:3, 3]
+    np.testing.assert_allclose(scanner_local_target(pose, world), local_point, atol=5e-14, rtol=0)
+    assert np.max(abs(pose[:3, :3].T @ (world - pose[:3, 3]) - local_point)) > 1e-6
+    np.testing.assert_array_equal(pose, original)
+
+
+@pytest.mark.parametrize(
+    "kind", ["singular", "reflected", "distorted", "nonhomogeneous", "nonfinite"]
+)
+def test_invalid_published_pose_is_not_repaired_or_admitted(kind):
+    pose = np.eye(4)
+    if kind == "singular":
+        pose[0, 0] = 0
+    elif kind == "reflected":
+        pose[0, 0] = -1
+    elif kind == "distorted":
+        pose[0, 1] = 0.01
+    elif kind == "nonhomogeneous":
+        pose[3, 0] = 0.001
+    else:
+        pose[0, 0] = np.nan
+    with pytest.raises(ValueError):
+        scanner_pose_diagnostics(pose)
+    with pytest.raises(ValueError):
+        scanner_local_target(pose, [1, 2, 3])
+
+
+@pytest.mark.parametrize("direction", [[0, 0, 0], [0, 0, 2], [np.nan, 0, 1], [0, 1]])
+def test_radial_contract_rejects_nonunit_or_invalid_local_directions(direction):
+    vertices = np.array([[-1, -1, 2], [1, -1, 2], [0, 1, 2]], float)
+    with pytest.raises(ValueError, match="unit scanner-local"):
+        compare_triangle(vertices, np.eye(4), direction, dict(stable_supported=False))
+
+
+def test_pose_tolerances_match_existing_metadata_validator():
+    from fetch_scannetpp_scanner_poses import check_poses
+
+    for drift in (1e-7, 1e-6, 1e-4, 0.0004, 0.0006, 0.01):
+        pose = np.eye(4)
+        pose[0, 0] += drift
+        try:
+            check_poses([pose.tolist()], [0])
+        except ValueError:
+            with pytest.raises(ValueError):
+                scanner_pose_diagnostics(pose)
+        else:
+            scanner_pose_diagnostics(pose)

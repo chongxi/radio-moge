@@ -16,6 +16,55 @@ from PIL import Image
 from probe_scannetpp_native_near_surfaces import analytic_hits
 
 
+# Pinned to fetch_scannetpp_scanner_poses.check_poses. These admit publisher
+# rounding, not a fitted replacement rotation. Use every released matrix entry.
+SCANNER_ORTHOGONALITY_ATOL = 1e-3
+SCANNER_DETERMINANT_ATOL = 1e-3
+SCANNER_HOMOGENEOUS_ATOL = 1e-6
+SCANNER_HOMOGENEOUS_RTOL = 1e-5
+
+
+def scanner_pose_diagnostics(scanner_pose):
+    pose = np.asarray(scanner_pose, dtype=np.float64)
+    if (
+        pose.shape != (4, 4)
+        or not np.isfinite(pose).all()
+        or not np.allclose(
+            pose[3], [0, 0, 0, 1], atol=SCANNER_HOMOGENEOUS_ATOL, rtol=SCANNER_HOMOGENEOUS_RTOL
+        )
+    ):
+        raise ValueError("Finite homogeneous published scanner pose required")
+    rotation = pose[:3, :3]
+    error = float(np.max(abs(rotation @ rotation.T - np.eye(3))))
+    determinant = float(np.linalg.det(rotation))
+    if (
+        determinant <= 0
+        or error > SCANNER_ORTHOGONALITY_ATOL
+        or abs(determinant - 1) > SCANNER_DETERMINANT_ATOL
+    ):
+        raise ValueError("Nonsingular proper scanner matrix within metadata tolerance required")
+    return dict(
+        rotation_orthogonality_max_abs=error,
+        determinant=determinant,
+        matrix_modified=False,
+        orthogonality_atol=SCANNER_ORTHOGONALITY_ATOL,
+        determinant_atol=SCANNER_DETERMINANT_ATOL,
+        homogeneous_atol=SCANNER_HOMOGENEOUS_ATOL,
+        homogeneous_rtol=SCANNER_HOMOGENEOUS_RTOL,
+    )
+
+
+def scanner_local_target(scanner_pose, point_world):
+    scanner_pose_diagnostics(scanner_pose)
+    pose, point = (
+        np.asarray(scanner_pose, dtype=np.float64),
+        np.asarray(point_world, dtype=np.float64),
+    )
+    if point.shape != (3,) or not np.isfinite(point).all():
+        raise ValueError("Finite world target required")
+    return np.linalg.solve(pose[:3, :3], point - pose[:3, 3])
+
+
 def directions(azimuth, polar):
     azimuth, polar = (
         np.asarray(azimuth, dtype=np.float64) / 1000,
@@ -87,19 +136,26 @@ def range_neighborhood(depth, mask, y, x):
 
 def compare_triangle(vertices, scanner_pose, direction_local, measurement):
     pose = np.asarray(scanner_pose, dtype=np.float64)
+    pose_check = scanner_pose_diagnostics(pose)
+    local = np.asarray(direction_local, dtype=np.float64)
     if (
-        pose.shape != (4, 4)
-        or not np.isfinite(pose).all()
-        or not np.allclose(pose[3], [0, 0, 0, 1], atol=1e-8, rtol=0)
-        or not np.allclose(pose[:3, :3].T @ pose[:3, :3], np.eye(3), atol=1e-6, rtol=0)
+        local.shape != (3,)
+        or not np.isfinite(local).all()
+        or not np.isclose(np.linalg.norm(local), 1, atol=1e-12, rtol=0)
     ):
-        raise ValueError("Finite rigid scanner pose required")
-    direction = np.asarray(direction_local, dtype=np.float64) @ pose[:3, :3].T
-    direction = direction / np.linalg.norm(direction)
+        raise ValueError("Finite unit scanner-local direction required for radial range")
+    # Official backprojection is world = translation + R * (radial_range * d).
+    # Do not normalize R*d: its intersection parameter is the local radial range.
+    direction = pose[:3, :3] @ local
+    direction_norm = float(np.linalg.norm(direction))
     hits = analytic_hits(vertices, np.array([[0, 1, 2]]), pose[:3, 3], direction)["first_hits"]
     result = dict(
         intersects_exact_triangle=bool(hits),
         direction_world=direction.tolist(),
+        direction_world_normalized=False,
+        direction_world_norm=direction_norm,
+        range_convention="scanner_local_radial_m",
+        scanner_pose_diagnostics=pose_check,
         scanner_origin=pose[:3, 3].tolist(),
         measurement=measurement,
     )
@@ -111,11 +167,14 @@ def compare_triangle(vertices, scanner_pose, direction_local, measurement):
     normal = np.cross(vertices[1] - vertices[0], vertices[2] - vertices[0])
     result.update(
         triangle_range_m=hit["t"],
+        triangle_world_distance_m=hit["t"] * direction_norm,
         barycentrics=hit["barycentrics"],
         boundary_hit=hit["boundary_hit"],
         intersection_residual_m=hit["ray_triangle_residual_m"],
         relative_determinant=hit["relative_determinant"],
-        absolute_cosine_incidence=float(abs(normal @ direction) / np.linalg.norm(normal)),
+        absolute_cosine_incidence=float(
+            abs(normal @ direction) / (np.linalg.norm(normal) * direction_norm)
+        ),
         point_world=(pose[:3, 3] + hit["t"] * direction).tolist(),
     )
     if not measurement["stable_supported"] or hit["boundary_hit"]:
@@ -230,7 +289,7 @@ def run(probe_path, root, output, ordinals):
             measurements = []
             for target in targets:
                 point = np.asarray(target["point_world"])
-                local = (point - pose[:3, 3]) @ pose[:3, :3]
+                local = scanner_local_target(pose, point)
                 y, x, direction, angle = nearest_angle_pixel(arrays["azim"], arrays["elev"], local)
                 measure = range_neighborhood(arrays["range"], arrays["mask"], y, x)
                 comparison = compare_triangle(target["vertices_world"], pose, direction, measure)
@@ -285,9 +344,13 @@ def run(probe_path, root, output, ordinals):
         training_admission=False,
         optimizer_updates=0,
         geometry_or_camera_edited=False,
+        range_convention="scanner_local_radial_m",
+        target_transform="solve_published_3x3_without_fitting",
+        world_direction_normalized=False,
         panoramas_added_to_training=False,
         gpu_used=False,
         code=file_ref(Path(__file__)),
+        metadata_pose_validator=file_ref(Path(__file__).with_name("fetch_scannetpp_scanner_poses.py")),
     )
     publish_json(output / "report.json", report)
     return report
