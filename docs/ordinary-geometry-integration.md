@@ -186,6 +186,8 @@ never use predicted metric scale. Tests cover full32 normalization across comput
 groups. Upstream tests use96x128 geometry and assert finite nonzero gradients for
 each component, including local16 (the old32x32 fixture could never meet its
 32-point patch minimum). Zero-skew legacy/ordinary component losses and gradients
-are checked bitwise; summed float32 gradients are checked with a small numeric
-bound because separate graph branch accumulation need not be bitwise identical.
+and their sum are checked bitwise. An early combined invocation showed a maximum
+summed-gradient difference of7.3e-12;40 separate retained-graph CPU comparisons
+did not reproduce it (20 legacy/legacy and20 legacy/ordinary, exact throughout).
+Its cause is not established, and the final test retains zero tolerance.
 This CPU core evidence is not an actual RADIO/MoGe gradient gate.

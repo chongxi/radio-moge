@@ -98,14 +98,14 @@ def test_zero_skew_centered_special_case_matches_legacy_loss_gradients_rng(small
         x = torch.autograd.grad(a[key], parameter, retain_graph=True)[0]
         y = torch.autograd.grad(b[key], parameter, retain_graph=True)[0]
         torch.testing.assert_close(x, y, rtol=0, atol=0)
-    # Separate summed graphs can accumulate these identical branch gradients
-    # in different float32 orders. The per-component equality above is strict.
+    # Require the sum as well as every component to match; do not hide a
+    # possible path difference behind a floating-point tolerance.
     grad_a = torch.autograd.grad(sum(a[k] for k in OFFICIAL_GT_KEYS),
                                  (raw['points'], raw['metric_scale']))
     grad_b = torch.autograd.grad(sum(b[k] for k in OFFICIAL_GT_KEYS),
                                  (raw['points'], raw['metric_scale']))
     for x, y in zip(grad_a, grad_b):
-        torch.testing.assert_close(x, y, rtol=1e-6, atol=1e-10)
+        torch.testing.assert_close(x, y, rtol=0, atol=0)
     assert torch.equal(before, torch.get_rng_state())
 
 
