@@ -1,5 +1,47 @@
 # Geometry corpus: acceptance before training
 
+## November 4 projection correction — supersedes COCO reuse below
+
+The user requires single-view perspective RGB. A new pixel review found that
+COCO includes a spherical room panorama (ordinal269402), stitched/warped views,
+fisheye imagery and multi-photo collages. The old source review and identity,
+depth-support and model checks did **not** certify image projection. Those
+earlier passes cannot justify continued use of these images.
+
+Archived full-epoch consumption includes the panorama; the original loader only
+crops/flips/resizes and does not reproject it. Recent actual pixel logs also
+prove consumption of fisheye261114 and collages262487/296916, including the
+multiple views in the actual crops. These have old selected teacher labels too.
+This establishes an input defect, not the cause of previous metric regression.
+
+`projection-audit-20261104-01/visual-findings-and-forward-hold-01.json` records
+the evidence and a **forward hold on all39,997 unscreened COCO inputs**, covering
+feature RGB, replay and geometry. Not every COCO image is classified as bad.
+`projection-filtered-candidates-01` materializes1,597,911 retained RGB rows,
+756,480 legacy replay rows, and558,314 selected geometry rows after removing
+39,984 COCO geometry selections. Other source selection and retained RGB row
+bytes are unchanged. Historical artifacts, rejected rows and provenance remain
+intact. The copied geometry index records the prior dispositions and has no
+training acceptance seal. Do not reuse the historical COCO source passes or
+old unfiltered training seals for a new run. Future configuration, sampling,
+coverage and admission must bind the filtered inputs. COCO needs individual
+projection review before re-admission; future validation also needs projection
+screening without silently changing historical comparisons.
+
+The independent LiDAR AbsRel baseline0.092118447 is a different route:
+120 rectified **iPhone RGB + measured iPhone depth** pairs from30 scenes.
+It does not use scanner panoramas. Actual file hashes, dimensions and source
+records were checked again in
+`projection-audit-20261104-01/lidar-input-projection-check-01`.
+The separate18-view laser metric uses explicitly reprojected perspective
+derivatives of scanner panoramas. Neither finding establishes zero residual
+sensor-registration error or a cause for model degradation.
+
+ZInD remains at four downloaded public panorama examples, never inserted into
+training. ProcTHOR remains at house JSON candidates, with no rendered RGB.
+New-source preparation and new optimizer launches remain paused during this
+projection correction. Existing ScanNet++ native-cache production is preserved.
+
 Chongxi authorized offline labels for the frozen 1,637,909-image training manifest
 on 2026-11-02, and training **only after** full data, depth, loss and coverage
 acceptance. This supersedes the earlier unconfirmed cache-scope proposal. The

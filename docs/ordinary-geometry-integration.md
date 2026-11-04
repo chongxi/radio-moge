@@ -440,3 +440,20 @@ the historical regression cause. The documented default-backend gradient
 repeatability limitation remains; training did not switch to the diagnostic
 math backend. Existing reference, control, model-gate and startup proofs need
 not be repeated.
+
+## November 4 input-projection correction
+
+The matched-pixel proofs above establish input equality, not suitability of
+those pixels for a perspective-camera task. Subsequent review found a spherical
+panorama in historical COCO training and pixel-verified fisheye/multi-photo
+inputs in this250-update run. The old selected geometry index also contains
+their teacher labels. Refer to the projection correction at the top of
+`geometry-corpus-acceptance.md` and the bound evidence under
+`projection-audit-20261104-01`.
+
+All39,997 COCO images are held from new RGB/replay candidates pending individual
+projection review;39,984 old selected COCO geometry targets are removed from the
+new candidate index. `projection-filtered-candidates-01` is a data correction,
+not a training seal. No historical config or result is rewritten, and no new
+optimizer segment is authorized by an old unfiltered seal. Input contamination
+is confirmed; its effect on the observed cosine/LiDAR changes remains untested.
