@@ -27,7 +27,8 @@ CPU_REQUIREMENTS = ('production_loop_g0_exact', 'geometry_off_no_calls',
     'slot_audit_and_commit_only', 'whole_rgb_denominator', 'integer_coverage',
     'ordinary_camera_and_payload_checks')
 MODEL_REQUIREMENTS = ('cuda_transport_exact', 'initial_adapter_rms_rng_exact', 'source_adam_unchanged',
-    'feature_pixels_losses_gradients_exact', 'geometry_gradients_finite_nonzero',
+    'runtime_feature_pixels_losses_exact', 'diagnostic_math_feature_gradients_exact',
+    'runtime_attention_backend_restored', 'geometry_gradients_finite_nonzero',
     'frozen_state_unchanged', 'rng_restored', 'gradients_discarded',
     'optimizer_not_constructed')
 

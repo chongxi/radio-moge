@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import torch
 from torch.utils.data import DataLoader
+from torch.nn.attention import sdpa_kernel, SDPBackend
 
 from radio_moge.checkpoint import atomic_json, rng_state, restore_rng
 from radio_moge.corpus_admission import checked_json, checked_path, file_ref
@@ -17,8 +18,8 @@ from radio_moge.data import DeterministicBatches, TrainingImages
 from radio_moge.geometry_cache import publish_json
 from radio_moge.losses import FeatureStatistics
 from radio_moge.ordinary_geometry_data import GeometryAttachedImages, GeometrySidecar, collate_geometry_attached
-from radio_moge.ordinary_model_probe import (compare_feature_window, geometry_window, module_states,
-                                            state_digest)
+from radio_moge.ordinary_model_probe import (compare_feature_window, compare_feature_forward,
+                                            geometry_window, module_states, state_digest)
 from radio_moge.ordinary_training import (config_digest, digest, equal_state, implementation_digest,
     validate_ordinary_config, validate_ordinary_performance, check_ordinary_data_fork)
 from radio_moge.prefetch import PreparedWindows, DeviceWindows, FloatLoader, normalize_uint8
@@ -37,6 +38,26 @@ class OriginalIndexRecords(dict):
 
     def __len__(self):
         return self.full_count
+
+
+def attention_modes():
+    return {key: getattr(torch.backends.cuda, key+'_sdp_enabled')()
+            for key in ('flash', 'mem_efficient', 'math', 'cudnn')}
+
+
+def paired_feature(system, adapter, statistics, plain, attached, config, same_path_check=False):
+    original_modes = attention_modes()
+    runtime = compare_feature_forward(system, adapter, statistics, plain, attached, config)
+    # Exact gradient comparison uses the separately demonstrated repeatable
+    # diagnostic backend. The actual trainer and G-on memory/backward retain
+    # the original automatic backend; no tolerance is loosened.
+    with sdpa_kernel(SDPBackend.MATH):
+        diagnostic = compare_feature_window(system, adapter, statistics, plain, attached, config,
+                                            same_path_check=same_path_check)
+    if attention_modes() != original_modes:
+        raise ValueError('Feature diagnostic changed runtime attention backend')
+    return dict(runtime_forward=runtime, diagnostic_math_backward=diagnostic,
+                runtime_attention_backend_restored=True, runtime_attention_modes=original_modes)
 
 
 def loader_windows(records, config, performance, sidecar, output, keys):
@@ -107,6 +128,22 @@ def run(request_path, lock_path):
                 config['train']['seed'], 0, 2000) for k in batch]
     if planned != expected:
         raise ValueError('Full ordinary permutation presentation plan differs')
+    numeric = {k: checked_json(v) for k, v in request['repeatability_evidence'].items()}
+    if (set(numeric) != {'current', 'sdpa_math'}
+            or any(p['stage'] != 'original_feature_repeatability_observed_not_admitted'
+                   or p['mode'] != k or p['optimizer_updates'] != 0
+                   or p['training_admission'] is not False or len(p['repetitions']) != 2
+                   for k,p in numeric.items())
+            or any(not all(r['components_exact'].values()) or not r['loss_rows_exact'] or not r['rng_exact']
+                   for p in numeric.values() for r in p['repetitions'])
+            or any(not r['gradient_difference']['exact'] for r in numeric['sdpa_math']['repetitions'])):
+        raise ValueError('Separately recorded runtime/math repeatability diagnosis is incomplete')
+    for proof in numeric.values():
+        original_request = checked_json(proof['request'])
+        if (original_request['binding']['config_sha256'] != binding['config_sha256']
+                or original_request['binding']['source_checkpoint'] != binding['source_checkpoint']
+                or [r['key'] for r in proof['actual_inputs']['logical_images']] != planned[:32]):
+            raise ValueError('Repeatability diagnosis belongs to a different model/config/input stream')
     target_proof = checked_json(request['target_proof'])
     if target_proof['stage'] != 'ordinary_target_camera_cpu_verified_not_admitted':
         raise ValueError('Expected completed bounded target proof')
@@ -188,7 +225,7 @@ def run(request_path, lock_path):
                     for i, attached in enumerate(attached_windows):
                         progress('actual_stream_model_probe', window=i, completed_feature_cases=len(feature_rows))
                         plain = [x.cuda() for x in plain_cpu[i]]
-                        feature_rows.append(compare_feature_window(system, adapter, statistics,
+                        feature_rows.append(paired_feature(system, adapter, statistics,
                             plain, attached, config, same_path_check=i == 0))
                         geometry_rows.append(geometry_window(system, adapter, statistics, attached, config, 32, i*8,
                                                              expected_targets))
@@ -205,7 +242,7 @@ def run(request_path, lock_path):
                     try:
                         groups = next(windows)
                         plain = [normalize_uint8(torch.stack([plain_dataset[tuple(k)] for k in keys])).cuda()]
-                        feature_rows.append(compare_feature_window(system, adapter, statistics, plain, groups, config))
+                        feature_rows.append(paired_feature(system, adapter, statistics, plain, groups, config))
                         geometry_rows.append(geometry_window(system, adapter, statistics, groups, config, 4,
                                                              expected_targets=expected_targets))
                         scope.append(dict(kind='source_resolution_diagnostic', keys=keys))
@@ -265,7 +302,11 @@ def run(request_path, lock_path):
                 feature_cases=feature_rows, geometry_cases=geometry_rows, memory=memory,
                 state_before=before, state_after=after, source_adam_digest=adam_before,
                 cuda_transport_exact=True, initial_adapter_rms_rng_exact=True, source_adam_unchanged=True,
-                feature_pixels_losses_gradients_exact=True, geometry_gradients_finite_nonzero=True,
+                runtime_feature_pixels_losses_exact=True, diagnostic_math_feature_gradients_exact=True,
+                runtime_attention_backend_restored=True, geometry_gradients_finite_nonzero=True,
+                repeatability_evidence=request['repeatability_evidence'],
+                default_backend_gradient_bitwise_equality_claimed=False,
+                diagnostic_backend_used_for_training=False,
                 frozen_state_unchanged=True, rng_restored=True, gradients_discarded=True,
                 optimizer_not_constructed=True, optimizer_updates=0, training_admission=False,
                 initial_adam_note='Source moments/counters retained unchanged in CPU checkpoint; actual trainer restoration still requires its separate initial checkpoint comparison.',

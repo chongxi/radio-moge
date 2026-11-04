@@ -52,7 +52,7 @@ def autocast(config, device):
             ) if config['train']['precision'] == 'bf16' else nullcontext
 
 
-def feature_window(system, adapter, statistics, groups, config, denominator):
+def feature_window(system, adapter, statistics, groups, config, denominator, backward=True):
     """Same encode/raw-adapter/F1/whole-update weighting as the production loop."""
     adapter.zero_grad(set_to_none=True)
     amp = autocast(config, next(adapter.parameters()).device)
@@ -68,18 +68,40 @@ def feature_window(system, adapter, statistics, groups, config, denominator):
         total = weighted_loss(losses, config['loss'])
         if not torch.isfinite(total):
             raise FloatingPointError('Nonfinite G=0 model loss')
-        (total * (len(image) / denominator)).backward()
+        if backward:
+            (total * (len(image) / denominator)).backward()
         rows.append(dict(shape=list(image.shape), losses={k: float(v.detach()) for k, v in losses.items()},
                          total=float(total.detach())))
+        del total, losses, prediction, target, features
     if images != denominator:
         raise ValueError('Probe feature denominator differs from its complete window')
-    result = dict(rows=rows, gradient=gradient_summary(adapter.parameters()))
+    result = dict(rows=rows, gradient=gradient_summary(adapter.parameters()) if backward else None)
     assert_frozen(system)
     return result
 
 
 def capture_gradients(adapter):
     return [None if p.grad is None else p.grad.detach().cpu().clone() for p in adapter.parameters()]
+
+
+def compare_feature_forward(system, adapter, statistics, plain, attached, config):
+    """Runtime-backend exact pixels/loss/RNG, without a claim of repeatable backward."""
+    if (len(plain) != len(attached)
+            or any(not equal_state(a, b.image) for a, b in zip(plain, attached, strict=True))):
+        raise ValueError('Runtime ordinary pixels or grouping differ')
+    before = rng_state()
+    denominator = sum(len(x) for x in plain)
+    a = feature_window(system, adapter, statistics, plain, config, denominator, backward=False)
+    after = rng_state()
+    restore_rng(before)
+    b = feature_window(system, adapter, statistics, attached, config, denominator, backward=False)
+    if not equal_state(a, b) or not equal_state(after, rng_state()):
+        raise ValueError('Runtime-backend feature forward loss/RNG differs')
+    if any(p.grad is not None for p in adapter.parameters()):
+        raise ValueError('Forward-only feature comparison unexpectedly produced gradients')
+    restore_rng(after)
+    return dict(runtime_feature_pixels_losses_exact=True, rng_exact=True, groups=a['rows'],
+                backward_performed=False)
 
 
 def compare_feature_window(system, adapter, statistics, plain, attached, config, *, same_path_check=False):

@@ -9,7 +9,7 @@ from radio_moge.data import TrainingImages
 from radio_moge.losses import FeatureStatistics
 from radio_moge.ordinary_geometry_data import GeometrySidecar, GeometryAttachedImages, collate_geometry_attached
 from radio_moge.ordinary_model_probe import (state_digest, compare_feature_window, geometry_window, module_states,
-                                            verify_scale_routing, verify_target)
+                                            verify_scale_routing, verify_target, compare_feature_forward)
 from radio_moge.ordinary_training import equal_state
 from radio_moge.prefetch import normalize_uint8
 from radio_moge.rgb_input_audit import load_reference_records
@@ -38,6 +38,9 @@ def test_exact_g0_and_actual_geometry_connectivity_without_an_optimizer(tmp_path
         raise AssertionError('Model gate must not construct an optimizer')
     monkeypatch.setattr(torch.optim, 'AdamW', forbidden)
     before, random_before = module_states(system, adapter, stats), rng_state()
+    forward = compare_feature_forward(system, adapter, stats, [x.image for x in groups], groups, cfg)
+    assert forward['runtime_feature_pixels_losses_exact'] and not forward['backward_performed']
+    assert all(p.grad is None for p in adapter.parameters())
     proof = compare_feature_window(system, adapter, stats, [x.image for x in groups], groups, cfg,
                                    same_path_check=True)
     assert proof['feature_pixels_losses_gradients_exact'] and proof['original_vs_original_exact']
