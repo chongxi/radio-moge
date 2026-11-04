@@ -7,6 +7,7 @@ import time
 import torch
 
 from .performance import grouped_window
+from .rgb_geometry_batch import RGBGeometryBatch
 
 
 class FloatLoader:
@@ -40,6 +41,8 @@ class FloatIterator:
 
 
 def normalize_uint8(image, pin=False):
+    if isinstance(image, RGBGeometryBatch):
+        return image.with_image(normalize_uint8(image.image, pin=pin))
     if image.dtype != torch.uint8:
         raise TypeError('Compact RGB transport requires uint8')
     output = torch.empty(image.shape, dtype=torch.float32, pin_memory=pin)

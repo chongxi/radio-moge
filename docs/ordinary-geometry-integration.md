@@ -88,3 +88,37 @@ not repeat the completed model gate or establish geometry-loss correctness.
 The old reference/performance validators deliberately reject geometry. Any new
 path needs a narrow explicit validator and new evidence; neither the completed
 reference seal nor earlier centered-warp corpus seals authorize the extension.
+
+## Optional target references and prepared transport
+
+`ordinary_geometry_data.GeometrySidecar` now binds a historical acceptance file,
+its accounting report and the exact SQLite index. It checks disposition and
+selected-membership counts, then queries by original RGB path and checks the
+encoded SHA, source, group and orientation. It never uses the selected-subset
+sample number to drive RGB sampling. Known-path identity mismatches fail even
+for excluded rows; genuinely absent or excluded labels return `None`. Pack and
+entry references remain bound to that index. This is historical data provenance,
+not a new training seal. Payload checks are still required when geometry is read.
+
+Connections are process/thread local, read-only and cleared on serialization.
+Index replacement or metadata change after initial hashing fails. The optional
+`GeometryAttachedImages` wrapper delegates RGB to the hash-verified compact
+`TrainingImages`; it retains every original index and attaches a `GeometrySlot`.
+`RGBGeometryBatch` carries all slots, including `None`, through the existing
+shape grouping and normalization with the same tensor operations. Device
+transport methods retain CPU references; CUDA behavior still needs actual gate
+testing. No production trainer/observer is wired to these containers yet.
+
+CPU tests compare both paths across worker and background preparation modes,
+resumed cursors and mixed target availability. A tiny frozen-backbone model test
+uses the existing four feature losses, nontrivial RMS, all weights 1 and the
+existing per-group n/32 weighting: losses, adapter gradients and Torch RNG match
+bitwise. This is a synthetic regression test, not the actual RADIO/MoGe gate.
+`verify_geometry_sidecar.py` additionally checks bounded saved real input keys
+through complete groups of 32, against saved compact pixel hashes and an ordinary
+prepared RGB loader. It reads RGB and index metadata only, not geometry arrays.
+
+Still pending: ordinary target construction, explicit camera/loss admission,
+missing/sparse geometry normalization, production observer/trainer integration,
+CUDA transport verification and actual-model paired gradient tests. Do not infer
+loss admission from an ordinary camera whose principal point happens to be centered.

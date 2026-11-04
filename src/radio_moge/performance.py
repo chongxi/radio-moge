@@ -9,6 +9,7 @@ import torch
 
 from .checkpoint import atomic_json, restore_rng
 from .losses import weighted_loss
+from .rgb_geometry_batch import concatenate_rgb
 
 
 def validate_performance(perf, config, *, constant_fork=False):
@@ -66,7 +67,7 @@ def grouped_window(iterator, logical_batches, compute_batch):
         count = compute_batch // size
         for start in range(0, len(images), count):
             selected = images[start:start + count]
-            yield selected[0] if len(selected) == 1 else torch.cat(selected, dim=0)
+            yield selected[0] if len(selected) == 1 else concatenate_rgb(selected)
 
 
 def schedule_position(step, perf):
