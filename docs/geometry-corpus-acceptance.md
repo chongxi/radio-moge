@@ -3651,3 +3651,50 @@ The prepared full outcome auditor was launched once using immutable
 Its report and the subsequent bounded visual review are still pending. Full
 payload readback does not establish source eligibility or independent physical
 accuracy. No optimizer, source admission, input selection or exclusion changed.
+
+### ScanNet++ full outcome closure and actual visual quarantine — November 4, 19:00 UTC
+
+The native outcome audit completed: 841,431 unique original inputs map to
+805,578 native candidates and 35,853 native rejections, with recovered/new
+policies kept distinct. Report SHA256:
+`4d51ad93b89f41d16ffb2d83d7419968337549bda54e8fb714798a7f8a293146`.
+All 27 selected payload/RGB/mask/camera checks completed, and all 27 original
+six-panel pages were subsequently actually viewed by the root/review agents.
+The root also checked the second reviewer's flagged page independently.
+
+Ten exact candidates across five scenes show supported centimeter-depth planes
+or strips inconsistent with the visible room surfaces:
+`853223, 1002329, 1284721, 1284775, 1284776, 1284777, 1285067, 1285068,
+1461782, 1470795`. For example, #1002329 depicts an open office but has 92.01%
+valid support and median Z of about 1.095 cm. High support and CPU/GPU agreement
+are not independent physical validation. These labels are mesh-derived DSLR
+camera Z, not MoGe pseudo labels or direct per-pixel measurements.
+
+`scannetpp-native-visual-review-01/report.json` records every viewed page,
+identity and observation; SHA256
+`1640ea3f3850591ee686a358c13bdba6ef073af3c6272c67ef39067b298add04`.
+Two policy-specific candidate-quarantine registers were checked with the existing
+admission validator: six recovered candidates and four new candidates. Flags
+bind exact member, RGB, receipt, pack index and visual evidence. They retain RGB
+and raw geometry and do not add permanent exclusions or automatically quarantine
+neighboring frames. The remaining 17 reviewed candidates are not thereby source
+accepted; sparse/reflective support limitations remain. This extreme-value sample
+cannot estimate population failure rate. No optimizer or accepted input changed.
+
+A self-contained interactive viewer at
+`.kanna/visualizations/scannet-native-near-surface-review.html` shows all ten
+flagged pages plus a close-wall bathroom control (#1405167), using the unchanged
+rendered PNGs. Short depths alone are not an exclusion rule.
+
+A bounded source diagnostic independently intersects all original mesh faces in
+float64 chunks for at most six rays per flagged image, preserving positive hits
+below 1 cm, triangle IDs, vertices, barycentrics and camera-Z comparisons. It uses
+original released COLMAP/Nerfstudio calibration and checks source hashes. Five
+CPU fixtures passed locally/remotely, covering Z versus radial parameter,
+sub-near hits, chunk/global-face identities, double-sided boundaries and degenerate
+triangles. The first diagnostic attempt stopped after writing two cases because
+an immutable JSON publisher was incorrectly used to update progress; v2 changes
+only progress publication to atomic replacement. This is not a cache-generation
+or historical training bug. No clipping, mesh edits or pose fitting is authorized
+by a matching intersection result: mesh versus camera registration still needs
+source evidence, and no historical metric-regression cause follows from it.
