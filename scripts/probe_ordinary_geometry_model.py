@@ -42,6 +42,10 @@ class OriginalIndexRecords(dict):
 def loader_windows(records, config, performance, sidecar, output, keys):
     audit = RGBInputAudit(output, 232288, 4, 8, performance['compute_batch'], keys)
     cfg = deepcopy(config)
+    # Match train.py's loader-only performance override; keep checkpoint config
+    # workers unchanged for the narrow original-feature data fork.
+    cfg['data']['workers'] = performance['workers']
+    cfg['data']['compact_transport'] = performance['compact_transport']
     if sidecar is None:
         cfg.pop('ordinary_geometry', None)
     loader = make_loader(records, cfg, 0, 24, reference=audit, sidecar=sidecar)
@@ -96,7 +100,7 @@ def run(request_path, lock_path):
             or binding['manifest']['path'] != config['data']['train_manifest']
             or config['train']['steps'] != 232538 or config['train']['max_seconds'] != 2700
             or config['train']['batch_size'] != 4 or performance['compute_batch'] != 32
-            or performance['gpu_prefetch'] is not True or performance['workers'] != config['data']['workers']):
+            or performance['gpu_prefetch'] is not True or performance['workers'] != 4):
         raise ValueError('Frozen ordinary model-observer request differs')
     planned = checked_json(binding['planned_keys'])
     expected = [list(k) for batch in DeterministicBatches(1637908, 4, config['data']['buckets'],
