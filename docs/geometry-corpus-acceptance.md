@@ -3208,3 +3208,17 @@ remain unchanged. No optimizer ran. The user-facing root-cause conclusion also
 remains unchanged: verified training-contract differences and a missing
 original-pipeline continuation reference do not establish the cause of cosine
 and LiDAR regression. The prepared reference has not been run.
+
+Weight clarification: the archived feature objective used coefficients 1 for
+all four terms (`spatial`, `summary`, `cosine`, `summary_cosine`). The actual
+stage1–4 launch configurations use **0.1 for each**, so the absolute cosine-loss
+coefficients did change along with both RMS-normalized MSE terms. Their relative
+feature-internal proportions stayed equal. Saying the formula is unchanged must
+not be read as saying these coefficients were unchanged. Both f1 controls restore
+all four coefficients to 1; both f0.1 controls retain 0.1. In the fixed250 paired
+controls, restoring feature weight with geometry active reduces the observed
+LiDAR regression from 12.70% to 6.24%, but neither arm meets the joint target.
+Restoring all four weights and disabling geometry still gives both cosines down
+and LiDAR AbsRel 3.80% above archive. Weight choice affects the observed results,
+but weight reduction alone is not a sufficient explanation. Other verified
+pipeline changes remain confounded; no new optimizer run has been launched.
