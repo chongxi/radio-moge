@@ -3627,3 +3627,27 @@ was still running at 11:15 UTC: 672,239 new plus 49,152 recovered candidates,
 `scannet-native-visual-tooling-01/report.json`, SHA256
 `a200021b1e9af61dd838ae5caab79ec9e47c547d467c0c7aace332a49945dde7`.
 No optimizer, source admission or exclusion changed.
+
+### ScanNet++ native generation and readback complete — November 4, 18:36 UTC
+
+`scannetpp-native-cache-02/report.json` now reports complete generation and
+readback of all 756,426 new cache members in 2,955 packs. Together with the
+previously verified 49,152 recovered members, there are 805,578 native candidates.
+The final rejection file contains 35,853 rows: 35,783 source-scene review cases
+and 70 with insufficient verified visible support. These counts cover all
+841,431 frozen ScanNet++ inputs. The separately reviewed teacher route does not
+add another 35,783 native rows; exact per-image reconciliation remains required.
+
+Producer report SHA256:
+`d8550d254d8aff685704367339b557ed17c0a0d4ca06a0aa31e3a752f66464e2`.
+The generation-mode `passed=false` is not a readback failure: the final stage is
+`complete`, and `completed == verified_cache_members == packs.count`. The old
+periodic status trailed by seven rows while readback ran. The producer exited
+normally without OOM; its 763 remainder scenes exclude scenes covered entirely
+by the recovered subset and are not the full source-scene count.
+
+The prepared full outcome auditor was launched once using immutable
+`code-scannet-native-outcomes-v1/78f1f15`, with one CPU thread and CUDA disabled.
+Its report and the subsequent bounded visual review are still pending. Full
+payload readback does not establish source eligibility or independent physical
+accuracy. No optimizer, source admission, input selection or exclusion changed.
