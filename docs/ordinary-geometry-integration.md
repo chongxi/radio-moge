@@ -4,7 +4,7 @@ November4 projection correction: the historical1,637,908-row stream below is
 superseded for future launches by the COCO hold. Materialized candidates contain
 1,597,911 RGB rows and558,314 geometry targets; primary validation retains1012
 non-COCO images. `train()` rejects old COCO inputs before model/Adam construction.
-The new sidecar scope, sampler plan, config and acceptance proofs still need
+The new sidecar scope, sampler plan, config and acceptance proofs require
 their own bindings; do not relabel the candidate index as accepted or reuse old
 seals. Historical pixel/loss parity proofs remain evidence of their original
 scope only. See the projection correction in `geometry-corpus-acceptance.md`.
@@ -514,3 +514,48 @@ Full input closure SHA `5e785553dc7b75b777c6475723e2542cbbbb13d4ec1e4e4d94e3f787
 Do not rerun A. Its paired result review and B's fresh actual-model gate remain
 pending. The geometry-sidecar publisher PID236974 is still validating the closed
 index; it has no GPU or optimizer and must not be relaunched concurrently.
+
+## Filtered pair: A closed, fresh B checks active (November4 08:39 UTC)
+
+A completed fixed250 at232538. Saved four-view review checked the retained
+1012 identities, unchanged120 iPhone/LiDAR and128 DSLR identities, teacher GT
+scalars where present, revisions and every saved aggregate against the final
+validation log. The only permitted original/native protocol change from the
+archive was images1268 to1012. Its six-source spatial cosine is
+0.9645999481 versus0.9647740929, summary0.9356193124 versus0.9356613590,
+and LiDAR AbsRel0.0941307515 versus0.0921184475 (+2.1845%). All three directional
+criteria fail. Filtering this source alone did not solve the observed decline
+in this250-step screen; no historical causal or significance claim follows.
+W&B06adaa78 is finished; all475 final metric values match numerically, with only
+equal integer/float representations. No inference or checkpoint proof repeated.
+A closure `results-closure-01/report.json` SHA:
+`7950a52675bcbedb7c4fbd8d342ae5632b6a0df2a61e0a54bc14dbdf362a48a1`.
+Saved review SHA `7f662d234dc297ac2f09d0d91d49fe925eb454377f4130edbf4734bbce3c1b91`.
+
+The existing B CPU job completed128 presentations:80 actual geometry members
+and48 feature-only slots. RGB and prepared grouping match saved A pixels;
+member hashes, target camera rays and unchanged RNG passed. Six target sources
+and all seven RGB sources are represented; these are bounded diagnostics, not
+population coverage. Target report SHA:
+`14cbb8ff6076985cee3af6bd6ed13fe716c191785eede2ec038ec8810c48c9ad`.
+
+Authorized controller242064 (`projection-filtered-geometry-sequence-01`) now
+runs the fresh checks and, only on success, prepares and executes B once using
+immutable `code-projection-geometry-v1/1f01a7b`. It preserves archive232288
+adapter/RMS/Adam/RNG, A's1597911 RGB rows, all8000 planned keys, F1, three shapes,
+effective32 and fixed250/2700s. New config digest starts `efe1022b` and binds
+A's actual data digests plus the filtered sidecar. It never retries a failed
+stage or extends a budget. Do not launch another B controller.
+
+Fresh runtime and math-only repeatability checks completed with exact forward
+losses/components/RNG. Default-backend gradient relative L2 differences were
+0.00105924/0.00100742; isolated math gradients were bitwise equal. As before,
+math is diagnostic only and the runtime backend is unchanged. The actual
+full-scope CUDA geometry/state/memory gate is active; no B optimizer update
+was yet verified at08:39. Its separate admission must complete before training.
+
+The new saved-result reviewer can compare B to archive and A without inference;
+it requires exact8000 committed RGB pixels/keys/groups after removing only the
+new geometry annotation. Fifteen reviewer/input-pairing tests passed. A mirror
+mount lookup failed before output publication in reviewer v1; v2 resolves the
+same hash-bound metadata at the GPU mount. This did not affect training.
