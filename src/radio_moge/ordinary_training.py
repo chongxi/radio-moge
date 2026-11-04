@@ -26,7 +26,7 @@ COUNT_KEYS = frozenset(('gt_supervised_images', 'gt_skipped_sparse_images',
 CPU_REQUIREMENTS = ('production_loop_g0_exact', 'geometry_off_no_calls',
     'slot_audit_and_commit_only', 'whole_rgb_denominator', 'integer_coverage',
     'ordinary_camera_and_payload_checks')
-MODEL_REQUIREMENTS = ('cuda_transport_exact', 'initial_adapter_rms_adam_rng_exact',
+MODEL_REQUIREMENTS = ('cuda_transport_exact', 'initial_adapter_rms_rng_exact', 'source_adam_unchanged',
     'feature_pixels_losses_gradients_exact', 'geometry_gradients_finite_nonzero',
     'frozen_state_unchanged', 'rng_restored', 'gradients_discarded',
     'optimizer_not_constructed')
@@ -51,8 +51,17 @@ def implementation_digest():
 
 def equal_state(a, b):
     if isinstance(a, torch.Tensor):
-        return (isinstance(b, torch.Tensor) and a.dtype == b.dtype and a.shape == b.shape
-                and bool(torch.isfinite(a).all()) and bool(torch.isfinite(b).all()) and torch.equal(a, b))
+        if not isinstance(b, torch.Tensor) or a.dtype != b.dtype or a.shape != b.shape:
+            return False
+        # Live CUDA state is compared with CPU checkpoint state. Copy bounded
+        # chunks, never ask torch.equal to compare different devices.
+        left, right = a.detach().reshape(-1), b.detach().reshape(-1)
+        chunk = max(1, 4*1024*1024 // a.element_size())
+        for start in range(0, left.numel(), chunk):
+            x, y = left[start:start+chunk].cpu(), right[start:start+chunk].cpu()
+            if not bool(torch.isfinite(x).all()) or not bool(torch.isfinite(y).all()) or not torch.equal(x, y):
+                return False
+        return True
     if type(a) is not type(b):
         return False
     if isinstance(a, dict):
