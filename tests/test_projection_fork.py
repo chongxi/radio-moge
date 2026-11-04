@@ -61,3 +61,17 @@ def test_unscoped_fork_never_relaxes_validation():
     result = normalize_projection_validation(config, {}, digests, {})
     assert result == (config, digests)
     assert result[0] is not config and result[1] is not digests
+
+
+def test_only_exact_slot_preserving_performance_wrapper_is_permitted(tmp_path):
+    from pathlib import Path
+    from run_feature_reference import original_component_matches
+    current = Path(__file__).resolve().parents[1] / 'src/radio_moge/performance.py'
+    old = tmp_path / 'performance.py'
+    source = current.read_text().replace('from .rgb_geometry_batch import concatenate_rgb\n', '')
+    source = source.replace('concatenate_rgb(selected)', 'torch.cat(selected, dim=0)')
+    old.write_text(source)
+    assert original_component_matches(old, current, True)
+    assert not original_component_matches(old, current, False)
+    old.write_text(source.replace('compute_batch // size', 'compute_batch // size + 1'))
+    assert not original_component_matches(old, current, True)

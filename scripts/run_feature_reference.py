@@ -41,6 +41,21 @@ def checkpoint_ref(plan):
     return {key: plan['source_checkpoint'][key] for key in ('path', 'sha256')}
 
 
+def original_component_matches(old, current, projection_filtered=False):
+    if old.read_bytes() == current.read_bytes():
+        return True
+    if not projection_filtered or old.name != 'performance.py':
+        return False
+    # The later optional geometry container adds only a slot-preserving cat.
+    # Plain RGB still calls torch.cat(images, dim=0), with no RNG operations.
+    expected = old.read_text().replace('from .losses import weighted_loss\n',
+        'from .losses import weighted_loss\nfrom .rgb_geometry_batch import concatenate_rgb\n')
+    expected = expected.replace('torch.cat(selected, dim=0)', 'concatenate_rgb(selected)')
+    helper = current.with_name('rgb_geometry_batch.py')
+    return (current.read_text() == expected and file_ref(helper)['sha256'] ==
+            '8fba08db4609809a78c84eeaa0233196ffebfef710a318b85591f56ba8ba19cb')
+
+
 def verify_initial(request_path):
     request = checked_json(file_ref(request_path))
     plan = checked_json(request['plan'])
@@ -257,7 +272,7 @@ def validate_request(request_path):
     current = Path(__file__).resolve().parents[1] / 'src/radio_moge'
     for name in ('losses.py', 'system.py', 'adapters.py', 'architecture_screen.py',
                  'attention_tricks.py', 'feature_refinement.py', 'performance.py'):
-        if file_ref(old / name)['sha256'] != file_ref(current / name)['sha256']:
+        if not original_component_matches(old / name, current / name, common is not None):
             raise ValueError('Original feature implementation changed: ' + name)
     return request, plan, config
 
