@@ -22,6 +22,34 @@ from radio_moge.ordinary_training import (CPU_REQUIREMENTS, MODEL_REQUIREMENTS, 
 from radio_moge.train import train
 
 
+def model_backend_scope(model):
+    """Keep runtime forwards separate from the exact diagnostic backward."""
+    modes = None
+    if (model.get('default_backend_gradient_bitwise_equality_claimed') is not False
+            or model.get('diagnostic_backend_used_for_training') is not False
+            or not model.get('feature_cases')):
+        raise ValueError('Runtime and diagnostic attention scopes are not explicit')
+    for case in model['feature_cases']:
+        current = case['runtime_attention_modes']
+        if (set(current) != {'flash', 'mem_efficient', 'math', 'cudnn'}
+                or any(type(v) is not bool for v in current.values())
+                or not any(current.values())
+                or case['runtime_attention_backend_restored'] is not True
+                or case['runtime_forward']['runtime_feature_pixels_losses_exact'] is not True
+                or case['runtime_forward']['backward_performed'] is not False
+                or case['diagnostic_math_backward']['feature_pixels_losses_gradients_exact'] is not True
+                or (modes is not None and current != modes)):
+            raise ValueError('Actual model attention backend scope differs between cases')
+        modes = dict(current)
+    return modes
+
+
+def require_runtime_backend(expected):
+    actual = {key: getattr(torch.backends.cuda, key+'_sdp_enabled')() for key in expected}
+    if actual != expected:
+        raise ValueError('Runtime attention backend differs from the actual model gate')
+
+
 def prepare(gate_dir, execution_revision):
     request = checked_json(file_ref(gate_dir/'request.json'))
     config, performance = checked_json(request['config']), checked_json(request['performance'])
@@ -44,6 +72,7 @@ def prepare(gate_dir, execution_revision):
                 or any(proof.get(k) is not True for k in requirements)):
             raise ValueError('Incomplete or differently bound ordinary evidence')
     model = checked_json(refs['model_evidence'])
+    runtime_modes = model_backend_scope(model)
     memory = model['memory']
     if (model['device'] != 'cuda' or model['observer'] != request['observer']
             or model['request'] != file_ref(gate_dir/'request.json')
@@ -65,6 +94,8 @@ def prepare(gate_dir, execution_revision):
         training_admission=True, **binding, **refs, source_step=232288, optimizer_updates=250,
         rgb_images=1637908, rgb_digest=binding['data_digests']['train'],
         automatic_followup_training=False, no_new_baseline_inference=True,
+        runtime_attention_modes=runtime_modes,
+        exact_gradient_parity_backend='math_diagnostic_only',
         created_at=time.time(), publisher=file_ref(Path(__file__)))
     publish_json(root/'admission.json', seal)
     runtime = deepcopy(config)
@@ -110,6 +141,11 @@ def run(request_path, lock_path):
     if (request['runner'] != file_ref(Path(__file__)) or output.parent != root
             or config['ordinary_geometry']['admission'] != request['admission']):
         raise ValueError('Ordinary run request path/runner differs')
+    model = checked_json(seal['model_evidence'])
+    if (model_backend_scope(model) != seal['runtime_attention_modes']
+            or seal['exact_gradient_parity_backend'] != 'math_diagnostic_only'):
+        raise ValueError('Published runtime/diagnostic backend scopes changed')
+    require_runtime_backend(seal['runtime_attention_modes'])
     if (root/'status.json').exists() or output.exists():
         raise FileExistsError('Ordinary training already attempted; no automatic retry')
     status = dict(stage='loading_metadata_and_actual_initial_state', started_at=time.time(),
