@@ -3312,3 +3312,48 @@ The unknown-camera inference path separately assumes a centered optical axis
 when recovering focal/shift and force-projecting points. Keep that evaluation
 protocol fixed and do not equate raw known-camera improvements with gains in it.
 No such geometry extension has been implemented or admitted by this reference.
+
+### Restored feature reference completed — November 4, 01:10 UTC
+
+`feature-original-reference-02` completed exactly 250 updates, ending at 232538.
+All 8,000 actual RGB presentations and compute groups matched the frozen keys;
+ScanNet++ supplied 4,055 (50.6875%). The three resolution counts were 2,824 at
+480x640, 2,652 at 640x480 and 2,524 at 400x640. Every recorded update was finite.
+The independent initial-state check verified the archived adapter, fixed RMS,
+all 100 Adam states and model RNG bitwise. The actual model probe verified 128
+presentations, all eight sources and three resolutions, with original-execution
+pixel parity, finite nonzero gradients, unchanged model state and restored RNG.
+The independent sampler check constructed the immutable loader with the actual
+performance overrides and asserted `DeterministicBatches`, all 8,000 keys, absent
+mixture weights and the separate 250-update budget. It did not observe the
+loader's Python class inside the training process; the trainer separately
+verified every consumed key, pixel hash and grouping.
+
+Fixed-final checkpoint SHA:
+`529251352ae5cdaa6e7cf15f9eeee22483bba31c17a2f36ab1bb655c85f7df62`.
+Paired review SHA:
+`8e3e9d5a76438d9cbfaeda19242805c69eb29c60221944990abdcc411995e319`.
+Completed online closure SHA:
+`599be0cd3aba06863467e54c5ce082a66ac4e612a17fcd19c57b4e5d6d1e5361`.
+W&B `b2ac665a` finished; all 497 final logged metrics and configuration/provenance
+matched numerically. Differences were equal integer/float representations only.
+All four RGB protocols, ordered images, frozen teacher results and five heldout
+digests were verified. The separate 18-case known-camera evaluation had unchanged
+GT support; its AbsRel was 0.1253790183, with no archive laser baseline available.
+
+| Primary metric | Archive 232288 | Restored reference 232538 | Change |
+| --- | ---: | ---: | ---: |
+| Original macro spatial cosine | 0.9616920552 | 0.9616596028 | -0.0000324524 |
+| Original macro summary cosine | 0.9323009271 | 0.9322499371 | -0.0000509901 |
+| Independent LiDAR AbsRel | 0.0921184475 | 0.0920320915 | -0.0937444% relative |
+
+The predefined joint target still fails: both original-protocol cosines are
+slightly lower. NYU AbsRel improved 5.7213%. The fixed 400x640 protocol has both
+cosines slightly higher, while DSLR spatial improves and summary declines.
+Keep these secondary results separate; they do not change the primary decision.
+The restored recipe shows much smaller cosine drift than the prior F1/G0
+control and avoids its 3.80% LiDAR increase in this run, but this joint restoration
+is not an isolated test of any individual setting and has twice its image
+presentations at the same 250-update budget. No statistical significance or
+historical root cause has been established. No additional optimizer run follows
+automatically. Reuse the completed gates and evaluations; do not rerun them.
