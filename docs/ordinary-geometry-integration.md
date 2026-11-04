@@ -504,3 +504,13 @@ camera/loss checks.75 tests passed remotely. Sidecar publication is in progress;
 without new image/model reads. This preparation does not establish improvement
 or identify the historical cause. Compare fixed final endpoints against the
 saved six-source baseline and unchanged iPhone/LiDAR view; preserve old results.
+
+At08:13UTC A completed normally at fixed250, including final evaluation and
+controller final finite-state/checkpoint readback. The immutable final checkpoint
+SHA is `99b315124ae08905980f500245e828299f9586bc58deb673b2ba0c4b6c6c2375`.
+All8000 actual keys matched the shared plan, with source counts
+Scan4187/Hyp298/ARKit986/Tartan1206/Structured654/IRS663/NYU6 and no COCO.
+Full input closure SHA `5e785553dc7b75b777c6475723e2542cbbbb13d4ec1e4e4d94e3f78753e2882d`.
+Do not rerun A. Its paired result review and B's fresh actual-model gate remain
+pending. The geometry-sidecar publisher PID236974 is still validating the closed
+index; it has no GPU or optimizer and must not be relaunched concurrently.
