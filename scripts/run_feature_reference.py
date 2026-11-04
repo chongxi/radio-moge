@@ -29,7 +29,9 @@ from radio_moge.losses import weighted_loss
 from radio_moge.performance import grouped_window
 from radio_moge.prefetch import normalize_uint8
 from radio_moge.rgb_input_audit import RGBInputAudit, pixels_sha, load_reference_records
-from radio_moge.train import train
+from radio_moge.train import train, make_loader
+from radio_moge.projection_fork import projection_plan, normalize_projection_validation
+from verify_feature_reference_sampler import verify as verify_sampler
 from verify_corpus_stage_startup import equal_finite
 
 
@@ -52,9 +54,10 @@ def verify_initial(request_path):
     for name in ('adapter', 'statistics', 'optimizer', 'rng', 'adapter_config', 'model_config', 'revisions'):
         if not equal_finite(old[name], new[name]):
             raise ValueError('Actual reference initial state differs: ' + name)
+    _, admitted_digests = normalize_projection_validation(config, old, new['data_digests'], plan)
     if (new['data_digests'].keys() != old['data_digests'].keys()
             or new['data_digests']['train'] == old['data_digests']['train']
-            or any(new['data_digests'][k] != v for k, v in old['data_digests'].items() if k != 'train')
+            or any(admitted_digests[k] != v for k, v in old['data_digests'].items() if k != 'train')
             or {int(v['step']) for v in new['optimizer']['state'].values()} != {232288}):
         raise ValueError('Reference initial Adam counters or heldout identities differ')
     result = dict(stage='actual_reference_initial_state_verified', source_step=232288,
@@ -64,11 +67,14 @@ def verify_initial(request_path):
         trainer_waited_before_first_update=True, optimizer_updates=0,
         scheduler_policy='Constant LR wrapper reset intentionally; not claimed bitwise equal',
         initial=file_ref(initial_path), source=plan['source_checkpoint'],
-        config=request['config'], unchanged_heldout_digests=True)
+        config=request['config'], unchanged_heldout_digests='projection_comparison' not in plan,
+        projection_comparison=plan.get('projection_comparison'),
+        actual_data_digests=new['data_digests'], parent_data_digests=old['data_digests'])
     publish_json(request_path.parent / 'initial-verification.json', result)
 
 
-def observe_reference_model(system, adapter, statistics, records, config, planned, old_data_path):
+def observe_reference_model(system, adapter, statistics, records, config, planned, old_data_path,
+                            expected_sources=None):
     """Actual source/resolution backward checks plus first full prepared update.
 
     No optimizer step. All module parameters/buffers and the model RNG must be
@@ -84,8 +90,10 @@ def observe_reference_model(system, adapter, statistics, records, config, planne
         values = first_by_source.setdefault(row['dataset'], [])
         if len(values) < 4:
             values.append(index)
-    if len(first_by_source) != 8 or any(len(x) != 4 for x in first_by_source.values()):
-        raise ValueError('Reference probe needs all eight sources')
+    scope_matches = (len(first_by_source) == 8 if expected_sources is None
+                     else set(first_by_source) == set(expected_sources))
+    if not scope_matches or any(len(x) != 4 for x in first_by_source.values()):
+        raise ValueError('Reference probe needs every bound source')
     keys = [[row['index'], row['augmentation_seed'], row['height'], row['width']]
             for row in planned[:32]]
     extra = [([index, 43+j, h, w], source) for source, values in sorted(first_by_source.items())
@@ -186,12 +194,13 @@ class ReferenceAudit(RGBInputAudit):
     def check_fork(self, config, state, digests):
         if config != self.config:
             raise ValueError('Reference frozen runtime config changed')
-        normalized = deepcopy(config)
+        normalized, normalized_digests = normalize_projection_validation(
+            config, state, digests, getattr(self, 'plan', {}))
         # Only this reference permits skipping duplicate baseline inference and
         # collecting each update. General data-fork policy stays unchanged.
         for key in ('eval_at_start', 'log_every'):
             normalized['train'][key] = state['config']['train'][key]
-        check_data_fork(normalized, state, digests)
+        check_data_fork(normalized, state, normalized_digests)
 
     def before_updates(self, system, adapter, statistics, records, config, output):
         if len(records) != self.plan['reference_images'] or config != self.config:
@@ -203,7 +212,9 @@ class ReferenceAudit(RGBInputAudit):
         subprocess.run([sys.executable, str(Path(__file__).resolve()), 'verify-initial',
                         '--request', str(self.request_path)], env=env, check=True, timeout=300)
         proof = observe_reference_model(system, adapter, statistics, records, config,
-            self.planned, checked_path(self.plan['old_execution_data']))
+            self.planned, checked_path(self.plan['old_execution_data']),
+            expected_sources=(list(projection_plan(self.plan)['planned_source_counts'])
+                              if 'projection_comparison' in self.plan else None))
         publish_json(self.request_path.parent / 'model-zero-update.json', proof)
         publish_json(self.request_path.parent / 'update-permission.json', dict(
             stage='reference_pre_update_gates_passed', config=self.request['config'],
@@ -223,6 +234,14 @@ def validate_request(request_path):
     expected['tracking'].update(name='feature-original-pipeline-reference-250',
         tags=['diagnostic-reference', 'original-feature-pipeline', 'preserved-adam-rng',
               'effective32', 'three-resolutions', 'fixed250', 'no-geometry'])
+    common = projection_plan(plan)
+    if common is not None:
+        expected['tracking'].update(name='projection-filtered-feature1-geometry0-250',
+            tags=['projection-filtered-pair', 'feature1-geometry0', 'preserved-adam-rng',
+                  'effective32', 'three-resolutions', 'fixed250', 'coco-held'])
+        if (candidate['data']['train_manifest'] != common['manifest']['path']
+                or candidate['data']['val_manifest'] != common['validation']['path']):
+            raise ValueError('Candidate does not use the bound filtered manifests')
     if (config != expected or request['execution_root'] != str(Path(__file__).resolve().parents[1])
             or request['user_requested_root_cause_investigation'] is not True
             or config['loss'] != dict(spatial=1., summary=1., cosine=1., summary_cosine=1.)
@@ -245,6 +264,8 @@ def validate_request(request_path):
 
 def run(request_path, lock_path):
     request, plan, config = validate_request(request_path)
+    # A detached trainer must not inherit another process's W&B service socket.
+    os.environ.pop('WANDB_SERVICE', None)
     root = request_path.parent
     status_path = root / 'status.json'
     if status_path.exists():
@@ -257,6 +278,9 @@ def run(request_path, lock_path):
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             perf = checked_json(plan['candidate_performance'])
             perf.update(authorized=True, original_started_at=time.time())
+            sampler_proof = verify_sampler(config, perf, plan['reference_images'],
+                checked_json(plan['planned_inputs']), make_loader)
+            publish_json(root / 'sampler-verification.json', sampler_proof)
             publish_json(root / 'performance.json', perf)
             audit = ReferenceAudit(request_path)
             status.update(stage='loading_reference_and_running_pre_update_gates')
