@@ -3698,3 +3698,18 @@ only progress publication to atomic replacement. This is not a cache-generation
 or historical training bug. No clipping, mesh edits or pose fitting is authorized
 by a matching intersection result: mesh versus camera registration still needs
 source evidence, and no historical metric-regression cause follows from it.
+
+The completed v2 diagnostic (`scannetpp-native-near-surface-probe-02`) checked
+53 rays from the ten quarantined candidates in five scenes. All 36 sampled
+supported values match the independent analytical intersections exactly after
+float32 storage; maximum unrounded difference is 5.946e-8 m. Analytical and
+Embree nearest-hit Z differ by at most 8.882e-16 m; hit existence agrees for all
+53 rays. Ten unsupported rays hit source triangles at or below 1 cm; two rays
+have no positive hit. The probe report SHA256 is
+`cd3fcdc97b35d29bef85faa9ef6c8ca778b83a3b5d1e9a909bf61ef7e5a00613`.
+Thus the examined anomalous surfaces exist in the retained mesh/released-camera
+intersection geometry; a display palette or GPU-only clipping artifact does not
+explain them. This narrows the diagnosis but does not distinguish mesh defects
+from incorrect camera registration or establish the extent in other images.
+Keep all ten candidate flags, original arrays and RGB unchanged. Do not replace
+near hits with farther surfaces or infer a historical training regression cause.
