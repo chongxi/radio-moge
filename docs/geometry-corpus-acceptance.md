@@ -3453,3 +3453,33 @@ Target proof SHA:
 Next are trainer/audit integration, unweighted integer coverage aggregation,
 CUDA transport and a new config/code-bound actual-model gate. Neither historical
 acceptance nor this CPU evidence admits the new optimizer path.
+
+### Ordinary trainer integration, 2026-11-04 04:03 UTC
+
+Immutable execution `code-ordinary-trainer-v1/c2f9d2b` integrates optional target
+references into the original full RGB sampler/prepared pipeline and the actual
+trainer. Feature weights stay all1; G=0 bypasses target payloads/decoder/core;
+G=1 decodes raw adapted features and retains the whole32 denominator. Coverage
+counts sum as int64 rather than weighted fractional metrics. Actual augmentation
+is bound to each slot; the RGB observer checks its key/reference/augmentation
+through grouping and still publishes only committed windows.
+
+Local164 tests passed in80.62s plus16 targeted final gate checks in1.53s. Remote
+final164 passed in102.64s with Torch/BLAS1 and CUDA disabled; local common fixture
+uses Torch2. The24 warnings are existing CPU autocast dtype warnings. Tiny CPU
+production-loop G=0 tests verify bitwise losses/gradients/Adam/RMS/RNG/cursor and
+forbid geometry calls. G=1 tests read real fixture cache members and check raw
+feature identity, missing/sparse support, full32 weighting and integer counts.
+These tests include synthetic optimizer updates, zero production updates.
+
+New ordinary admission runs before model/Adam construction and rejects old
+seals, incomplete CUDA evidence and changed code/config/profile/plan/budget.
+Actual initial-checkpoint readback is also required before any later update.
+No runtime candidate/seal or actual RADIO/MoGe CUDA gate has been published or
+run. Next is that zero-update CUDA/state/gradient/memory gate, then a separately
+admitted bounded comparison. No historical regression cause or benefit is
+established by the CPU integration tests. Prior RGB/target/reference/control and
+source proofs remain complete and were not repeated.
+
+Evidence: `ordinary-trainer-integration-01/report.json`, SHA256
+`0e7ce51331309033a4ebb992f9fc77cd2521e9519413400aa4812d6d7b8d3faf`.
