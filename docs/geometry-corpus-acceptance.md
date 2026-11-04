@@ -3997,3 +3997,75 @@ physical accuracy, whole-source eligibility or a cause of historical training
 regression. No cached depth, RGB, training state or source flag changed; all
 19 candidate quarantines and 4,171 geometry exclusions remain. Farther mesh
 hits are not automatically admitted as replacement supervision.
+
+### Proposed native v2 update and accuracy gates — November 4
+
+The user asked how to turn the clipping finding into corrected processing and
+credible accuracy evidence. This is a proposed implementation/validation plan,
+not an admitted producer or permission to substitute newly rendered labels.
+
+1. **Version the complete visibility contract.** Use 0.05/20 m as the first
+   explicitly tested candidate, with camera-Z clipping before visibility, the
+   released undistorted DSLR camera, unchanged pixel centers/metric poses and
+   double-sided faces. Freeze the interval, boundary treatment, render grid,
+   source bytes, masks, code and dependency versions in a new policy. Do not
+   reinterpret old 0.01/100 m caches or assert that this is MoGe's undisclosed
+   preprocessing. Old files remain immutable.
+2. **Make GPU and CPU ask the same question.** The CPU reference must find the
+   nearest intersection *inside* the clip interval, rather than find the nearest
+   original-camera hit and discard it afterwards. With camera rays having Z=1,
+   a near-plane ray origin is `camera_origin + near * world_ray`; the reported
+   depth must still be measured against the original camera. Boundary ambiguity
+   must be recorded/rejected, not resolved by an arbitrary epsilon that jumps
+   over surfaces. GPU, CPU, stability offset renders and both visibility probes
+   must share the explicit contract. No fitted cameras or selective skipping of
+   additional inconvenient hits are permitted.
+3. **Prevent mixed-policy recovery.** Current native `recovered_rows()` checks
+   dataset/manifest/scope but does not compare the new processing policy. A new
+   producer must reject old recovered labels unless the exact new semantic
+   contract and provenance match; old 49,152 recovered candidates cannot simply
+   be skipped into a new clipped generation. Historical outcome auditors retain
+   their historical meaning; new semantics require a version-aware auditor.
+4. **Retain the evidence for rejected outputs too.** Store actual raw depth,
+   each mask stage or equivalent lossless reason bits, original mask hashes,
+   clipping/missing/parity rejection counts and final support. Preserve the
+   existing anonymity and stability checks, 2 mm numerical parity tolerance,
+   and 5% image-support floor. These are computational/support gates, not a
+   physical-accuracy certificate. Keep unsupported pixels unsupported and
+   teacher-completed geometry explicitly separate from native labels.
+
+Before any bulk generation, the new implementation needs the following gates:
+
+| Gate | Required evidence | What passing establishes |
+| --- | --- | --- |
+| Analytical fixtures | Exact planes, two occluding layers, near/far crossings, holes, off-axis and off-center rays, supported camera skew, rotated/translated cameras, reversed winding, chunk boundaries and empty hits. GPU and CPU depth must use original camera Z. Include a case where post-masking the closest hit gives the wrong answer. | Projection and visibility implementation correctness on known geometry. |
+| Bounded actual-render parity | Freeze identities before new output inspection: all 19 known quarantines, 16 ordinary control views from other training scenes, and 16 confirmation views from disjoint training scenes kept out of implementation tuning. Candidate labels pass the unchanged 2 mm all-supported-ray CPU check; compare the same stable pixels to the public renderer. Report mask disagreements, coverage losses, all fixed-grid pixels and changed-hit maps too. | Agreement between implementations; not physical truth or population prevalence. |
+| Physical/source consistency | Compare visible surfaces against retained raw scanner range/angle/pose measurements and overlapping views, preserving scanner radial range versus DSLR camera-Z conventions. Use several available scanner stations, explicit occlusion and registration uncertainty, and separately report non-comparable/missing regions. No pose fitting or scale correction to force agreement. | Evidence about source surface placement, subject to shared acquisition and registration limitations. |
+| Human review and scope | Inspect RGB, depth, mask, point cloud and measurement residual together, including all failures and clean controls. Check wall position/normals as well as plane residual; an incorrectly placed flat wall is still wrong. Keep failures outside supervision. | Bounded reviewed eligibility, never blanket validity from a few appealing renders. |
+
+The proposed 51-view selection is not yet frozen or executed. Confirmation views
+must be selected without seeing new-policy results, from training scenes only;
+model held-out sets stay unchanged. The physical gate must freeze an explicit
+sensor/registration uncertainty budget and required usable coverage before
+confirmation. Report absolute bias, median/p95 residuals, outlier fractions and
+coverage by scene/surface type, including the intersection and union of old/new
+support. Do not choose a tolerance after seeing which value makes the candidate
+pass, or reuse the 2 mm numerical parity tolerance as a physical sensor bound.
+Insufficient measurement support remains an unresolved/unsupported region.
+
+Only after these gates pass should a new cache be generated and read back,
+followed by exact original-row routing and broader per-scene quality/coverage
+review. The 19 quarantines are not automatically cleared by a v2 render; the 70
+reviewed support exclusions and 4,171 global exclusions remain in force until
+an explicitly bound alternative is accepted. The 35,783 existing teacher views
+are a separate route, not replacements for these 19 cases.
+
+A later training comparison tests usefulness separately: feature-only versus
+feature-plus-new-geometry with the same checkpoint/Adam/RNG, feature weight 1,
+RGB sequence, ordinary crops, three resolutions, effective batch 32 and equal
+completed update counts. Keep both original cosine metrics and independent
+LiDAR error as the predeclared joint target. Better-looking depth or lower
+training loss is insufficient. Any tuning uses development validation; a final
+unseen confirmation is needed after repeated use of existing validation. No
+optimizer, cache replacement or new source admission was performed for this
+plan.
