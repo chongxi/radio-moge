@@ -4484,3 +4484,39 @@ threshold tuning or automatic retry. No further policy choice or repeated pilot
 is needed merely to delay confirmation. Physical uncertainty remains explicitly
 uncalibrated; the confirmation will test this operational conditional policy,
 not certify centimeter physical accuracy or automatically admit the full source.
+
+### Sealed confirmation execution — November 5, 04:38 UTC
+
+A dedicated runner (`4c5ddb2`, `code-scannet-source-confirmation-v1`) now binds the
+original sixteen confirmation identities, the previously frozen source policy,
+all scanner inputs, exclusions, and the exact implementation. Nineteen focused
+CPU tests passed locally (0.39 s) and remotely (1.12 s). They include the actual
+source-helper composition on a synthetic plane with a rounded published pose,
+a conflicting peer measurement, prior exclusion vetoes, all-unsupported slots,
+and rejection of missing/replaced image, scanner, pixel and aggregate identities.
+The initial synthetic plane fixture crossed the gnomonic chart horizon; reducing
+its extent to a visible patch fixed that test fixture without changing the policy.
+
+The current actual fixture report is
+`scannetpp-native-v2-confirmation-fixtures-02/report.json`, SHA256
+`52d486d0fa43d3e91df1cb9eea8d02e52ce4a7353336eeefc6571a840f33098e`.
+Five CUDA/CPU fixtures and five actual CPU/software/CUDA consensus cases passed,
+including the current float32 near/far guard. A fresh software-camera fixture
+also passed with an off-center camera, rotated/translated pose, slanted surface,
+reversed winding and near/far clipping. The slanted-surface maximum discrepancy
+was 0.013915 mm. These are numerical fixtures, not physical source calibration.
+Attempt 01 stopped before source or confirmation-image reads because its process
+path omitted the existing isolated `raster-packages-02` installation. Attempt 02
+restored the exact previously recorded dependency paths; no package installation,
+training-environment change, threshold change or inference retry occurred.
+
+The sixteen-view run `scannetpp-native-v2-source-confirmation-01` started at
+04:38 UTC under the original GPU lock with a 3,600-second bound. The launch has
+no automatic retry, optimizer or bulk generation. Each image retains its dense
+numerical candidate and all 96 sparse source probes, both fixed scanners,
+raw comparison residuals, topology, exact-target first hits and original metadata.
+All 1,536 DSLR and 3,072 station slots must remain accounted for. Rendered green
+sample markers are conditional samples, never an interpolated dense source mask.
+The fixed source policy remains unchanged. At launch no completed confirmation
+result or visual review is claimed; inspect the saved report and all sixteen
+pages before drawing a conclusion. Source-wide admission and training remain off.
