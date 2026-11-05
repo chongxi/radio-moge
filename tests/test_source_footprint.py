@@ -160,3 +160,19 @@ def test_all_slots_counted_even_when_no_station_can_qualify():
 def test_global_incidence_chunking_does_not_change_topology():
     v, f, _, _ = fixture()
     assert extract_topology(v, f, {0, 1}, chunk=1) == extract_topology(v, f, {0, 1}, chunk=64)
+
+
+@pytest.mark.parametrize('shape', [(2, 2), (2, 3), (3, 2)])
+def test_border_patch_does_not_masquerade_as_complete(shape):
+    p = dict(values=dict(range=np.full(shape, 2000).tolist(), mask=np.full(shape, 255).tolist()))
+    result = sampled_range_evidence([dict(radial_range_m=2.)]*9, p)
+    assert result['status'] == 'source_patch_or_first_hits_incomplete'
+    assert result['raw_patch_pixels'] == np.prod(shape)
+
+
+def test_skinny_triangle_does_not_allow_distant_point_across_another_edge():
+    v = np.array([[0., 0., 2.], [100., 0., 2.], [0., .0001, 2.]])
+    target = dict(face_id=0, vertices_world=v.tolist(), point_world=[1., .000001, 2.])
+    hits = [dict(face_id=0, point_world=[-.01, 0., 2.], radial_range_m=2.)]*9
+    with pytest.raises(ValueError, match='not on its original'):
+        classify(v, np.array([[0, 1, 2]]), target, hits)

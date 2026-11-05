@@ -46,14 +46,19 @@ def coverage(rows):
                 physical_accepted_pixels=0, source_accepted_images=0)
 
 
-def run(root, output):
-    import trimesh
-
+def run(root, output, saved_topology=None):
     pilot_ref = file_ref(root/'scannetpp-native-v2-source-pilot-01/report.json')
     transfer_ref = file_ref(root/'scannetpp-native-v2-scanner-transfer-01/report.json')
     if pilot_ref['sha256'] != PILOT_SHA or transfer_ref['sha256'] != TRANSFER_SHA:
         raise ValueError('Frozen pilot/counterexample identity changed')
     pilot, transfer = read(pilot_ref, root), read(transfer_ref, root)
+    prior_ref, prior = None, None
+    if saved_topology is not None:
+        prior_ref = file_ref(saved_topology)
+        prior = read(prior_ref, root)
+        if (prior['stage'] != 'saved_source_footprint_diagnostics_complete_not_accepted'
+                or prior['pilot']['sha256'] != PILOT_SHA):
+            raise ValueError('Completed exact-pilot topology extraction required')
     contract = FootprintContract()
     output.mkdir(exist_ok=False)
     publish_json(output/'contract.json', dict(parameters=asdict(contract),
@@ -65,6 +70,8 @@ def run(root, output):
         nonplanar='unresolved, not classified as bad depth',
         missing_bridge='unresolved, not proof of physical disconnection',
         source_gaps='reported independently of footprint status; never hidden by coverage selection',
+        source_patch='exact full3x3 with all original mask/range support required; border crops incomplete',
+        triangle_membership='per-coordinate opposite-edge altitude numerical tolerance',
         interval_overlap_is_acceptance=False, numerical_tolerances_are_physical=False,
         incidence_threshold='prospective diagnostic exclusion for >10x plane-intersection sensitivity',
         continuous_uncertainty_bound=False, independent_physical_calibration=False,
@@ -96,15 +103,27 @@ def run(root, output):
             mesh_refs = [p for p in targets['source_refs'] if p['path'].endswith('.ply')]
             if len(mesh_refs) != 1:
                 raise ValueError('One original source mesh required')
-            path = bound_path(mesh_refs[0], root)
-            mesh = trimesh.load_mesh(path, process=False)
-            topology = extract_topology(mesh.vertices, mesh.faces, wanted)
-            del mesh
-            gc.collect()
-            topology.update(source_mesh=mesh_refs[0], targets=target_ref, stations=station_refs)
-            target_path = output/f'{ordinal}-topology.json'
-            publish_json(target_path, topology)
-            topology_ref = file_ref(target_path)
+            if prior is None:
+                import trimesh
+                path = bound_path(mesh_refs[0], root)
+                mesh = trimesh.load_mesh(path, process=False)
+                topology = extract_topology(mesh.vertices, mesh.faces, wanted)
+                del mesh
+                gc.collect()
+                topology.update(source_mesh=mesh_refs[0], targets=target_ref, stations=station_refs)
+                target_path = output/f'{ordinal}-topology.json'
+                publish_json(target_path, topology)
+                topology_ref = file_ref(target_path)
+            else:
+                refs = [p for p in prior['artifacts'] if Path(p['path']).name == f'{ordinal}-topology.json']
+                if len(refs) != 1:
+                    raise ValueError('Unique saved topology required')
+                topology_ref = refs[0]
+                topology = read(topology_ref, root)
+                if (topology['source_mesh'] != mesh_refs[0]
+                        or topology['targets'] != target_ref or topology['stations'] != station_refs
+                        or {f['face_id'] for f in topology['faces']} != wanted):
+                    raise ValueError('Saved topology binding changed')
             artifacts.append(topology_ref)
             image_rows = []
             for station_ref, station in stations:
@@ -161,7 +180,8 @@ def run(root, output):
             pilot=pilot_ref, contract=file_ref(output/'contract.json'), artifacts=artifacts,
             coverage=coverage(rows), counterexamples_preserved=counterexamples,
             prior_counterexample=dict(report=transfer_ref, record=previous[0]),
-            new_mesh_topology_reads=4, new_rays=0, new_range_reads=0, new_RGB_reads=0,
+            new_mesh_topology_reads=4 if prior is None else 0, saved_topology=prior_ref,
+            new_rays=0, new_range_reads=0, new_RGB_reads=0,
             confirmation_images_read=0, gpu_used=False, optimizer_updates=0,
             physical_accuracy_accepted=False, source_quality_accepted=False,
             training_admission=False, labels_changed=False,
@@ -178,5 +198,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--saved-topology', type=Path)
     args = parser.parse_args()
-    run(args.root.resolve(), args.output.resolve())
+    run(args.root.resolve(), args.output.resolve(), args.saved_topology)

@@ -77,10 +77,11 @@ def _point_on_triangle(point, v, tolerance):
     if normal is None or abs(q @ normal) > tolerance:
         return False
     weights = np.linalg.lstsq(np.stack([a, b], axis=1), q, rcond=None)[0]
-    # Barycentric tolerance derives from the smallest altitude, not a depth bound.
+    # Each barycentric coordinate uses its own opposite-edge altitude. Using
+    # the smallest altitude for all three admits distant points on skinny faces.
     area = np.linalg.norm(np.cross(a, b))
-    eps = tolerance/(area/max(np.linalg.norm(a), np.linalg.norm(b), np.linalg.norm(a-b)))
-    return bool(min(*weights, 1-weights.sum()) >= -eps)
+    eps = tolerance*np.array([np.linalg.norm(b), np.linalg.norm(a), np.linalg.norm(a-b)])/area
+    return bool((np.array([*weights, 1-weights.sum()]) >= -eps).all())
 
 
 def validate_saved_hits(hits, origin, world_rays):
@@ -206,7 +207,7 @@ def sampled_range_evidence(hits, raw_patch):
                   continuous_uncertainty_bound=False)
     if first:
         result['first_hit_interval_m'] = [float(min(first)), float(max(first))]
-    if not supported.all() or not first or len(first) != 9:
+    if ranges.shape != (3, 3) or not supported.all() or not first or len(first) != 9:
         return dict(result, status='source_patch_or_first_hits_incomplete')
     measured = ranges.astype(np.float64)/1000
     lower, upper = float(measured.min()-max(first)), float(measured.max()-min(first))
@@ -214,4 +215,5 @@ def sampled_range_evidence(hits, raw_patch):
     return dict(result, status='sampled_intervals_disjoint' if gap else 'sampled_intervals_overlap',
                 measured_interval_m=[float(measured.min()), float(measured.max())],
                 first_hit_interval_m=[float(min(first)), float(max(first))],
+                signed_sampled_envelope_m=[lower, upper],
                 signed_interval_separation_m=gap)
