@@ -11,14 +11,14 @@ from render_procthor_empty_batch import houses_from, source_spec
 from render_procthor_empty_pilot import publish, sha
 
 
-def freeze(root, batch, output, split, count, views):
+def freeze(root, batch, output, split, count, views, start=0):
     if split not in ('train', 'val') or count < 1 or views not in (4, 20):
         raise ValueError('Explicit official split, complete houses and four/twenty views required')
     archive, archive_sha, size = source_spec(root, split)
-    if count > size or sha(archive) != archive_sha:
+    if start < 0 or start + count > size or sha(archive) != archive_sha:
         raise ValueError('Pinned official house source differs')
     selected, summaries, originals = {}, [], {}
-    for ordinal, original, line_sha in houses_from(archive, 0, count):
+    for ordinal, original, line_sha in houses_from(archive, start, count):
         name = f'{split}-{ordinal:05d}'
         house_path = batch / 'houses' / (name + '.json')
         receipt = batch / 'house-reports' / (name + '.json')
@@ -84,7 +84,7 @@ def freeze(root, batch, output, split, count, views):
             file.write(json.dumps(row, allow_nan=False) + '\n')
     incoming.rename(manifest)
     report = dict(stage='frozen_verified_feature_rgb', split=split, images=len(records),
-        houses=len(groups), views_per_house=views, house_range=[0, count],
+        houses=len(groups), views_per_house=views, house_range=[start, start + count],
         manifest=dict(path=str(manifest), sha256=sha(manifest)), house_receipts=summaries,
         source=dict(path=str(archive), sha256=archive_sha),
         source_batch=str(batch), every_selected_rgb_decoded_and_hashed=True,
@@ -104,7 +104,8 @@ if __name__ == '__main__':
         parser.add_argument('--'+key, type=Path, required=True)
     parser.add_argument('--split', choices=('train', 'val'), required=True)
     parser.add_argument('--houses', type=int, required=True)
+    parser.add_argument('--start-house', type=int, default=0)
     parser.add_argument('--views-per-house', type=int, choices=(4, 20), required=True)
     args = parser.parse_args()
     freeze(args.root.resolve(), args.batch.resolve(), args.output.resolve(),
-           args.split, args.houses, args.views_per_house)
+           args.split, args.houses, args.views_per_house, args.start_house)

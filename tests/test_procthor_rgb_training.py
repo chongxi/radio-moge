@@ -166,20 +166,22 @@ def test_actual_prepared_training_uses_full32_no_geometry_and_preserves_initial_
         joined[next(k for k in keys if k[0] >= len(real))]
 
 
-def frozen_fixture(tmp_path, monkeypatch, split):
+def frozen_fixture(tmp_path, monkeypatch, split, start=0):
     archive = tmp_path / 'source.jsonl.gz'
     original = dict(objects=[dict(id='chair')], rooms=[], metadata={})
     line = json.dumps(original)+'\n'
     with gzip.open(archive, 'wt') as file:
+        for i in range(start):
+            file.write(json.dumps(dict(original, metadata=dict(ordinal=i)))+'\n')
         file.write(line)
     digest = freezer.sha(archive)
-    monkeypatch.setattr(freezer, 'source_spec', lambda root, s: (archive, digest, 1))
+    monkeypatch.setattr(freezer, 'source_spec', lambda root, s: (archive, digest, start + 1))
     batch = tmp_path / 'batch'
     for name in ('houses', 'house-reports', 'rgb'):
         (batch / name).mkdir(parents=True)
-    house = batch / 'houses' / f'{split}-00000.json'
+    house = batch / 'houses' / f'{split}-{start:05d}.json'
     house.write_text(json.dumps(dict(original, objects=[])))
-    group = f'procthor10k/{split}/00000'
+    group = f'procthor10k/{split}/{start:05d}'
     rows, images = [], []
     for i in range(20):
         a = np.zeros((480, 640, 3), np.uint8)
@@ -199,7 +201,7 @@ def frozen_fixture(tmp_path, monkeypatch, split):
     report = dict(house_id=group, archive_sha256=digest,
         source_line_sha256=hashlib.sha256(line.encode()).hexdigest(),
         empty_house_sha256=freezer.sha(house), images=images)
-    (batch / 'house-reports' / f'{split}-00000.json').write_text(json.dumps(report))
+    (batch / 'house-reports' / f'{split}-{start:05d}.json').write_text(json.dumps(report))
     return batch, rows
 
 
@@ -219,4 +221,23 @@ def test_freeze_rejects_visible_agent_before_publication(tmp_path, monkeypatch):
     (batch/'rgb-candidates.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in rows))
     with pytest.raises(ValueError, match='contract changed'):
         freezer.freeze(tmp_path, batch, tmp_path/'frozen', 'train', 1, 20)
+    assert not (tmp_path/'frozen').exists()
+
+
+def test_freeze_nonzero_house_range_keeps_original_ids_and_source_binding(tmp_path, monkeypatch):
+    batch, expected = frozen_fixture(tmp_path, monkeypatch, 'train', start=7)
+    report = freezer.freeze(tmp_path, batch, tmp_path/'frozen', 'train', 1, 20, start=7)
+    rows = [json.loads(line) for line in (tmp_path/'frozen/rgb.jsonl').read_text().splitlines()]
+    assert report['house_range'] == [7, 8]
+    assert {r['group'] for r in rows} == {'procthor10k/train/00007'}
+    assert [(r['image'], r['sha256'], r['source_line_sha256']) for r in rows] == [
+        (r['image'], r['sha256'], r['source_line_sha256']) for r in expected]
+    assert not (batch/'houses/train-00000.json').exists()
+
+
+@pytest.mark.parametrize('start', [-1, 1])
+def test_freeze_rejects_out_of_range_before_publication(tmp_path, monkeypatch, start):
+    batch, _ = frozen_fixture(tmp_path, monkeypatch, 'train')
+    with pytest.raises(ValueError, match='source archive'):
+        freezer.freeze(tmp_path, batch, tmp_path/'frozen', 'train', 1, 20, start=start)
     assert not (tmp_path/'frozen').exists()
