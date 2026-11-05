@@ -5,6 +5,12 @@ Further ScanNet++ source/geometry investigations were explicitly stopped.
 This generation task uses ProcTHOR only; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
+Current state, Nov5 08:58 UTC: the first mixed-feature run has completed its
+fixed1,000 updates at234538. It improves agreement on unseen synthetic houses,
+but the final real-data joint target is not met. No deployment replacement or
+further optimizer segment has been started. The existing CPU renderer continues;
+7,540 images from377 training houses are closed so far.
+
 ## Sources and renderer
 
 The official ProcTHOR-10K training source is pinned to repository revision
@@ -149,7 +155,7 @@ official-house RGB, spatial .9614996593→.9700959381 and summary
 .8897025390→.9254881674; teacher-depth discrepancy falls .1195481062→.0850851858.
 These are early paired observations, not a replicated causal result or proof
 of real-world planarity. At08:28 UTC500 new updates were reached and the second
-validation was in progress; the full1,000-update segment remains active.
+validation was in progress. The completed segment is reviewed below.
 
 W&B run `f6b5fe37` is online. First20 training values are numerically exact,
 online startup report SHA
@@ -160,3 +166,62 @@ unchanged. The first online verifier stopped before publication because its
 old two-baseline allowlist omitted NYU delta1; the second explicitly checks all
 three observed paths and exact one-ULP differences. This is not an optimizer
 or configuration failure. No startup/model proof needs repeating.
+
+## Fixed1,000-update result
+
+The original wrapper and trainer exited normally at234538 after1,000 updates,
+with final evaluation complete and step_limit termination. The actual input
+audit contains32,000 presentations:4,000 synthetic and28,000 real, with all
+planned keys matched. Mixed cursor8000 and all100 Adam counters234538 were
+read back from the final checkpoint. All adapter/Adam tensors and1,000 logged
+updates are finite; fixed feature statistics and config/model/data identities
+are unchanged. Logged F1 totals agree within float32 summation rounding
+(maximum3.7253e-8). The fixed checkpoint is preserved by hard link:
+`procthor-feature-mix-training-01/finish-verification-01/checkpoint-step234538.pt`,
+SHA`80c9d0ec3c0839ecaefab5e3c8edde06e1174fff17bee814a0430ab0a073ea5c`.
+Readback report SHA
+`8425ca0802ea217cf0bc9837c07cab667bf56acd3190805df6ba0be5604597c0`.
+
+Saved-only paired reviews for500,750 and1,000 updates are complete. All four
+real views and the64-image unseen-house view retain exact images, protocols,
+teacher identities and support. No inference or baseline evaluation was rerun.
+Final review SHA
+`db48ee2c24acd330007170ca485ad0c94dd31ee55bfcfa287d81fc59f005866e`.
+
+| Real validation | Parent233538 | +250 | +500 | +750 | Fixed +1000 |
+|---|---:|---:|---:|---:|---:|
+| Spatial cosine | .964644982 | .964681472 | .964488311 | .964516835 | .964583766 |
+| Summary cosine | .935764015 | .935841702 | .935748113 | .935802933 | .935825432 |
+| Independent iPhone LiDAR AbsRel | .093190284 | .091951557 | .093302035 | .097170404 | .094354521 |
+
+At the fixed endpoint, spatial cosine falls slightly, summary rises slightly,
+and LiDAR AbsRel worsens1.2493% versus the parent. Against archived232288,
+spatial remains lower and LiDAR is2.4274% worse; summary is higher. Both joint
+comparisons therefore fail. The earlier250-update improvement is reported as
+an intermediate observation, not substituted for the fixed endpoint. Its
+saved spatial/summary/teacher-depth candidates remain available.
+
+On the64 held-out official-house RGB images, spatial cosine rises
+.9614996593→.9718591366 and summary .8897025390→.9364838200; teacher-depth
+discrepancy falls .1195481062→.0816755904 (-31.6797%). This is agreement with
+MoGe-v2 on unseen synthetic houses, not ground-truth accuracy, a causal
+isolation of the data addition, or evidence that real walls are flatter.
+
+The fixed2,000-image training manifest remains unchanged while rendering
+continues. At08:58 UTC the existing renderer has closed377 houses/7,540 images,
+zero uniform/duplicate frames, and154 failed camera actions omitted. Newly
+generated views are not retrospectively counted as training inputs. The final
+mixed model is retained for comparison and has not replaced the deployment model.
+
+W&B`f6b5fe37` is finished. All553 emitted final validation scalars, including78
+in the new ProcTHOR namespace, match committed results numerically. Config and
+provenance retain only the three previously recorded one-ULP display differences
+and equal integer/float representations. Online final report SHA
+`c35ed3ffd502e6d09ba5022b895800367da9f2ef5c72e26cd929d8eb76233253`;
+combined closure SHA
+`6364ec0dc2b038f5c6c403c79c68402da638ef4b02413c48122cc6f5186a7a26`.
+The first online read-only launch used a bare`argv[0]`and selected the wrong
+Python environment before importing W&B; explicitly passing the existing model
+Python path fixed the launcher. No training rerun, environment installation or
+credential change occurred. Verifiers are immutable`9681dd6`in
+`code-procthor-finish-v1`; lint/compilation and the actual closed-run checks passed.
