@@ -46,6 +46,19 @@ def test_cross_split_detects_pixels_even_with_different_names():
     assert overlap(a, b)['group'] == 0
 
 
+@pytest.mark.parametrize('split,ordinal,allowed', [('val', 0, True), ('val', 6, True),
+    ('val', 7, False), ('train', 0, False), ('train', 8, False)])
+def test_legacy_validation_tag_is_never_training_admission(split, ordinal, allowed):
+    row = room(split=split)
+    row.pop('frame_policy')
+    row['scene_ordinal'] = ordinal
+    if allowed:
+        check_rows([row], split)
+    else:
+        with pytest.raises(ValueError):
+            check_rows([row], split)
+
+
 @pytest.mark.parametrize('mutation', [None, 'population', 'geometry', 'weight', 'budget', 'real'])
 def test_room_fork_only_adds_declared_population(mutation):
     config, parent, plan = contract()

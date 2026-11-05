@@ -23,11 +23,15 @@ def check_rows(rows, split):
                 raise ValueError('Official ProcTHOR projection or group changed')
         elif source == 'structural_rooms':
             projection = row.get('projection')
+            # The frozen validation manifest includes seven earlier, already
+            # pixel-checked scenes. Only those validation rows lack this tag.
+            legacy_val = (split == 'val' and row.get('frame_policy') is None
+                and type(row.get('scene_ordinal')) is int and 0 <= row['scene_ordinal'] <= 6)
             if (projection not in ('perspective', 'orthographic')
                     or row.get('camera_model') != ('pinhole' if projection == 'perspective' else 'parallel')
                     or row.get('user_approved_projection') is not True
                     or row.get('geometry_admission') is not False
-                    or row.get('frame_policy') != 'strict-rgb-frame-filter-v2'
+                    or (row.get('frame_policy') != 'strict-rgb-frame-filter-v2' and not legacy_val)
                     or any(row.get(k) != 0 for k in ('window_count', 'door_count', 'exterior_background_pixels'))
                     or not row.get('group', '').startswith(f'structural-room-rgb-multiview-v1/{split}/')):
                 raise ValueError('Structural source, camera or closed-room contract changed')
