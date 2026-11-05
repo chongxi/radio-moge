@@ -6,7 +6,7 @@ Generation uses official ProcTHOR houses and custom structural rooms rendered
 in the same pinned simulator; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov5 23:14 UTC: the user explicitly requested starting with the
+Current state, Nov5 23:43 UTC: the user explicitly requested starting with the
 qualified data and passing **every new image through training**. A separate
 `room-feature-full-epoch-46844-training-01` is now running under the original GPU
 lock, wrapper342237/trainer342238, immutable `code-room-full-epoch-v1` / `71c9d2b`.
@@ -51,10 +51,57 @@ representations. Configuration bytes are unchanged. Startup closure
 `room-feature-full-epoch-startup-closure-01/report.json` has SHA
 `256d6147f6bd3921dd5e54e0ddefdcd609f98d336d50431889e46b1f44b672e5`.
 Saved-result/full-coverage/final-online reviewers in `code-room-epoch-review-v1`
-(`47758c0`) passed22 local and22 remote CPU tests; future validation and final
-reviews have not yet run. At23:17 UTC494 updates are finite, with no OOM.
+(`47758c0`) passed22 local and22 remote CPU tests. The first two saved validation
+reviews are now complete; final coverage and final checkpoint reviews remain.
+At23:43 UTC2,581 updates are finite, with no OOM. The periodic2,500-update
+coverage record contains10,000 distinct synthetic identities, zero repeats,
+and36,844 still missing. This is partial progress through the46,844-image epoch.
 The runtime status keeps its startup update count until closure; use actual
 `training/train.jsonl` and committed `coverage-progress.json` for progress.
+
+The first1,000- and2,000-update evaluations retain all six parent populations,
+per-image identities, protocols, teacher values and support. All actual planned
+RGB keys and synthetic identities match, with4,000/8,000 unique synthetic images
+respectively. The original-validation comparison is:
+
+| Endpoint | Spatial cosine | Summary cosine | LiDAR AbsRel |
+| --- | ---: | ---: | ---: |
+| Parent234538 |0.9644499831|0.9358074926|0.0954916715|
+| +1,000 /235538 |0.9646070817|0.9358768267|0.0927934218|
+| +2,000 /236538 |0.9645692867|0.9360401285|0.0949768736|
+
+Both endpoints jointly improve the three primary metrics against this epoch's
+parent. LiDAR error is2.8256% lower at1,000 and0.5391% lower at2,000. The2,000
+endpoint has weaker spatial/LiDAR results than1,000 and higher summary cosine;
+improvement is not monotonic. Against the same-population archive232288 baseline,
+both still have lower spatial cosine and higher LiDAR error (+0.7327%/+3.1030%).
+Therefore the archived-baseline joint target still fails. No significance,
+causal explanation or real-world wall-planarity improvement is established.
+
+Unseen structural317 cosine reaches0.9581754851/0.9645105841 at2,000, compared
+with parent0.9510275748/0.9381207416; teacher-depth discrepancy is16.8250% lower.
+Official-house64 also improves both cosines. These remain synthetic validation
+results and are reported separately from the original macro/independent LiDAR.
+
+The first parent-joint-improving checkpoint235538 is preserved by immutable
+hardlink under `checkpoint-235538-parent-joint-candidate-01`, SHA
+`0cf772f480da2567518f0f8fbcb5605ed408e75f7afa577e533455ae3a9fd655`.
+CPU readback verified finite adapter/all100 Adam states at235538, cursor8000,
+unchanged RMS, configuration, stream identities and revisions. It is a candidate,
+not a deployed model. Do not repeat this checkpoint readback.
+
+All631 online validation scalars at each of the two endpoints match the local
+saved records numerically;37 equal integer/float representations per endpoint
+are recorded. The first read-only online check timed out before publication:
+the installed SDK pages over internal log-step ranges, so page_size4 made
+hundreds of mostly empty filtered requests. Its orphaned read-only verifier was
+stopped, and `code-room-epoch-review-v2` / `09bfc31` uses the SDK's1,000-step
+page size. Both actual checks passed. The final online helper uses the same
+paging correction; training code/configuration and metric tolerances are unchanged.
+
+Existing structural batch11 continues under controller316684/child341968;
+at23:43 it has76 closed scenes and1,505 RGB, with15 rejected frames, zero
+duplicates or held scenes. It is not yet frozen or included in this epoch.
 
 The preceding run, `room-feature-mix-40890-training-02`, completed
 its fixed1,000 updates normally at234538, using immutable
