@@ -28,9 +28,12 @@ passed locally and remotely, including actual tiny-model fork preservation and
 metadata equivalence; eleven new launcher tests passed again after adding CPU
 copies for cross-device initial-state comparison.
 
-At06:41:55 the process was loading metadata (94,208 rows), with zero verified
-new optimizer updates. Read its current `status.json` and actual `train.jsonl`;
-do not interpret successful process launch as completed training. The plan SHA
+The segment completed normally at233538 with1,000 new finite updates. Actual
+initial adapter/RMS/all100 Adam states/RNG/cursor matched the parent. Final
+CPU readback verified all100 Adam steps233538, cursor10000, finite state and
+unchanged RMS/model/data identities. W&B88bd627a finished; all475 final metrics
+match saved evaluation. Two API config baseline values differ by exactly one
+floating-point ULP; runtime config is unchanged. The plan SHA
 is `25baa4bcda2ad70679bc1b43d17fa2f9719fcad8bada8471cc7a7fa795b7b0d5`,
 config SHA `000d128c1842b4df47342268d40816fc1a90e82b71df3d07e77ef2b4b2d23125`.
 
@@ -43,6 +46,17 @@ primary cosines and2.18% worse iPhone LiDAR AbsRel than archived232288.
 Keep that archive and A as deployment candidates; evaluate the new checkpoints
 on the same six-source/four-view protocols before choosing a deployment model.
 No live model replacement is implied by a later training step.
+
+Final six-source spatial/summary cosine: .9646449821/.9357640150; independent
+LiDAR AbsRel .0931902844. Relative to filtered A232538 both cosines improve
+slightly and LiDAR improves0.9991%. Relative to archived232288 spatial cosine
+remains lower and LiDAR remains1.1635% worse; the original joint target is not
+met. All four saved validation endpoints were paired without new inference.
+Preserve the final checkpoint SHA
+`d4ae22dc3b6f8b6a88dbcf2129b5a0f37337a10f87ce26a6096e1d2d6a717ec5`.
+
+Current authorized work is clean empty-room RGB generation using ProcTHOR,
+with no depth labels or geometry loss. See [the generation record](procthor-empty-rgb.md).
 
 November4 projection correction: the historical1,637,908-row stream below is
 superseded for future launches by the COCO hold. Materialized candidates contain
