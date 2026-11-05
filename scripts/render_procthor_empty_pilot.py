@@ -30,7 +30,7 @@ def publish(path, value):
     os.replace(incoming, path)
 
 
-def main(root, output):
+def create_controller(root, output, house, field_of_view=70):
     if importlib.metadata.version('ai2thor') != '5.0.0':
         raise ValueError('Use the isolated pinned AI2THOR environment')
     if os.environ.get('CUDA_VISIBLE_DEVICES') != '':
@@ -39,8 +39,6 @@ def main(root, output):
             or os.environ.get('GALLIUM_DRIVER') != 'llvmpipe'
             or not os.environ.get('DISPLAY')):
         raise ValueError('Require a private display and CPU llvmpipe OpenGL')
-    output.mkdir(exist_ok=False)
-    started = time.monotonic()
     build = json.loads((root / 'procthor-x11-setup-02/report.json').read_text())
     executable = Path(build['executable'])
     if build['commit'] != BUILD or sha(executable) != build['executable_sha256']:
@@ -73,6 +71,19 @@ def main(root, output):
                 '-force-glcore', '-job-worker-count', '1',
                 '-logFile', str(output / 'unity.log')]
 
+    return BoundedController(
+        platform=Linux64, commit_id=BUILD,
+        server_class=FifoServer, quality='High', scene=house,
+        width=640, height=480, fieldOfView=field_of_view, snapToGrid=False,
+        renderDepthImage=False, renderInstanceSegmentation=False,
+        renderSemanticSegmentation=False, renderNormalsImage=False,
+        server_start_timeout=180., server_timeout=120.)
+
+
+def main(root, output):
+    output.mkdir(exist_ok=False)
+    started = time.monotonic()
+    build = json.loads((root / 'procthor-x11-setup-02/report.json').read_text())
     if hasattr(os, 'sched_getaffinity'):
         available = sorted(os.sched_getaffinity(0))
         os.sched_setaffinity(0, available[-2:])
@@ -90,13 +101,7 @@ def main(root, output):
     records, controller = [], None
     publish(output / 'status.json', dict(stage='starting_cpu_renderer', completed=0))
     try:
-        controller = BoundedController(
-            platform=Linux64, commit_id=BUILD,
-            server_class=FifoServer, quality='High', scene=houses[0][1],
-            width=640, height=480, fieldOfView=70, snapToGrid=False,
-            renderDepthImage=False, renderInstanceSegmentation=False,
-            renderSemanticSegmentation=False, renderNormalsImage=False,
-            server_start_timeout=180., server_timeout=120.)
+        controller = create_controller(root, output, houses[0][1])
         initial_seconds = time.monotonic() - started
         for ordinal, house, original_path, empty_path in houses:
             house_started = time.monotonic()
