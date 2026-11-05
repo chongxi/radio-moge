@@ -44,6 +44,17 @@ and the measured adapter update is nonzero. Metadata loading completed in360.81s
 All six saved parent validation views are bound and reused without baseline
 inference. Validation occurs every1,000 updates and at the final711-update tail;
 the original both-cosines-up and LiDAR-error-down criterion remains unchanged.
+The first20 online updates contain382 scalar values, all numerically identical
+to the committed local records. Only two checkpoint-baseline API displays differ
+by exactly one ULP; seven metadata and20 schedule values use equal integer/float
+representations. Configuration bytes are unchanged. Startup closure
+`room-feature-full-epoch-startup-closure-01/report.json` has SHA
+`256d6147f6bd3921dd5e54e0ddefdcd609f98d336d50431889e46b1f44b672e5`.
+Saved-result/full-coverage/final-online reviewers in `code-room-epoch-review-v1`
+(`47758c0`) passed22 local and22 remote CPU tests; future validation and final
+reviews have not yet run. At23:17 UTC494 updates are finite, with no OOM.
+The runtime status keeps its startup update count until closure; use actual
+`training/train.jsonl` and committed `coverage-progress.json` for progress.
 
 The preceding run, `room-feature-mix-40890-training-02`, completed
 its fixed1,000 updates normally at234538, using immutable
