@@ -17,6 +17,7 @@ from render_structural_room_samples import box_mesh, material, mesh_for, room, s
 
 POLICY = "structural-room-rgb-multiview-v1"
 FRAME_POLICY = "strict-rgb-frame-filter-v2"
+SCENE_FAILURE_POLICY = "quarantine-excess-invalid-views-v1"
 PALETTES = (
     (0.84, 0.82, 0.76),
     (0.76, 0.80, 0.83),
@@ -341,7 +342,7 @@ def spawn_structures(controller, spec, output, stem):
     return dict(path=str(path), sha256=sha(path))
 
 
-def run(root, output, split, start, count, views, maximum_seconds):
+def run(root, output, split, start, count, views, maximum_seconds, maximum_quarantined_scenes=0):
     if (
         split not in ("train", "val")
         or start < 0
@@ -351,8 +352,12 @@ def run(root, output, split, start, count, views, maximum_seconds):
         raise ValueError("Explicit bounded scene range and split required")
     if views not in (4, 20) or not 60 <= maximum_seconds <= 7200:
         raise ValueError("Use four/twenty views, at most two hours")
+    if not 0 <= maximum_quarantined_scenes <= min(count, 5) or (
+        maximum_quarantined_scenes and views != 20
+    ):
+        raise ValueError("At most five explicit whole-scene quarantines for twenty-view batches")
     output.mkdir(exist_ok=False)
-    for subdir in ("rgb", "scenes", "assets", "scene-reports", "rejected"):
+    for subdir in ("rgb", "scenes", "assets", "scene-reports", "rejected", "quarantined-scenes"):
         (output / subdir).mkdir()
     os.sched_setaffinity(0, sorted(os.sched_getaffinity(0))[-2:])
     started, controller = time.monotonic(), None
@@ -363,8 +368,11 @@ def run(root, output, split, start, count, views, maximum_seconds):
         perspective_frames=0,
         orthographic_frames=0,
         rejected_frames=0,
+        scenes_quarantined=0,
+        held_candidate_frames=0,
+        unattempted_held_slots=0,
     )
-    seen, summaries, next_scene = set(), [], start
+    seen, summaries, quarantines, next_scene = set(), [], [], start
     manifest = output / "rgb-candidates.jsonl"
     publish(output / "status.json", dict(stage="starting_cpu_renderer", **totals))
     try:
@@ -389,9 +397,11 @@ def run(root, output, split, start, count, views, maximum_seconds):
                 if controller.initialization_parameters.get("makeAgentsVisible") is not False:
                     raise ValueError("Simulator agent visibility changed")
                 assets = spawn_structures(controller, spec, output, stem)
-                scene_rows, rejected_rows = [], []
+                scene_rows, scene_records, rejected_rows = [], [], []
+                scene_pixels, attempted_slots, quarantine_scene = set(), [], False
                 for slot in camera_slots(spec, views):
                     request = slot["request"]
+                    attempted_slots.append(slot["index"])
                     event = controller.step(
                         action="AddThirdPartyCamera"
                         if slot["index"] == 0
@@ -423,13 +433,16 @@ def run(root, output, split, start, count, views, maximum_seconds):
                         rejected_rows.append(dict(path=str(proof), sha256=sha(proof)))
                         totals["rejected_frames"] += 1
                         if len(rejected_rows) > (2 if views == 20 else 0):
-                            raise RuntimeError("Excess rejected views; inspect this scene before continuing")
+                            if not maximum_quarantined_scenes:
+                                raise RuntimeError("Excess rejected views; inspect this scene before continuing")
+                            quarantine_scene = True
+                            break
                         continue
                     pixel_sha = hashlib.sha256(rgb.tobytes()).hexdigest()
-                    if pixel_sha in seen:
+                    if pixel_sha in seen or pixel_sha in scene_pixels:
                         totals["duplicate_frames"] += 1
                         raise ValueError("Duplicate RGB pixels; do not silently replace the slot")
-                    seen.add(pixel_sha)
+                    scene_pixels.add(pixel_sha)
                     cameras = event.metadata.get("thirdPartyCameras")
                     if not cameras or len(cameras) != 1:
                         raise ValueError("Unexpected third-party camera state")
@@ -483,14 +496,50 @@ def run(root, output, split, start, count, views, maximum_seconds):
                         user_approved_projection=True,
                         renderer_build=BUILD,
                     )
-                    records.write(json.dumps(row, allow_nan=False) + "\n")
+                    scene_records.append(row)
                     scene_rows.append(
                         dict(image=str(image), sha256=row["sha256"], slot=slot["index"])
                     )
-                    totals["completed"] += 1
-                    totals[
-                        "orthographic_frames" if request["orthographic"] else "perspective_frames"
-                    ] += 1
+                if quarantine_scene:
+                    # Never publish any row from this scene in the candidate manifest.
+                    # Preserve both failed and otherwise-valid raw frames for diagnosis.
+                    unattempted = sorted(set(range(views)) - set(attempted_slots))
+                    quarantine = output / "quarantined-scenes" / (stem + ".json")
+                    publish(quarantine, dict(
+                        stage="whole_scene_held_excess_invalid_views",
+                        scene=spec["identity"], ordinal=ordinal,
+                        scene_file=dict(path=str(spec_path), sha256=sha(spec_path)),
+                        assets=assets, candidate_rows_not_admitted=scene_records,
+                        rejected=rejected_rows, attempted_slots=attempted_slots,
+                        unattempted_slots=unattempted, closed=False,
+                        training_admission=False, frame_policy=FRAME_POLICY,
+                        scene_failure_policy=SCENE_FAILURE_POLICY,
+                    ))
+                    quarantines.append(dict(
+                        ordinal=ordinal, path=str(quarantine), sha256=sha(quarantine),
+                        held_candidate_frames=len(scene_records),
+                        rejected=len(rejected_rows), unattempted_slots=len(unattempted),
+                    ))
+                    totals["scenes_quarantined"] += 1
+                    totals["held_candidate_frames"] += len(scene_records)
+                    totals["unattempted_held_slots"] += len(unattempted)
+                    next_scene = ordinal + 1
+                    if totals["scenes_quarantined"] > maximum_quarantined_scenes:
+                        raise RuntimeError("Whole-scene quarantine budget exceeded; inspect batch")
+                    status = dict(
+                        stage="rendering_structural_multiview_rgb",
+                        next_scene=next_scene, elapsed_seconds=time.monotonic() - started,
+                        **totals,
+                    )
+                    publish(output / "status.json", status)
+                    print(json.dumps(status), flush=True)
+                    continue
+                for row in scene_records:
+                    records.write(json.dumps(row, allow_nan=False) + "\n")
+                seen.update(scene_pixels)
+                totals["completed"] += len(scene_records)
+                totals["perspective_frames"] += sum(r["projection"] == "perspective" for r in scene_records)
+                totals["orthographic_frames"] += sum(r["projection"] == "orthographic" for r in scene_records)
                 records.flush()
                 os.fsync(records.fileno())
                 receipt = output / "scene-reports" / (stem + ".json")
@@ -540,7 +589,11 @@ def run(root, output, split, start, count, views, maximum_seconds):
             requested_scenes=count,
             requested_views=views,
             next_scene=next_scene,
-            all_requested_scenes_closed=next_scene == start + count,
+            all_requested_scenes_closed=next_scene == start + count and not quarantines,
+            all_requested_scenes_accounted=next_scene == start + count,
+            maximum_quarantined_scenes=maximum_quarantined_scenes,
+            scene_failure_policy=SCENE_FAILURE_POLICY if maximum_quarantined_scenes else None,
+            quarantined_scenes=quarantines,
             maximum_seconds=maximum_seconds,
             elapsed_seconds=time.monotonic() - started,
             manifest=dict(path=str(manifest), sha256=sha(manifest)),
@@ -592,6 +645,7 @@ if __name__ == "__main__":
     p.add_argument("--scenes", type=int, required=True)
     p.add_argument("--views", type=int, choices=(4, 20), required=True)
     p.add_argument("--maximum-seconds", type=int, default=7200)
+    p.add_argument("--maximum-quarantined-scenes", type=int, default=0)
     args = p.parse_args()
     run(
         args.root,
@@ -601,4 +655,5 @@ if __name__ == "__main__":
         args.scenes,
         args.views,
         args.maximum_seconds,
+        args.maximum_quarantined_scenes,
     )

@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw
 from render_procthor_empty_pilot import publish, sha
 
 
-def prepare(report_path, output):
+def prepare(report_path, output, maximum_scenes=None):
     report = json.loads(report_path.read_text())
     if report["stage"] != "frozen_verified_structural_feature_rgb":
         raise ValueError("Require verified custom-source RGB")
@@ -19,6 +19,13 @@ def prepare(report_path, output):
         raise ValueError("Frozen manifest differs")
     rows = [json.loads(line) for line in manifest.read_text().splitlines()]
     groups = sorted({r["group"] for r in rows})
+    source_scenes = len(groups)
+    if maximum_scenes is not None:
+        if maximum_scenes < 2:
+            raise ValueError("Select at least two evenly spaced scenes")
+        if len(groups) > maximum_scenes:
+            groups = [groups[i * (len(groups) - 1) // (maximum_scenes - 1)]
+                      for i in range(maximum_scenes)]
     output.mkdir(exist_ok=False)
     pages, selected = [], []
     for index, group in enumerate(groups):
@@ -62,6 +69,9 @@ def prepare(report_path, output):
         pages=pages,
         images=len(selected),
         scenes=len(groups),
+        source_scenes=source_scenes,
+        maximum_scenes=maximum_scenes,
+        scene_selection="all" if source_scenes == len(groups) else "fixed_evenly_spaced_sorted_groups",
         fixed_slots=[0, 10, 11, 18],
         training_admission=False,
         generator=dict(path=str(Path(__file__)), sha256=sha(Path(__file__))),
@@ -74,6 +84,7 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--report", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
+    p.add_argument("--maximum-scenes", type=int)
     a = p.parse_args()
-    r = prepare(a.report, a.output)
+    r = prepare(a.report, a.output, a.maximum_scenes)
     print(json.dumps(dict(images=r["images"], scenes=r["scenes"])))
