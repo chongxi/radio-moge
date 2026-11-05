@@ -4275,3 +4275,59 @@ as passing. Next is an explicit source-consistency support/coverage contract
 that handles nearby-face visibility without hiding the two unresolved local
 discrepancies. The sixteen confirmation views remain sealed. No new optimizer,
 GPU probe, bulk cache regeneration or training-input change occurred.
+
+### Saved source-footprint contract — November 5, 02:01 UTC
+
+The next diagnostic layer is now executable in `source_footprint.py`. It uses
+original vertex-index topology, exact global edge incidence, a fixed seed
+triangle plane, and the retained unshifted whole-mesh first hits. It never
+welds vertices, fits a plane, skips a nearer hit or substitutes a new surface.
+Only opposite-side, manifold shared edges may connect planar triangles;
+missing bridge faces, nonmanifold edges, nonplanar footprints, exposed edges
+and grazing cases remain unresolved. Numerical plane/point tolerances are
+10 micrometers and the normal-sine tolerance is 1e-5; the diagnostic incidence
+floor is 0.1. These are correspondence diagnostics, not physical error bounds.
+The existing 2 mm renderer criterion and 5% image-support floor are unchanged.
+
+Execution `9659b06` extracted selected original triangles and their global edge
+incidence from the four meshes once, with no new ray, range-image or RGB reads.
+Review found two diagnostic-tool edge cases: a truncated image-border patch
+must not qualify as complete 3-by-3 evidence, and skinny triangles require
+separate barycentric tolerances for their three opposite-edge altitudes.
+They were corrected under `3a0f5d9`; `a88cd96` additionally exposes indexed
+connectivity independently of coplanarity. All 22 focused tests pass locally
+and remotely. The corrected run reused only saved topology and observations:
+`scannetpp-native-v2-source-footprint-02/report.json`, SHA256
+`03b49d95f3184501dd7ad99659b96026019e1f3be7dc580d5151bbfb6f9c3971`.
+The first diagnostic report remains immutable. These corrections are not a
+demonstrated cause of historical cache anomalies or training regression.
+
+All 384 DSLR slots and 768 station slots remain counted. The strict planar
+diagnostic retains 86 station observations, covering 60/384 DSLR slots at
+one or more stations and 26/384 at both. **None of these 86 crosses triangle
+IDs.** Thus the synthetic coplanar-seam fixtures pass, but this strict rule
+does not recover the real pilot's multi-face coverage. Another 330 observations
+have connected indexed faces which are not numerically coplanar: their median
+maximum seed-normal deviation is 1.753 degrees and median maximum seed-plane
+distance is 0.304 mm. Those descriptive values are not acceptance thresholds
+or physical error estimates. Nonplanarity alone is not evidence of bad depth.
+
+Six observations involve a nonmanifold shared edge. One is the plastic-container
+case, but this does not establish topology as the unique physical cause. The
+source-range envelopes are always reported independently of footprint status:
+the two ordinary discrepancies retain +71.530 mm and -68.084 mm interval gaps;
+the angle-sensitive third retains only -0.562 mm minimum separation. The prior
+8.369 cm retained surface with meter-scale conditional scanner discrepancies
+is explicitly bound and remains unresolved. All saved source intervals and
+their classifications are unchanged by the diagnostic fixes.
+
+The saved-only review is
+`scannetpp-native-v2-source-footprint-review-01/report.json`, SHA256
+`9891e7046d551218dd7acde96bec25d91879c9f8ea822110ec613996ef14bb50`.
+No physical/source admission follows from interval overlap or indexed
+connectivity. A defensible curved-surface footprint contract or explicitly
+restricted subset is still needed before the sixteen sealed confirmation
+views; numerical tolerances must not simply be widened to increase coverage.
+No confirmation images, new exclusions, optimizer updates or bulk regeneration
+occurred. All nineteen exact dispositions remain complete, the global geometry
+exclusion count remains 4,190, and their RGB and policy flags remain preserved.
