@@ -138,3 +138,25 @@ new official-house validation, exact input-mixture prefixes and teacher/GT
 support. Compare fixed endpoints against parent233538 and archived232288;
 report synthetic gains separately from real gains. A later checkpoint alone
 does not demonstrate flatter real-world predictions or justify deployment.
+
+The first250-update saved comparison is complete, SHA
+`e79f857b028d4d819e748c27aead05d3d92e27ceccc9a770b2f784480580a846`.
+Against parent233538, real spatial cosine rises .9646449821→.9646814722,
+summary .9357640150→.9358417018, and independent iPhone LiDAR AbsRel falls
+.0931902844→.0919515565 (-1.329%). Against archived232288, spatial still falls
+slightly; the predefined joint archive target is not yet met. On the64 unseen
+official-house RGB, spatial .9614996593→.9700959381 and summary
+.8897025390→.9254881674; teacher-depth discrepancy falls .1195481062→.0850851858.
+These are early paired observations, not a replicated causal result or proof
+of real-world planarity. At08:28 UTC500 new updates were reached and the second
+validation was in progress; the full1,000-update segment remains active.
+
+W&B run `f6b5fe37` is online. First20 training values are numerically exact,
+online startup report SHA
+`20b3f70d89c923e11ac4b8ae291cd087e57bf4f775cb122ddecbe7b8cc605e69`.
+API metadata has exactly one-ULP serialization differences for three baseline
+display values (NYU delta1, spatial cosine, teacher depth); runtime config is
+unchanged. The first online verifier stopped before publication because its
+old two-baseline allowlist omitted NYU delta1; the second explicitly checks all
+three observed paths and exact one-ULP differences. This is not an optimizer
+or configuration failure. No startup/model proof needs repeating.
