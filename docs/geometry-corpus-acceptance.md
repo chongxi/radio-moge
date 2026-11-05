@@ -4144,3 +4144,71 @@ Next work is numerical ambiguity diagnosis/handling and a fixed physical
 source-consistency gate, followed by the sealed confirmation set. There is no
 bulk regeneration, source admission, changed training input or optimizer run.
 The 19 quarantines and 4,171 geometry exclusions remain in force.
+
+### Native v2 numerical closure and exact source dispositions — November 5, 00:22 UTC
+
+All 32 saved numerical disagreement pixels have now been investigated without
+re-rendering the 35 development views. Twenty exact CPU first-hit triangles
+are missed by isolated public rasterization at the original pixel center;
+their projected edges lie 0.000054–0.001206 pixels away. Eleven public samples
+are nearer than the analytical center hit. In ten of those, an isolated nearby
+triangle covers a center that is analytically outside it, reproducing public
+depth within 0.162 mm (one bitwise exact). At ordinal 851268, pixel (274,135),
+the exact full-render covering face remains unresolved. One remaining case
+straddles the clipping guard by 0.119 micrometer on the same triangle. These
+are bounded raster-coverage findings, not a unique attribution of every error
+or physical calibration. The incremental 27-case and 11-neighbor reports are
+`scannetpp-native-v2-triangle-diagnosis-03` and
+`scannetpp-native-v2-neighbor-coverage-01`; closure SHA256 is
+`85b87fbffb31e30322bc182758bbdaa223acf100a0281f9dc99e2bace16a4c06`.
+
+An optional prospective consensus selector now retains only already-supported
+CPU/GPU depth that also agrees with the public renderer inside the unchanged
+guard and 2 mm tolerance. It never replaces, averages or fills depth. Applied
+to the saved development arrays, it rejects precisely those 32 pixels and
+retains 7,091,734 values bitwise unchanged; all views still exceed 5% support.
+Seven local selector tests and sixteen combined remote selector/identity tests
+pass. This is a candidate policy selected after inspecting development errors,
+not independent validation. The original seventeen failed gates remain failed;
+the selector is not wired into a bulk producer or training. Its report is
+`scannetpp-native-v2-public-consensus-candidate-01/report.json`, SHA256
+`bbfc755beb16ccf31abd6893d74a7d70638ef87d462b1f2e938b74e7a1069fc9`.
+
+A saved-evidence transfer establishes why numerical agreement is insufficient:
+ordinal 1284721, pixel (217,173), still retains face 832012 at exactly
+0.08369004726409912 m after clipping. Both numerical renderers agree and the
+new consensus selector retains it. Exact original/new source, camera, array,
+receipt and triangle bindings transfer two existing scanner observations to
+this unchanged surface. Their nine tested angular offsets retain conditional
+range gaps of at least 1.2007 m and 1.4517 m. The other six old target surfaces
+changed; they inherit neither that contradiction nor physical acceptance.
+The source transfer SHA256 is
+`2d8895debfc9b84ca85bbf7e283a72bf16d950914e9bf560cf374e51ca864193`;
+the explicit consensus-mask binding is
+`e649ade15e26ff7ab73e9d6dfa1fb82538ad5c82b11db22a78db86fd544a815e`.
+This is shared-acquisition consistency evidence with unbounded project pose
+uncertainty, not independent metrology or a demonstrated historical training
+regression cause. Nominal scanner hardware accuracy is not a substitute for
+per-scene registration uncertainty.
+
+The nineteen previously reviewed exact native candidates now have explicit
+conservative **geometry-only exclusions**, published by `d4b0784` in
+`scannetpp-native-candidate-decisions-01`. All nineteen original RGB identities
+were found in the unchanged 1,637,908-row pool; all policy-specific candidate
+flags and evidence remain mandatory. Eleven identity/scope tests pass locally
+and remotely. No neighboring images or entire scenes were excluded. The
+global geometry-exclusion count is now **4,190**, with white ordinal 210812
+still the only RGB exclusion (the prospective whole-COCO hold is separate).
+These nineteen dispositions are complete; they no longer await a decision.
+Neither the remaining native source nor v2 labels are thereby admitted.
+
+The next CPU source-consistency pilot is frozen in
+`scannetpp-native-v2-source-pilot-plan-01`: four hash-selected existing ordinary
+controls (851268, 1318289, 1415712, 1412812), a fixed 8-by-12 grid per image,
+and at most two retained scanner stations per scene. All 384 slots count in
+coverage, including unsupported, unmatched and occluded cases; no replacement
+sampling or fitted pose is permitted. It has not run. It will characterize
+visibility and cross-station residuals, not grant physical accuracy based on
+the numerical 2 mm threshold. The sixteen confirmation views remain unread
+until a prospective source-quality/coverage contract is fixed. No optimizer,
+bulk regeneration, existing training-input change or source acceptance occurred.
