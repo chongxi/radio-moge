@@ -89,7 +89,7 @@ def verify_initial(request_path):
 
 
 def observe_reference_model(system, adapter, statistics, records, config, planned, old_data_path,
-                            expected_sources=None):
+                            expected_sources=None, extra_probe_keys=()):
     """Actual source/resolution backward checks plus first full prepared update.
 
     No optimizer step. All module parameters/buffers and the model RNG must be
@@ -113,6 +113,9 @@ def observe_reference_model(system, adapter, statistics, records, config, planne
             for row in planned[:32]]
     extra = [([index, 43+j, h, w], source) for source, values in sorted(first_by_source.items())
              for h, w in config['data']['buckets'] for j, index in enumerate(values)]
+    if len(extra_probe_keys) % 4:
+        raise ValueError('Additional source checks require complete four-image groups')
+    extra += [(list(key), 'declared_additional_projection') for key in extra_probe_keys]
     key_groups = [(keys[i:i+4], 'first_actual_update') for i in range(0, 32, 4)]
     key_groups += [([key for key, _ in extra[i:i+4]], extra[i][1]) for i in range(0, len(extra), 4)]
     modules = dict(radio=system.radio, encoder=system.encoder, decoder=system.decoder,
