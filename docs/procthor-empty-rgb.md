@@ -5,7 +5,26 @@ Further ScanNet++ source/geometry investigations were explicitly stopped.
 This generation task uses ProcTHOR only; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov5 18:03 UTC: the user changed the requested future images to
+Current state, Nov5 18:55 UTC: the user's latest instruction is to start training
+after the cumulative qualified synthetic training pool reaches50,000 images.
+This was acknowledged as the existing frozen40,000 plus at least10,000 new
+qualified structural images. Validation, rejected frames, unclosed/unverified
+outputs and the stopped7,180-image old batch do not count. The proposed small
+structural pilot was withdrawn before tests or launch. No optimizer is active.
+All four feature-component weights remain1; geometry loss stays off. A new
+manifest/config/model gate is required for this changed pool; the old2,000-image
+runner's admission cannot be reused. The threshold plan SHA is
+`919fc700797d6a9beaf6cdb50dd74090e3ea093be4915deb8156b9f29fe5f26a`.
+
+Controller02 / PID315828 is actively generating new training views with the
+strict whole-frame filter below. At18:53 UTC its first100-scene batch had18
+closed scenes and356 retained RGB images, with4 rejected frames omitted. These
+are generated candidates, not yet frozen additions to the40,000-image count.
+Validation is already frozen at317 images/16 scenes; all64 selected sample
+images on16 contact pages were actually viewed. Those validation images never
+enter the50,000 training-image count.
+
+The user changed the requested future images to
 farther wall views, no windows showing outdoors, and visible square/round pillars,
 rectangular beams and horizontal round members. The old batch06 was gracefully
 stopped at a complete-house boundary: 359 houses / 7,180 RGB, IDs2000–2358.
@@ -82,7 +101,7 @@ Preflight report SHA`cbcb032a33242c5e3f4939c6b4e9f1f600e2851a3ba6d1e665c9db4f133
 visual review SHA`1871e5ac51db6fd4d24ca2e1e2926f1317eb9d4b1345212c340ffdb3cc777dbb`.
 New gallery: `.kanna/visualizations/structural-room-multiview.html`.
 
-Controller`structural-multiview-generation-controller-01`, PID315236, started
+Historical controller`structural-multiview-generation-controller-01`, PID315236, started
 Nov5 17:59:03 UTC. It runs one CPU renderer at a time:16 independent validation
 scenes/320 images, then training scene ranges8–257 and258–507, up to5,000 images
 each. This is a10,000-training-image target plus320 validation images, not a
@@ -92,12 +111,75 @@ the controller stops on any partial job without retry/extension. The first full
 a prefix within its bound. Preserve that prefix and use a fresh bounded range for
 unprocessed scenes after inspection; never overwrite/retry completed scenes.
 The generation plan SHA is`361d153c821c21994517d4406beee70438ffc159b5e4abaf29ff539a84486c01`.
+This controller subsequently stopped on the validation failure described below;
+neither of its planned training jobs started. It must not be relaunched.
 
 No optimizer or training-manifest swap occurs in this controller. The old freezer
 correctly requires official-house perspective data and must not be weakened to
 mislabel this new source. A dedicated new-source freeze/isolation and explicit
 feature-only training configuration are required before the approved new RGB is
 used. All real-image validation identities/protocols remain unchanged.
+
+## Strict frame rejection and continued structural generation
+
+The original validation run closed scenes0–6 (140 frames), then stopped at
+scene7/slot12 on one magenta background-sentinel pixel. A bounded six-image
+diagnostic rendered slots12/13 with magenta, cyan and black backgrounds; all six
+were viewed. Only pixel(y305,x525) in slot12 changed with the background color.
+Slot13 was unchanged. This establishes a visible rendering seam at that pixel,
+not a window or panorama; it does not identify a unique floating-point cause.
+The incomplete scene7 is held in full, including its12 previously saved frames.
+Diagnostic review SHA
+`5b738f3f19a6c5822aa511699d743de7004f4a29293decf6aa15068068e10862`.
+
+Renderer`c511d05` / `code-structural-multiview-v2` preserves the original scene,
+camera and strict RGB predicates. It now retains a failed whole frame and its
+metadata under`rejected/`, omits it from the candidate manifest, and continues
+with the next originally planned slot. It does not paint pixels, move the camera
+or generate replacements. More than two rejected slots in a20-view scene still
+stops the job for inspection. All20 attempted slots must be accounted for in a
+closed receipt. Ten targeted CPU tests passed; no image-validity threshold was
+weakened. Accepted frames carry`strict-rgb-frame-filter-v2` metadata.
+
+Controller02, PID315828, started18:34:59 UTC. It completed validation scenes8–16,
+then sequentially processes five100-scene training ranges:8–107,108–207,
+208–307,308–407 and408–507. Each training job has a6,000-second bound; one CPU
+renderer runs at a time. Immutable plan SHA
+`6b100d9048ff55c2c464d1a2369134f87afb2f038be3ddca59a4136db69a817f`.
+Do not duplicate or change the running jobs. Ten thousand planned camera slots
+will yield fewer retained images if frames fail. After these jobs close, any
+shortfall must use new disjoint scene IDs at or above508, in new bounded outputs.
+Never count rejected/validation frames or rerender closed scenes to meet50,000.
+
+## Structural validation frozen and sampled review complete
+
+The dedicated freezer`4833b26` reconstructs expected scene and camera records,
+checks meshes/materials/assets and closed receipts, decodes and hashes every
+selected image, validates projection labels and accounts for accepted/rejected
+slots. Fourteen CPU tests passed, including pose/projection relabelling, missing
+slots, source tampering, invalid RGB and validation overlap. The original
+official-house freezer remains unchanged.
+
+The actual317-image validation set combines140 frames from old closed scenes0–6
+and177 frames from new scenes8–16. It has285 perspective and32 orthographic
+frames, zero exact duplicates and zero pixel/group/layout overlap with the old
+fixed64-image ProcTHOR validation selection. Three failed new views are retained
+outside the manifest: scene8/slot9 and scene11/slots8,9. The whole held scene7 is
+excluded. Manifest SHA
+`e5213027b3664cbffaf5b6c3a39320c2e0c2f1af0b38b88fd9fa87e553c9dfed`;
+freeze report SHA
+`4981c01413c7405952de9e4b92e089e2d5b7ddf2355b94849e998b6db09984a9`.
+
+Fixed slots0,10,11,18 from each of16 scenes were selected before viewing. All64
+images on16 contact pages were actually inspected. Closed walls, square/round
+pillars, connected beams and ordinary-camera angle changes are visible; no
+window/exterior, simulator body or failed background frame was observed in this
+sample. Bright highlights wash out some surfaces, shadows remain visibly
+synthetic, orthographic frames crop structural ends, and motifs repeat. No new
+exclusions were issued. This is a64-image sample, not visual certification of
+all317 images or proof of model improvement. Visual report SHA
+`3f5bb3aedb9e9894b6c043901cbb53b82e5f8f7d8f677bcf0ad6fdc520b6b456`.
+No model inference, baseline rerun or optimizer was launched during this review.
 
 ## Sources and renderer
 
