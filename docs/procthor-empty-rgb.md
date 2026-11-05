@@ -6,7 +6,46 @@ Generation uses official ProcTHOR houses and custom structural rooms rendered
 in the same pinned simulator; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov5 22:55 UTC: `room-feature-mix-40890-training-02` completed
+Current state, Nov5 23:14 UTC: the user explicitly requested starting with the
+qualified data and passing **every new image through training**. A separate
+`room-feature-full-epoch-46844-training-01` is now running under the original GPU
+lock, wrapper342237/trainer342238, immutable `code-room-full-epoch-v1` / `71c9d2b`.
+W&B run `b73f7bb0` is online. The initial state and first20 actual updates are
+verified; this is an active optimizer, not a queued plan. Previous prohibitions
+on automatically starting another segment do not override this explicit request.
+
+The new frozen pool appends qualified batches08–10 to the earlier40,890 rows,
+without altering those rows:46,844 RGB images =40,000 official ProcTHOR views
++6,844 custom structural views, including690 explicitly labeled orthographic
+supplements. Exact image/group/pixel/layout and both fixed validation isolation
+checks are reused and combined. Growing batch11/12 images are not inserted into
+this run. The prior old-house camera/window limitations remain; the closed-room,
+no-window promise applies to the custom structural source.
+
+The run continues from the verified234538 checkpoint with bitwise-preserved
+adapter, RMS, all100 Adam states and RNG. The original RGB cursor continues at
+18000 (previous base10000 plus8000 mixed logical batches); the new mixed cursor
+starts at0 explicitly. Four synthetic images per effective32 update require
+11,711 updates to present each of46,844 synthetic identities exactly once. The
+plan contains374,752 presentations:46,844 synthetic and327,908 original RGB.
+Original crop seeds, three resolutions, learning rate1e-5 and all four feature
+weights1 remain. Geometry targets and loss are absent. Actual committed encoded
+image identities, not prefetched rows or step counts alone, determine coverage.
+The fixed endpoint is246249, with an8-hour training bound and29,400s outer bound;
+partial coverage must remain explicit if interrupted. No automatic retry, next
+epoch or deployment is authorized by this run.
+
+New CPU tests passed18 local/18 remote. The actual new model gate passed33
+cases/152 presentations, including orthographic supplements, with original pixel
+parity, frozen-state identity and restored RNG. The first20 actual updates contain
+640 RGB:72 official-room,8 structural and560 original images; every untouched
+original key/crop/bucket matches its continued stream. Losses/gradients are finite
+and the measured adapter update is nonzero. Metadata loading completed in360.81s.
+All six saved parent validation views are bound and reused without baseline
+inference. Validation occurs every1,000 updates and at the final711-update tail;
+the original both-cosines-up and LiDAR-error-down criterion remains unchanged.
+
+The preceding run, `room-feature-mix-40890-training-02`, completed
 its fixed1,000 updates normally at234538, using immutable
 `code-room-feature-mix-v2` / `b5fde32`. The user's "start now" instruction
 superseded the earlier50,000-image waiting threshold. All1,000 records are finite;
