@@ -5,13 +5,13 @@ Further ScanNet++ source/geometry investigations were explicitly stopped.
 This generation task uses ProcTHOR only; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov5 11:44 UTC: the first mixed-feature run has completed its
+Current state, Nov5 13:50 UTC: the first mixed-feature run has completed its
 fixed1,000 updates at234538. It improves agreement on unseen synthetic houses,
 but the final original-validation joint target is not met. No deployment replacement or
-further optimizer segment has been started. Two500-house generation batches
-are complete and their20,000-image pool is combined with exact cross-batch and
-validation isolation. A third CPU batch has started on disjoint official
-training houses1000–1499. Only the earliest2,000 images participated in training.
+further optimizer segment has been started. Three500-house generation batches
+are complete and their30,000-image pool is combined with exact cross-batch and
+fixed-validation isolation. A fourth CPU batch has started on disjoint official
+training houses1500–1999. Only the earliest2,000 images participated in training.
 
 ## Sources and renderer
 
@@ -331,3 +331,44 @@ differ from batch03. Keep one renderer/two CPU affinity cores/math threads1;
 do not duplicate the job. After completion, freeze the actual closed range
 with`--start-house1000`, compare all three frozen batches and the validation
 selection, and inspect only new samples. No ScanNet geometry work resumes.
+
+## Completed30,000-image pool and fourth generation batch
+
+Batch04 completed all500 official training houses1000–1499 and10,000 RGB images
+in6,493.08 seconds. Its193 failed camera actions were omitted; there were no
+house failures, uniform-frame rejections or within-batch pixel duplicates.
+Wrapper309984 exited normally. The unchanged range freezer verified every new
+encoded image, decoded pixel hash, closed-house receipt, source line and rendering
+contract. Frozen manifest SHA
+`fe5f7e32309edd98d20fccef0d9b336d5a99f9a315f0174395bcb0f70caf4d69`;
+report SHA`67e3b3cb7f717b8ae2b3876ad92d6646dc8e5b6df568ee0e27210b193d1875c6`.
+
+The existing combiner preserved all three frozen batches' rows byte for byte.
+Exact image paths, original-house hashes, empty-house hashes and decoded pixels
+are disjoint across the batches and the fixed64 official-validation images.
+No near-duplicate or all-validation-image claim is made. The30,000-image,
+1,500-house combined manifest SHA is
+`30bfb0f81f9024fd9609c3d7156f72411da96c1769778a81e9471b72ad5e08b7`;
+report SHA`781a4faead37c18d52e4b056ec36838acaf720c1332d14f8ac574885fe65f7ab`.
+Each of FOV55/70/85 now has10,000 images.
+
+All52 new sample views across28 houses and all five contact pages were actually
+inspected. Six original640x480 PNGs were also viewed: the four lowest-contrast
+frames, a close red-wall view and a border-structure check. No visible agent or
+failed framebuffer was observed in this sample. The partial brown surface in
+01043-slot10 touches the left image border; it is not a confirmed floating
+fragment. Seven exact low-context flags retain the four lowest-contrast views
+(01395-slot17,01219-slot13,01221-slot16,01333-slot19) and the sampled wall-dominated
+views01086-slot10,01390-slot10,01455-slot11 as feature-only RGB. No exclusions or
+all-image visual certification follow. Visual review SHA
+`d4f37b49187eaf938ef15c41b30ee4a8bcae2db82a5915462cc037c66bc8008b`.
+The additional28,000 images have not been used in training. Existing model
+results, training inputs and deployment selection remain unchanged.
+
+Batch05 wrapper311629 started13:49:39 UTC using the unchanged774c84d CPU renderer
+and private OpenGL setup. It targets houses1500–1999, up to10,000 RGB images,
+with the same7,200s generation/7,500s outer bounds, two CPU affinity cores and
+one math thread. Only output path and source range changed from batch04.
+Do not duplicate the running job. After all500 houses close, freeze the new
+range, combine the four original batch reports, and inspect new samples.
+No tests, completed model proofs or earlier image reviews were repeated.
