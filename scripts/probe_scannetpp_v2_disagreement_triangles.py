@@ -10,23 +10,76 @@ import json
 from pathlib import Path
 
 import numpy as np
-import trimesh
-from trimesh.ray.ray_pyembree import RayMeshIntersector
 
 from probe_scannetpp_software_clip_render import backend, render
 from radio_moge.corpus_admission import checked_json, checked_path, file_ref
 from radio_moge.geometry_cache import publish_json
 
 
-def investigate(directory, output):
-    output.mkdir(exist_ok=False)
-    source = checked_json(file_ref(directory/'report.json'))
+def remaining_disagreements(source_ref, source, analysis, previous):
+    """Bind the saved32 pixels and subtract exactly the five already diagnosed."""
+    if (analysis['source']['sha256'] != source_ref['sha256']
+            or previous['source']['sha256'] != source_ref['sha256']
+            or previous['stage'] != 'bounded_single_triangle_diagnosis_complete'
+            or previous['training_admission'] is not False
+            or analysis['training_admission'] is not False):
+        raise ValueError('Exact unadmitted source and completed previous diagnosis required')
+    bound = {int(Path(r['path']).stem): r for r in source['records']}
+    rows = {}
+    for row in analysis['disagreements']:
+        ordinal, pixel = row['ordinal'], row['pixel_yx']
+        if (type(ordinal) is not int or ordinal not in bound or len(pixel) != 2
+                or any(type(n) is not int or n < 0 for n in pixel)):
+            raise ValueError('Invalid saved disagreement identity')
+        key = (ordinal, *pixel)
+        if key in rows:
+            raise ValueError('Duplicate saved disagreement')
+        rows[key] = row
+    done = set()
+    for case in previous['cases']:
+        key = (case['corpus_ordinal'], *case['pixel_yx'])
+        if key not in rows or key in done or case['record'] != bound[key[0]]:
+            raise ValueError('Unknown, duplicate or changed previous case')
+        row = rows[key]
+        if (case['arrays']['sha256'] != row['source']['sha256']
+                or any(case[a] != row[b] for a, b in (
+                    ('saved_cpu_z_m', 'depth'), ('saved_cuda_z_m', 'gpu'),
+                    ('saved_public_z_m', 'software')))):
+            raise ValueError('Previous saved depths or arrays changed')
+        done.add(key)
+    if len(rows) != 32 or len(done) != 5:
+        raise ValueError('Frozen32 disagreements minus completed5 required')
+    selected = {}
+    for ordinal, y, x in sorted(set(rows)-done):
+        selected.setdefault(ordinal, []).append((y, x))
+    return selected, rows
+
+
+def investigate(directory, output, analysis_path=None, previous_path=None):
+    import trimesh
+    from trimesh.ray.ray_pyembree import RayMeshIntersector
+
+    source_ref = file_ref(directory/'report.json')
+    source = checked_json(source_ref)
     if source['completed'] != 35 or source['training_admission'] is not False:
         raise ValueError('Closed unadmitted development evidence required')
     # Worst saved discrepancy, a clean control discrepancy, and the guard case.
     selected = {853213: [(39, 541)], 851268: [(274, 135)],
                 1181343: [(149, 208)], 1563104: [(75, 610)],
                 1461784: [(309, 518)]}
+    expected, incremental = {}, None
+    if (analysis_path is None) != (previous_path is None):
+        raise ValueError('Both analysis and previous diagnosis required')
+    if analysis_path is not None:
+        analysis_ref, previous_ref = file_ref(analysis_path), file_ref(previous_path)
+        selected, expected = remaining_disagreements(source_ref, source,
+            checked_json(analysis_ref), checked_json(previous_ref))
+        incremental = dict(analysis=analysis_ref, previous=previous_ref,
+            selected=[dict(corpus_ordinal=i, pixel_yx=list(p)) for i, ps in selected.items() for p in ps],
+            completed_cases_repeated=0)
+    output.mkdir(exist_ok=False)
+    if incremental:
+        publish_json(output/'selection.json', incremental)
     bound = {Path(r['path']).stem: r for r in source['records']}
     pyrender, renderer, identity = backend()
     from OpenGL import GL
@@ -54,6 +107,15 @@ def investigate(directory, output):
             arrays = checked_path(record['arrays'])
             with np.load(arrays) as saved:
                 for y, x in pixels:
+                    if not 0 <= y < h or not 0 <= x < w:
+                        raise ValueError('Saved disagreement outside original grid')
+                    if expected:
+                        row = expected[(ordinal, y, x)]
+                        if (record['arrays']['sha256'] != row['source']['sha256']
+                                or any(float(saved[a][y, x]) != row[b] for a, b in (
+                                    ('final_depth', 'depth'), ('raw_cuda_depth', 'gpu'),
+                                    ('raw_pyrender_depth', 'software')))):
+                            raise ValueError('Saved disagreement payload changed')
                     ray = np.linalg.solve(k, [(x+.5)/w, (y+.5)/h, 1])
                     world_ray = pose[:3, :3] @ ray
                     origin = pose[:3, 3]+.0498*world_ray
@@ -105,6 +167,7 @@ def investigate(directory, output):
             gc.collect()
         report = dict(stage='bounded_single_triangle_diagnosis_complete',
             source=file_ref(directory/'report.json'), code=file_ref(Path(__file__)), renderer=identity,
+            incremental=incremental,
             cases=cases, original_render_semantics_unchanged=True, full_source_rerendered=False,
             gpu_used=False, labels_changed=False, physical_accuracy_established=False,
             confirmation_images_read=0, training_admission=False, optimizer_updates=0)
@@ -118,5 +181,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--development', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--analysis', type=Path)
+    parser.add_argument('--previous', type=Path)
     args = parser.parse_args()
-    investigate(args.development, args.output)
+    investigate(args.development, args.output, args.analysis, args.previous)
