@@ -111,6 +111,21 @@ def footprint_equivalent(a, b):
                ('projected_footprint', 'angle_matches', 'exact_target_visibility'))
 
 
+def memory_headroom(limit, used, stats):
+    """Account for clean unmapped file cache without dropping another job's cache.
+
+    Dirty/writeback/shared/mapped/unevictable pages are conservatively reserved;
+    slab is not assumed reclaimable. This is headroom accounting, not an OOM proof.
+    """
+    clean = max(0, stats['file']-sum(stats.get(k, 0) for k in
+        ('shmem', 'file_dirty', 'file_writeback', 'file_mapped', 'unevictable')))
+    clean = min(clean, used)
+    return dict(limit_bytes=limit, current_bytes=used,
+                clean_unmapped_file_cache_bytes=clean,
+                estimated_headroom_bytes=limit-used+clean,
+                cache_eviction_requested=False)
+
+
 def run(root, output, mode, benchmark=None):
     import trimesh
     from trimesh.ray.ray_pyembree import RayMeshIntersector
@@ -118,13 +133,17 @@ def run(root, output, mode, benchmark=None):
     # Real assets only on the64GiB remote allocation, never local8GiB workspace.
     memory_root = Path('/sys/fs/cgroup')
     limit, used = ((memory_root/name).read_text().strip() for name in ('memory.max', 'memory.current'))
-    if not limit.isdigit() or int(limit) < 40*1024**3 or int(limit)-int(used) < 32*1024**3:
+    if not limit.isdigit():
+        raise RuntimeError('Explicit remote memory allocation required')
+    stats = {k: int(v) for k, v in (line.split() for line in (memory_root/'memory.stat').read_text().splitlines())}
+    memory = memory_headroom(int(limit), int(used), stats)
+    if int(limit) < 40*1024**3 or memory['estimated_headroom_bytes'] < 32*1024**3:
         raise RuntimeError('Explicit remote memory allocation and32GiB free cgroup headroom required')
     started = time.monotonic()
     plan = freeze(root, output, mode, benchmark)
     status = dict(stage='loading_bound_saved_arrays_and_mesh', mode=mode, started_at=time.time(),
         corpus_ordinal=ORDINAL, completed_station_slots=0, expected_station_slots=0,
-        training_admission=False, optimizer_updates=0)
+        memory_preflight=memory, training_admission=False, optimizer_updates=0)
     write_json(output/'status.json', status)
     def check_budget():
         rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024**2
@@ -258,6 +277,7 @@ def run(root, output, mode, benchmark=None):
                                     +(time.monotonic()-started-sum(times)-target_seconds))
                 if mode == 'benchmark' and not stopped else None,
             maximum_RSS_GiB=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024**2,
+            memory_preflight=memory,
             output_bytes=bytes_written, source_quality_accepted=False, training_admission=False,
             optimizer_updates=0, confirmation_images_read=0, new_RGB_reads=0, new_numerical_renders=0,
             label_role='laser_mesh_derived conditional same-acquisition support; not physical accuracy certification')

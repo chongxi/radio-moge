@@ -10,8 +10,18 @@ from radio_moge.mesh_clip import MeshClipContract
 from radio_moge.scanner_support import dense_image_support, paired_support
 from radio_moge.source_footprint import extract_topology
 from run_scannetpp_source_confirmation import source_case
+from run_scannetpp_dense_source import memory_headroom
 from scannetpp_dense_source import AngleLookup, StationSession, TopologyIndex, merge_masks
 from test_scannet_source_confirmation import Plane, source_fixture
+
+
+def test_memory_preflight_reserves_dirty_mapped_shared_and_unevictable_pages():
+    result = memory_headroom(64, 60, dict(file=50, shmem=1, file_dirty=2,
+        file_writeback=3, file_mapped=4, unevictable=5))
+    assert result['clean_unmapped_file_cache_bytes'] == 35
+    assert result['estimated_headroom_bytes'] == 39
+    assert not result['cache_eviction_requested']
+    assert memory_headroom(64, 60, dict(file=10, file_dirty=20))['estimated_headroom_bytes'] == 4
 
 
 @pytest.mark.parametrize('kind', ['random', 'all_ties', 'seam', 'thin', 'duplicates'])
