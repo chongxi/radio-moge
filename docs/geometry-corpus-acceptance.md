@@ -4212,3 +4212,66 @@ visibility and cross-station residuals, not grant physical accuracy based on
 the numerical 2 mm threshold. The sixteen confirmation views remain unread
 until a prospective source-quality/coverage contract is fixed. No optimizer,
 bulk regeneration, existing training-input change or source acceptance occurred.
+
+### Fixed ordinary-source pilot completed — November 5, 01:12 UTC
+
+The frozen four-scene CPU pilot has now completed under `024ebc7`. It preserved
+all 384 DSLR slots and all 768 station-slot combinations. Exact clipped first
+queries reproduced all 299 numerically supported saved depths bitwise. Source
+binding selected the first two retained scanner IDs in each scene before range
+reads. Scanner visibility queried the entire mesh from the original scanner
+origin, including sub-centimeter occluders, without shifting that origin or
+normalizing the published world direction. Eleven focused tests passed locally
+and remotely. The actual report is
+`scannetpp-native-v2-source-pilot-01/report.json`, SHA256
+`341dd02d09f93a2fb487b689f1c17ba238166f94f1e6552947a738c41a731fe8`.
+
+Of the 768 station-slot combinations, 170 have no numerical DSLR support, 180
+miss the exact target triangle, 30 are occluded by earlier mesh surfaces, and
+388 see that target as the first surface. Raw range/anonymity/stability checks
+leave **278 conditionally comparable center observations**. Their absolute
+residual median is **1.206 mm**, p95 **12.045 mm**, maximum **81.208 mm**.
+These are dependent shared-acquisition observations, not an independent physical
+accuracy estimate. Only **201/384 distinct DSLR slots** are comparable at at
+least one station, and **77/384** at both. No missing or unmatched slots were
+replaced or dropped from coverage.
+
+The strict same-triangle nine-angle condition retains 58 observations, covering
+47/384 DSLR slots at one or more stations and 11/384 at both. In the otherwise
+comparable center cases, perturbed rays lose exact target-triangle membership
+898 times while often hitting nearby mesh faces. This low same-triangle
+coverage must not be misreported as 898 physically wrong depths. The saved-only
+analysis is `scannetpp-native-v2-source-pilot-analysis-03/report.json`, SHA256
+`23463744858fadd4b830bc84ba468240180da77013754a16020d9d26a5eedfd9`;
+it preserves all 768 observations in CSV and was produced by `f8fb578`.
+
+Three center observations exceed 5 cm absolute difference. Reusing the already
+saved whole-mesh first hits for nine angular probes distinguishes them:
+
+- 1318289, pixel (293,453), scan 1: center +81.208 mm. The measured 3-by-3 range
+  patch remains at least **71.530 mm beyond** every tested first mesh hit.
+  The peer station's patch is unsupported.
+- 1412812, pixel (293,613), scan 0: center -73.976 mm. The patch remains at
+  least **68.084 mm before** every tested first mesh hit. Its peer scan has
+  only +2.956 mm center difference.
+- 1412812, pixel (133,613), scan 0: center -51.573 mm. A different tested
+  first surface reduces the interval separation to **0.562 mm**. This case
+  is sensitive to angle/visibility, not a robust 5 cm contradiction.
+
+These nine probes do not bound continuous angular or pose uncertainty. New
+source-context pages (`77957f6`) used retained original DSLR RGB and matching
+scanner RGB/range grids; all three pages were actually inspected. The first
+point lies on a dark plastic container with a cap/handle; the latter two lie on
+curtain folds. The views do not establish motion, reflectance, registration or
+meshing as the unique cause. All scanner panorama RGB was used only for this
+diagnostic display; none entered training. No whole-scene or new image exclusion
+was inferred from these observations, and the known 19 dispositions and global
+4,190 exclusions are unchanged.
+
+The pilot confirms that ordinary comparable regions can have small residuals
+while local source inconsistencies remain. It does not justify accepting the
+whole source, fitting a global depth offset, or treating unavailable comparisons
+as passing. Next is an explicit source-consistency support/coverage contract
+that handles nearby-face visibility without hiding the two unresolved local
+discrepancies. The sixteen confirmation views remain sealed. No new optimizer,
+GPU probe, bulk cache regeneration or training-input change occurred.
