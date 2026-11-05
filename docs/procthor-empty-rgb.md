@@ -6,7 +6,7 @@ Generation uses official ProcTHOR houses and custom structural rooms rendered
 in the same pinned simulator; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov5 22:01 UTC: `room-feature-mix-40890-training-02` completed
+Current state, Nov5 22:55 UTC: `room-feature-mix-40890-training-02` completed
 its fixed1,000 updates normally at234538, using immutable
 `code-room-feature-mix-v2` / `b5fde32`. The user's "start now" instruction
 superseded the earlier50,000-image waiting threshold. All1,000 records are finite;
@@ -93,11 +93,27 @@ shadow aliasing remain documented limitations; this is not an all-image visual
 certification. No new exclusions were issued.
 `structural-batch09-closure-01/report.json` binds the new evidence, with SHA
 `fa4d5ff4bfe56ffc6ee6519df48052e41a4fa80210038905a99b442a2f84acba`.
-Qualified images now total44,858 in separate frozen manifests:40,000 official
+At that closure, qualified images totalled44,858 in separate frozen manifests:40,000 official
 ProcTHOR views and4,858 custom structural views. The additional3,968 images
 since the fixed40,890 pool have not been trained on. Batch10, scenes254–353,
 is already running under the same controller; do not duplicate it or change its
 configuration. No optimizer was restarted and the completed training pool is unchanged.
+
+Batch10 has since completed all100 scenes254–353 with1,986 RGB in4,052.50
+seconds:1,786 perspective and200 orthographic,14 rejected frames, zero duplicates
+and no quarantined scenes. All new files, decoded pixels, assets, cameras and
+receipts passed freezing. Six exact pixel/group/layout isolation checks have zero
+overlap, including the newly frozen batch09. All64 fixed new sample images on16
+pages were actually viewed; no window, exterior, agent or magenta failure was
+observed. Bright highlights, muted darker materials, repeated structural motifs
+and coarse shadows remain documented limitations; no all-image certification or
+new exclusions. `structural-batch10-closure-01/report.json` binds these results,
+SHA `f60b65f49dd84c169076ccef4f597b616b1abaa08c8c9ee01b305142340cc617`.
+Qualified synthetic RGB now totals46,844 in separate frozen manifests:40,000
+official ProcTHOR views and6,844 custom structural views. The additional5,954
+images since the completed40,890 pool have not been trained on. The existing
+controller has automatically advanced to batch11, scenes354–453. No training
+restart, input replacement or geometry work occurred.
 Scene53 is held in full. Previously completed890-image and317-validation proofs
 and sample reviews must not be repeated. The withdrawn small pilot remains
 withdrawn; this new40890 run is separately bound to the latest user instruction.
