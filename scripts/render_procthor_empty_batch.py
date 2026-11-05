@@ -79,11 +79,12 @@ def camera_slots(house, count):
         center = points[0]
         yaw = (math.degrees(math.atan2(center[0] - point[0], center[1] - point[1]))
                if point != center else 45.)
-        yaw = (yaw + 90 * (cycle // len(points))) % 360
+        yaw = (yaw + 45 * (cycle // len(points))) % 360
         slots.append(dict(room=room['id'], index=index,
             position=dict(x=point[0], y=float(house['metadata']['agent']['position']['y'])
                           + float(room['floorPolygon'][0]['y']), z=point[1]),
-            rotation=dict(x=0, y=yaw, z=0), horizon=(0, 10, -10, 0)[cycle % 4], standing=True))
+            rotation=dict(x=0, y=yaw, z=0),
+            horizon=(0, 10, -10)[(cycle // len(points) + cycle % len(points)) % 3], standing=True))
     return slots, omitted
 
 
@@ -120,7 +121,7 @@ def run(root, output, start, count, views, maximum_seconds):
     try:
         with manifest.open('x') as records:
             for ordinal, original, line_hash in houses_from(archive, start, count):
-                if time.monotonic() - started >= maximum_seconds:
+                if (output / 'STOP_AFTER_HOUSE').exists() or time.monotonic() - started >= maximum_seconds:
                     break
                 house_started = time.monotonic()
                 house = dict(original, objects=[])
@@ -204,7 +205,7 @@ def run(root, output, start, count, views, maximum_seconds):
             elapsed_seconds=time.monotonic() - started, maximum_seconds=maximum_seconds,
             manifest=dict(path=str(manifest), sha256=sha(manifest)), houses=house_summaries,
             source_archive_sha256=TRAIN_SHA, generator_sha256=sha(Path(__file__)),
-            cpu_only=True, geometry_labels=False, training_admission=False,
+            cpu_only=True, geometry_labels=False, training_admission=False, agent_visible=False,
             camera_selection='0.5m interior floor margin; farthest-spread poses and round-robin rooms; '
                              'engine checks every teleport; 55/70/85-degree pinhole vertical FOV',
             unique_rgb_pixels_in_batch=len(seen), dataset_split='Official training houses only')

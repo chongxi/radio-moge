@@ -45,3 +45,11 @@ def test_empty_floor_selection_is_explicit():
                  metadata=dict(agent=dict(position=dict(y=.95))))
     slots, omitted = batch.camera_slots(house, 20)
     assert slots == [] and len(omitted) == 1
+
+
+def test_single_room_does_not_repeat_the_camera_cycle_before_twenty_images():
+    house = dict(rooms=[room('one', [(0, 0), (4, 0), (4, 4), (0, 4)])],
+                 metadata=dict(agent=dict(position=dict(y=.95))))
+    slots, _ = batch.camera_slots(house, 60)
+    keys = [(s['position']['x'], s['position']['z'], s['rotation']['y'], s['horizon']) for s in slots]
+    assert len(keys) == len(set(keys)) == 60

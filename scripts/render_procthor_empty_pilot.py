@@ -75,6 +75,7 @@ def create_controller(root, output, house, field_of_view=70):
         platform=Linux64, commit_id=BUILD,
         server_class=FifoServer, quality='High', scene=house,
         width=640, height=480, fieldOfView=field_of_view, snapToGrid=False,
+        makeAgentsVisible=False,
         renderDepthImage=False, renderInstanceSegmentation=False,
         renderSemanticSegmentation=False, renderNormalsImage=False,
         server_start_timeout=180., server_timeout=120.)
