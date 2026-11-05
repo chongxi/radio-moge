@@ -5,11 +5,12 @@ Further ScanNet++ source/geometry investigations were explicitly stopped.
 This generation task uses ProcTHOR only; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov5 08:58 UTC: the first mixed-feature run has completed its
+Current state, Nov5 09:39 UTC: the first mixed-feature run has completed its
 fixed1,000 updates at234538. It improves agreement on unseen synthetic houses,
-but the final real-data joint target is not met. No deployment replacement or
-further optimizer segment has been started. The existing CPU renderer continues;
-7,540 images from377 training houses are closed so far.
+but the final original-validation joint target is not met. No deployment replacement or
+further optimizer segment has been started. The first500-house generation batch
+is complete and its10,000-image pool is frozen. A second CPU batch has started
+on disjoint official training houses500–999.
 
 ## Sources and renderer
 
@@ -42,7 +43,7 @@ Batch01 was stopped explicitly; no images were deleted or used for training.
 The corrected renderer sets `makeAgentsVisible=False` and verifies that setting
 after every house reset. Duplicate camera cycles were also removed before rendering.
 
-## Active bounded batch
+## First bounded batch
 
 Remote root:
 `/home/buildhub/shared/radio-moge/chongxi/new-architecture-rgb-20261104`.
@@ -188,11 +189,15 @@ teacher identities and support. No inference or baseline evaluation was rerun.
 Final review SHA
 `db48ee2c24acd330007170ca485ad0c94dd31ee55bfcfa287d81fc59f005866e`.
 
-| Real validation | Parent233538 | +250 | +500 | +750 | Fixed +1000 |
+| Original validation | Parent233538 | +250 | +500 | +750 | Fixed +1000 |
 |---|---:|---:|---:|---:|---:|
 | Spatial cosine | .964644982 | .964681472 | .964488311 | .964516835 | .964583766 |
 | Summary cosine | .935764015 | .935841702 | .935748113 | .935802933 | .935825432 |
 | Independent iPhone LiDAR AbsRel | .093190284 | .091951557 | .093302035 | .097170404 | .094354521 |
+
+The original macro cosines combine six existing sources, including synthetic
+datasets. The separate iPhone LiDAR metric is from real captures. Original
+macro performance and performance on real scenes should not be conflated.
 
 At the fixed endpoint, spatial cosine falls slightly, summary rises slightly,
 and LiDAR AbsRel worsens1.2493% versus the parent. Against archived232288,
@@ -207,8 +212,8 @@ discrepancy falls .1195481062→.0816755904 (-31.6797%). This is agreement with
 MoGe-v2 on unseen synthetic houses, not ground-truth accuracy, a causal
 isolation of the data addition, or evidence that real walls are flatter.
 
-The fixed2,000-image training manifest remains unchanged while rendering
-continues. At08:58 UTC the existing renderer has closed377 houses/7,540 images,
+The fixed2,000-image training manifest remains unchanged. At08:58 UTC the
+renderer had closed377 houses/7,540 images,
 zero uniform/duplicate frames, and154 failed camera actions omitted. Newly
 generated views are not retrospectively counted as training inputs. The final
 mixed model is retained for comparison and has not replaced the deployment model.
@@ -225,3 +230,52 @@ Python environment before importing W&B; explicitly passing the existing model
 Python path fixed the launcher. No training rerun, environment installation or
 credential change occurred. Verifiers are immutable`9681dd6`in
 `code-procthor-finish-v1`; lint/compilation and the actual closed-run checks passed.
+
+## Completed10,000-image pool and the next generation batch
+
+`procthor-empty-rgb-batch-02` closed all500 houses, IDs0–499, and10,000 RGB
+images in6,714.08 seconds. All houses have20 retained views. There were zero
+house-creation failures, exact duplicate frames or frames rejected by the
+renderer standard-deviation threshold;210 failed camera actions were omitted.
+The old renderer controller287194 exited normally. This is generation closure,
+not a claim that all images contain useful room structure.
+
+`procthor-feature-train-10000-01` was frozen with the existing116bf4c freezer.
+Every image's encoded bytes, decoded pixels, source line, house description,
+closed-house receipt, perspective projection and hidden-agent metadata were
+checked. Manifest SHA
+`8be8d9a6d98ee64a87352dd0fb246c0b68008da986e785fb5a6930df65e3adb8`;
+report SHA`50b8a56ea924523033de2214bd1b283e6bc542ea74cb8efcb526f8bfb713e368`.
+The prior2,000 training rows are exact members of this larger pool. The8,000
+additional images have not been trained on. No original-house, empty-house or
+decoded-pixel overlap with the existing official validation selection was found.
+FOV55/70/85 image counts are3,340/3,340/3,320 respectively.
+
+A fixed sample of48 views from24 evenly spaced newly added house IDs plus the
+four lowest-contrast new frames was rendered in five contact pages. All52 views
+from27 houses were actually inspected, covering all three FOVs. No agent
+silhouette or failed framebuffer was observed in that sample. The four low-
+contrast originals were also inspected at full resolution: train00301 slots13/14,
+train00246 slot20 and train00258 slot18. They are wall-dominated, show little room
+structure, and are retained with explicit low-context labels. No exclusion or
+inferred benefit follows solely from their contrast. This sampled review does
+not certify every image. Visual report SHA
+`77dc850b117a315cabb8f06bedb819eeea887ac159fdb6e50e38674a69b3d72a`;
+review index SHA`a789f78a6a3f501c5fe8070ea8e11f77636932eb7cdcf65b90c9c5e7a40debb1`.
+
+`procthor-batch03-controller` started09:38:11 UTC, wrapper308305, using the same
+immutable774c84d renderer and private CPU OpenGL environment. Output is
+`procthor-empty-rgb-batch-03`; the only batch changes are output path and explicit
+house range500–999. It targets another500 houses/max10,000 images with the same
+7,200s generation/7,500s outer bounds, one renderer/two CPU cores/math threads1.
+The first house closed20 frames successfully. Do not start another copy or
+modify its live config. Official validation houses remain separate.
+
+The freezer now also accepts`--start-house`for later disjoint batches, preserving
+publisher house IDs and source-line hashes instead of renumbering them. Its
+default start0 behavior is unchanged; six targeted CPU tests cover old train/val
+selections, incomplete-tail avoidance, hidden-agent rejection, nonzero house IDs,
+and invalid bounds. The first test invocation had two expected-error text
+mismatches; correcting the asserted message made all six pass, with runtime
+validation unchanged. This future helper has not rewritten the completed10,000
+pool or altered any training input.
