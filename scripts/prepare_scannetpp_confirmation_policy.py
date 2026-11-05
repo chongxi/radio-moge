@@ -21,7 +21,7 @@ def freeze(root, output):
     policy_ref = file_ref(root/'scannetpp-native-v2-conditional-policy-plan-01/report.json')
     selection_ref = file_ref(root/'scannetpp-native-v2-validation-01/report.json')
     if (policy_ref['sha256'] != '3216cac67ac2a03854858b174a6362f8bddbb73940c8018b610719de0ac23d75'
-            or selection_ref['sha256'] != '37b957e897013bf3e58d963b279d70ad1c1598c4f90f60bd7a89cae8d87c322'):
+            or selection_ref['sha256'] != '37b957e897013bf3e58d9636b279d70ad1c1598c4f90f60bd7a89cae8d87c322'):
         raise ValueError('Original sealed selection and frozen conditional policy required')
     policy, selection = read(policy_ref, root), read(selection_ref, root)
     if policy['policy'] != asdict(ScannerSupportContract()):
