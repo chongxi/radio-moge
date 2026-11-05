@@ -44,11 +44,31 @@ def main(root, output):
     executable = Path(build['executable'])
     if build['commit'] != BUILD or sha(executable) != build['executable_sha256']:
         raise ValueError('Pinned Unity executable differs')
+    from ai2thor.build import Build
     from ai2thor.controller import Controller
     from ai2thor.fifo_server import FifoServer
     from ai2thor.platform import CloudRendering
 
     class BoundedController(Controller):
+        @property
+        def base_dir(self):
+            return str(output / 'runtime')
+
+        def find_build(self, local_build, commit_id, branch, platform):
+            if local_build or branch or commit_id != BUILD or platform is not CloudRendering:
+                raise ValueError('Use only the pinned CloudRendering build')
+            if CloudRendering.validate(None):
+                raise RuntimeError('CPU Vulkan loader is unavailable')
+            result = Build(CloudRendering, BUILD, False,
+                           releases_dir=str(root / 'procthor-unity-build-01/releases'))
+            if Path(result.executable_path) != executable:
+                raise ValueError('Pinned build path differs')
+            return result
+
+        def prune_releases(self):
+            # Never let the SDK remove builds belonging to other project jobs.
+            pass
+
         def unity_command(self, width, height, headless):
             return super().unity_command(width, height, headless) + [
                 '-force-vulkan', '-batchmode', '-job-worker-count', '1',
@@ -72,7 +92,7 @@ def main(root, output):
     publish(output / 'status.json', dict(stage='starting_cpu_renderer', completed=0))
     try:
         controller = BoundedController(
-            platform=CloudRendering, local_executable_path=str(executable),
+            platform=CloudRendering, commit_id=BUILD,
             server_class=FifoServer, quality='High', scene=houses[0][1],
             width=640, height=480, fieldOfView=70, snapToGrid=False,
             renderDepthImage=False, renderInstanceSegmentation=False,
