@@ -70,7 +70,7 @@ def main(root, output):
 
         def unity_command(self, width, height, headless):
             return super().unity_command(width, height, headless) + [
-                '-force-glcore', '-batchmode', '-job-worker-count', '1',
+                '-force-glcore', '-job-worker-count', '1',
                 '-logFile', str(output / 'unity.log')]
 
     if hasattr(os, 'sched_getaffinity'):
@@ -117,6 +117,8 @@ def main(root, output):
                 if rgb.shape != (480, 640, 3) or rgb.dtype != np.uint8:
                     raise ValueError('Expected ordinary perspective RGB at 640 by 480')
                 if not np.isfinite(rgb).all() or float(rgb.std()) == 0:
+                    Image.fromarray(rgb).save(output / 'invalid-output.png')
+                    publish(output / 'invalid-output-metadata.json', event.metadata)
                     raise ValueError('Empty or invalid RGB output')
                 target = output / f'house-{ordinal:05d}-view-{view:02d}.png'
                 incoming = target.with_name(target.name + '.incoming')
