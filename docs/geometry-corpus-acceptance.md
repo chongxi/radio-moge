@@ -4406,3 +4406,81 @@ and missing-data treatment before opening the sixteen confirmation views. Do not
 turn the observed quantiles or the 2 mm numerical-renderer tolerance into a
 physical calibration claim. All confirmation views remain unread; source
 acceptance, full v2 production, new training, and new exclusions remain absent.
+
+### Conditional source policy frozen — November 5, 03:53 UTC
+
+The next policy now has a concrete, executable scope (`54fbf4c`): a conditional
+sample candidate must have original numerical support and pass **both** fixed
+scanner stations. Each station requires the C0 projected patch, all nine raw
+pixels supported and exactly matched to stored nominal-angle probes, every
+absolute nominal range residual at most **0.01 m**, and a new exact-target
+visibility check. Prior geometry exclusions veto the result regardless of these
+checks. No favorable scanner substitution, nearest-hit skipping, interpolation,
+pose fit or source-flag clearance is permitted. The 1 cm value is a conservative
+engineering filtering choice made during development, **not a calibrated physical
+error bound, sensor specification, or inference from the observed quantiles**.
+The label role remains `laser_mesh_derived`, with conditional corroboration by
+the released source observations, not a direct per-DSLR measured ground truth.
+
+The frozen plan predates all new exact-target queries:
+`scannetpp-native-v2-conditional-policy-plan-01/report.json`, SHA256
+`3216cac67ac2a03854858b174a6362f8bddbb73940c8018b610719de0ac23d75`.
+Eighteen focused tests pass locally (0.17 s) and remotely (1.36 s). They cover
+rounded published transforms, sub-centimeter foreground, missing/coincident
+hits, boundaries, the fixed residual budget, conflicting peer stations, exact
+exclusion vetoes, no substitution, full denominators, and no sparse-to-dense
+coverage extrapolation.
+
+The new CPU queries aim from each original scanner origin to the **exact saved
+DSLR target point**, using the full inverse published matrix, a unit local ray,
+and an unnormalized world ray. This is new visibility evidence, not a rerun of
+the nine nearby-direction pilot. Four bound meshes were read once for 598 new
+rays; no RGB/range images were decoded or regenerated. Among these rays, 547
+return the target as the first interior face, 48 are occluded, and three land
+on target-triangle boundaries. The 170 numerically unsupported station slots
+remain counted, preserving all 768 station slots and 384 DSLR slots. Report:
+`scannetpp-native-v2-exact-target-01/report.json`, SHA256
+`25f3ceac0d88f62acffb7be99bc68f15ea461bd378303a5561364269dc74c8b6`.
+The single-return intersector does not prove unique face ownership against
+unreturned coincident faces. Nor does exact geometric visibility provide a
+measured range at the exact target angle or continuous footprint visibility.
+Those limitations remain explicit rather than silently promoted to guarantees.
+
+Applying the already frozen policy gives **70/384 conditional sample candidates**:
+7/96 in image 851268, 24/96 in 1318289, 12/96 in 1412812, and 27/96 in 1415712.
+The two persistent 7–9 cm source conflicts and the angle-sensitive third case
+all fail; their signed residuals and older envelope evidence remain recorded.
+This does not identify their unique physical cause. The audit is
+`scannetpp-native-v2-conditional-support-01/report.json`, SHA256
+`e117b56e1f0ccead77cd27963f164a2d125cf5180e13f3fd0084a843e43a098c`.
+
+**These sampled fractions do not admit any dense image.** Future dense source
+eligibility requires evidence for every image-grid slot, a conditional-support
+mask contained in the original numerical mask, at least 5% of the full image
+grid and at least 32 supported points. A 96-point sample cannot set a full-grid
+evaluation flag or manufacture unsampled support. The existing numerical 2 mm
+renderer agreement, clip guards and numerical 5% image floor are unchanged.
+All four pilot images still have zero training admission; no dense source mask,
+new image exclusion, cache replacement or optimizer update was produced.
+
+The sixteen original confirmation identities and both fixed scanner IDs 0/1
+per scene are now bound to this policy in
+`scannetpp-native-v2-confirmation-policy-plan-01/report.json`, SHA256
+`8365609ec741092d3543e640afd77374ee219a6b7786953266346919a4be59d0`.
+Preparation `67c04f4` checksummed all 128 existing scanner files sequentially
+(1,847,841,627 encoded bytes) and bound all published poses. It did not decode
+scanner arrays, read confirmation RGB, or inspect confirmation results. No new
+download was needed. The original 16 scenes and fixed 8-by-12 grid yield 1,536
+DSLR slots and 3,072 station slots, with missing/unsupported cases retained.
+All panorama range/angle/mask assets are diagnostic sources only; network RGB
+remains perspective DSLR.
+
+Execution still requires a dedicated runner, scope/provenance tests and a fresh
+actual CUDA fixture for the current float32 clip guard/public-consensus path;
+the old development report cannot certify different implementation bytes. That
+runner must bind the frozen policy and inputs before opening confirmation views,
+preserve the original GPU lock/viewer, and report all sixteen cases without
+threshold tuning or automatic retry. No further policy choice or repeated pilot
+is needed merely to delay confirmation. Physical uncertainty remains explicitly
+uncalibrated; the confirmation will test this operational conditional policy,
+not certify centimeter physical accuracy or automatically admit the full source.
