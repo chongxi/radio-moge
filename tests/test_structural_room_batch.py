@@ -134,3 +134,51 @@ def test_actual_render_loop_preserves_projection_labels_and_closes_manifest(tmp_
     assert sum(a == "AddThirdPartyCamera" for a, k in actions) == 1
     assert sum(a == "UpdateThirdPartyCamera" for a, k in actions) == 3
     assert json.loads((tmp_path / "run/scene-reports/train-000000.json").read_text())["closed"]
+
+
+@pytest.mark.parametrize("bad_slots,success", [({12}, True), ({12, 13, 14}, False)])
+def test_rejected_entire_frames_are_bound_and_never_replaced(tmp_path, monkeypatch, bad_slots, success):
+    monkeypatch.setattr(batch.os, "sched_setaffinity", lambda *args: None)
+    cameras = []
+
+    class Controller:
+        initialization_parameters = dict(makeAgentsVisible=False)
+        last_event = SimpleNamespace(metadata=dict(lastActionSuccess=True))
+
+        def step(self, action, **kw):
+            if action in ("AddThirdPartyCamera", "UpdateThirdPartyCamera"):
+                slot = len(cameras)
+                cameras.append(kw)
+                rgb = np.random.default_rng(slot).integers(30, 180, (480, 640, 3), dtype=np.uint8)
+                if slot in bad_slots:
+                    rgb[305, 525] = [255, 0, 255]
+                return SimpleNamespace(third_party_camera_frames=[rgb], metadata=dict(
+                    thirdPartyCameras=[dict(position=kw["position"], rotation=kw["rotation"])],
+                ))
+            return SimpleNamespace(metadata=dict(lastActionSuccess=True, actionReturn={}))
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(batch, "create_controller", lambda *a, **k: Controller())
+    output = tmp_path / "run"
+    if not success:
+        with pytest.raises(RuntimeError, match="Excess rejected"):
+            batch.run(tmp_path, output, "val", 7, 1, 20, 60)
+        assert not (output / "report.json").exists()
+        assert not (output / "scene-reports/val-000007.json").exists()
+        assert len(cameras) == 15
+        return
+    report = batch.run(tmp_path, output, "val", 7, 1, 20, 60)
+    rows = [json.loads(x) for x in (output / "rgb-candidates.jsonl").read_text().splitlines()]
+    receipt = json.loads((output / "scene-reports/val-000007.json").read_text())
+    assert len(cameras) == 20  # No replacement or repeated camera.
+    assert [r["slot"] for r in rows] == [i for i in range(20) if i != 12]
+    assert report["completed"] == 19 and report["rejected_frames"] == 1
+    assert receipt["attempted_slots"] == list(range(20)) and len(receipt["rejected"]) == 1
+    proof = receipt["rejected"][0]
+    assert batch.sha(Path(proof["path"])) == proof["sha256"]
+    rejection = json.loads(Path(proof["path"]).read_text())
+    assert rejection["slot"] == 12 and rejection["training_admission"] is False
+    assert batch.sha(Path(rejection["image"]["path"])) == rejection["image"]["sha256"]
+    assert all(r["exterior_background_pixels"] == 0 for r in rows)

@@ -16,6 +16,7 @@ from render_structural_room_samples import box_mesh, material, mesh_for, room, s
 
 
 POLICY = "structural-room-rgb-multiview-v1"
+FRAME_POLICY = "strict-rgb-frame-filter-v2"
 PALETTES = (
     (0.84, 0.82, 0.76),
     (0.76, 0.80, 0.83),
@@ -278,14 +279,18 @@ def camera_slots(spec, count):
     return result
 
 
+class RejectedRGB(ValueError):
+    """A retained diagnostic, never a training RGB or an implicit replacement."""
+
+
 def validate_rgb(rgb):
     if rgb.shape != (480, 640, 3) or rgb.dtype != np.uint8:
         raise ValueError("Unexpected RGB framebuffer")
     if ((rgb[..., 0] > 240) & (rgb[..., 1] < 15) & (rgb[..., 2] > 240)).any():
-        raise ValueError("Exterior/background is visible")
+        raise RejectedRGB("Exterior/background is visible")
     std = float(rgb.astype(np.float32).std(axis=(0, 1)).mean())
     if std < 0.3:
-        raise ValueError("Near-uniform RGB")
+        raise RejectedRGB("Near-uniform RGB")
     return std
 
 
@@ -347,7 +352,7 @@ def run(root, output, split, start, count, views, maximum_seconds):
     if views not in (4, 20) or not 60 <= maximum_seconds <= 7200:
         raise ValueError("Use four/twenty views, at most two hours")
     output.mkdir(exist_ok=False)
-    for subdir in ("rgb", "scenes", "assets", "scene-reports"):
+    for subdir in ("rgb", "scenes", "assets", "scene-reports", "rejected"):
         (output / subdir).mkdir()
     os.sched_setaffinity(0, sorted(os.sched_getaffinity(0))[-2:])
     started, controller = time.monotonic(), None
@@ -357,6 +362,7 @@ def run(root, output, split, start, count, views, maximum_seconds):
         duplicate_frames=0,
         perspective_frames=0,
         orthographic_frames=0,
+        rejected_frames=0,
     )
     seen, summaries, next_scene = set(), [], start
     manifest = output / "rgb-candidates.jsonl"
@@ -383,7 +389,7 @@ def run(root, output, split, start, count, views, maximum_seconds):
                 if controller.initialization_parameters.get("makeAgentsVisible") is not False:
                     raise ValueError("Simulator agent visibility changed")
                 assets = spawn_structures(controller, spec, output, stem)
-                scene_rows = []
+                scene_rows, rejected_rows = [], []
                 for slot in camera_slots(spec, views):
                     request = slot["request"]
                     event = controller.step(
@@ -395,7 +401,30 @@ def run(root, output, split, start, count, views, maximum_seconds):
                         raise_for_failure=True,
                     )
                     rgb = event.third_party_camera_frames[0]
-                    std = validate_rgb(rgb)
+                    try:
+                        std = validate_rgb(rgb)
+                    except RejectedRGB as error:
+                        # Preserve the entire rejected image. Never repair pixels,
+                        # relax the zero-background rule or select another camera.
+                        image = output / "rejected" / f"{stem}-slot-{slot['index']:02d}.png"
+                        save_image(image, rgb)
+                        rejected = dict(
+                            scene=spec["identity"], slot=slot["index"],
+                            camera_pattern_index=slot["camera_pattern_index"],
+                            requested_camera=request,
+                            actual_camera=event.metadata.get("thirdPartyCameras"),
+                            image=dict(path=str(image), sha256=sha(image)),
+                            decoded_rgb_sha256=hashlib.sha256(rgb.tobytes()).hexdigest(),
+                            reason=str(error), retained_for_diagnosis_only=True,
+                            training_admission=False, frame_policy=FRAME_POLICY,
+                        )
+                        proof = image.with_suffix(".json")
+                        publish(proof, rejected)
+                        rejected_rows.append(dict(path=str(proof), sha256=sha(proof)))
+                        totals["rejected_frames"] += 1
+                        if len(rejected_rows) > (2 if views == 20 else 0):
+                            raise RuntimeError("Excess rejected views; inspect this scene before continuing")
+                        continue
                     pixel_sha = hashlib.sha256(rgb.tobytes()).hexdigest()
                     if pixel_sha in seen:
                         totals["duplicate_frames"] += 1
@@ -421,6 +450,7 @@ def run(root, output, split, start, count, views, maximum_seconds):
                         decoded_rgb_sha256=pixel_sha,
                         dataset="structural_rooms",
                         policy=POLICY,
+                        frame_policy=FRAME_POLICY,
                         split=split,
                         group=spec["identity"],
                         scene_ordinal=ordinal,
@@ -472,6 +502,9 @@ def run(root, output, split, start, count, views, maximum_seconds):
                         layout_sha256=spec["layout_sha256"],
                         assets=assets,
                         images=scene_rows,
+                        rejected=rejected_rows,
+                        attempted_slots=list(range(views)),
+                        frame_policy=FRAME_POLICY,
                         camera_policy="18_perspective_2_orthographic_per_20",
                         windows=0,
                         doors=0,
@@ -483,6 +516,7 @@ def run(root, output, split, start, count, views, maximum_seconds):
                         ordinal=ordinal,
                         scene=spec["identity"],
                         images=len(scene_rows),
+                        rejected=len(rejected_rows),
                         receipt=dict(path=str(receipt), sha256=sha(receipt)),
                     )
                 )
@@ -500,6 +534,7 @@ def run(root, output, split, start, count, views, maximum_seconds):
             stage="bounded_rgb_batch_rendered_review_pending",
             **totals,
             policy=POLICY,
+            frame_policy=FRAME_POLICY,
             split=split,
             start_scene=start,
             requested_scenes=count,
