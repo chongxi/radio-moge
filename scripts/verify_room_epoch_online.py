@@ -84,7 +84,7 @@ def verify(root, mode):
         if [r['step'] for r in records] != endpoints(plan['source_step']):
             raise ValueError('Unexpected validation endpoints')
         expected = {'validation/'+k:v for k,v in records[-1].items() if k != 'step'}
-        final = [row for row in run.scan_history(keys=['optimizer_step']+list(expected), page_size=4)
+        final = [row for row in run.scan_history(keys=['optimizer_step']+list(expected), page_size=1000)
                  if row['optimizer_step'] == plan['source_step']+UPDATES]
         if len(final) != 1:
             raise ValueError('Missing or repeated final online validation')
