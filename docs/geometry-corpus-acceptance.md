@@ -4331,3 +4331,78 @@ views; numerical tolerances must not simply be widened to increase coverage.
 No confirmation images, new exclusions, optimizer updates or bulk regeneration
 occurred. All nineteen exact dispositions remain complete, the global geometry
 exclusion count remains 4,190, and their RGB and policy flags remain preserved.
+
+### Curved footprint and exact stored-angle comparison — November 5, 03:01 UTC
+
+The new saved-only curved-footprint diagnostic (`f8534a3`) uses indexed manifold
+edges and vertex links, a scanner-local gnomonic projection under the full
+published inverse transform, and nonfolding, nonoverlapping projected triangles.
+The retained patch must cover the convex hull of the nine saved rays. Exposed
+patch boundaries must lie strictly outside that hull; an area-only comparison
+would miss sufficiently narrow holes. Conservative floating-point predicates
+leave uncertain contacts unresolved. Tests include bent surfaces, sharp visible
+creases, folds, nonmanifold vertices/edges, missing bridges, grazing views,
+rounded poses, and a narrow slit. All 21 tests pass locally and remotely. A
+view-oriented dihedral measurement replaces an unsigned normal comparison that
+would have folded angles over 90 degrees. Neither correction changes labels.
+
+A visible crease may satisfy **C0 structural continuity** without being smooth,
+semantically corresponding, or physically accurate. No whole-mesh visibility
+between the nine probes or at the exact DSLR target is claimed. The report
+`scannetpp-native-v2-projected-footprint-01/report.json`, SHA256
+`241b6ffe307e5088a534b39ce5860b2784eb46037c448b80c0c798b7371de1bb`,
+preserves all 768 station slots. It identifies 369 structural observations,
+including 284 crossing original triangle IDs, covering 231/384 DSLR slots at
+one or more stations and 138/384 at both. Unlike the prior strictly planar
+diagnostic, this recovers real multi-face correspondence without widening a
+physical error threshold. It remains a correspondence diagnostic, not source
+acceptance. The original source conflicts are retained even when structure
+cannot be established.
+
+The second new diagnostic (`19f4fc3`, 14 local and 14 remote tests) matches every
+retained raw scanner pixel's **exact integer azimuth/polar pair** to the nine
+already saved whole-mesh first hits. Raw spatial pixel order and angular-probe
+order are independent. It preserves mask/range failures, unmatched directions,
+missing hits, duplicate angles, and truncated patches; no new ray query,
+interpolation, pose fit, source read, or image read occurs. The raw millimeter
+range is compared with the unchanged scanner-local radial hit parameter.
+Exact stored angles are quantized nominal identities, not calibrated physical
+rays. Distinct-angle counts mean distinct stored pairs (not necessarily distinct
+geometric directions at a pole), and none is an independent physical trial.
+
+The actual report is `scannetpp-native-v2-saved-angle-match-01/report.json`, SHA256
+`33d0a185c1fc1418a8dcd395e641f4c608b40179bf6bfd3287eb8d3263947faa`.
+The 598 numerically supported station slots contain 5,382 expected raw pixel
+slots: 4,756 have a conditional same-stored-angle residual, 624 are unprobed
+directions, and two have no saved whole-mesh hit. Across patches these comprise
+3,005 distinct station/angle pairs and 5,364 unique retained raw pixels; overlapping
+patches and repeated quantized angles are explicitly counted. Complete nine-pixel
+comparisons exist for 365 station slots. Combining complete comparison with the
+C0 structural diagnostic leaves **264 station slots / 190 DSLR slots at any
+station / 74 at both**, still out of the original 768/384 denominators.
+
+In that restricted structural-comparison subset, absolute conditional range
+residuals have median **1.250 mm**, p95 **6.869 mm**, maximum **31.230 mm**.
+Across all matched raw pixels without structural qualification, the median is
+1.451 mm, p95 20.775 mm, and maximum 1.777 m; these include unmatched physical
+surfaces/visibility and must not be called a depth-error population estimate.
+Both distributions reuse dependent shared-acquisition observations and provide
+neither a physical accuracy bound nor a whole-source pass.
+
+The plastic-container case retains nine same-stored-angle residuals from
+**+75.572 to +88.094 mm** (four distinct stored pairs). The curtain conflict
+retains **-75.347 to -68.735 mm** (four pairs). The angle-sensitive third case
+spans **-53.214 to -3.023 mm** (six pairs). These are new nominal-direction
+comparisons; the older sampled-envelope gaps remain unchanged and separately
+recorded. The known 8.369 cm surface with meter-scale scanner discrepancies is
+also retained as a bound counterexample. No conflict was suppressed by the
+structural selection, and no unique physical or historical regression cause
+was established.
+
+The two executable diagnostics now define correspondence and comparison scope.
+They do **not** yet define an accepted physical residual threshold or whole-source
+usable coverage. Freeze that operational source-quality decision, its exclusions
+and missing-data treatment before opening the sixteen confirmation views. Do not
+turn the observed quantiles or the 2 mm numerical-renderer tolerance into a
+physical calibration claim. All confirmation views remain unread; source
+acceptance, full v2 production, new training, and new exclusions remain absent.
