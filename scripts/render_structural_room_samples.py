@@ -118,7 +118,10 @@ def room(variant):
                     floorMaterial=material((.62, .61, .59), 'LightWoodCounters2'), ceilings=[])],
         walls=walls, windows=[], doors=[], objects=[],
         proceduralParameters=dict(ceilingMaterial=material((.84, .84, .82), 'WallDrywallWhite3'),
-            floorColliderThickness=1., receptacleHeight=.7, reflections=[], lights=lights),
+            # Required by pinned CreateHouse even in a closed room. The six room
+            # surfaces hide it; preview cameras additionally use a solid sentinel.
+            skyboxId='SkyGarden', floorColliderThickness=1., receptacleHeight=.7,
+            reflections=[], lights=lights),
         metadata=dict(schema='1.0.0', agent=pose, agentPoses=dict(default=pose)))
 
 

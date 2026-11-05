@@ -35,7 +35,7 @@ def test_closed_room_and_attached_structures_are_well_inside_scene(variant):
     assert not house['windows'] and not house['doors'] and not house['objects']
     assert len(house['walls']) == 4
     assert house['proceduralParameters']['ceilingMaterial']['name']
-    assert not house['proceduralParameters'].get('skyboxId')
+    assert house['proceduralParameters']['skyboxId'] == 'SkyGarden'
     pieces = structures(variant)
     assert {'square_column', 'round_column', 'rectangular_beam',
             'horizontal_round_member'} <= {x['name'] for x in pieces}
