@@ -5,12 +5,13 @@ Further ScanNet++ source/geometry investigations were explicitly stopped.
 This generation task uses ProcTHOR only; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov5 09:39 UTC: the first mixed-feature run has completed its
+Current state, Nov5 11:44 UTC: the first mixed-feature run has completed its
 fixed1,000 updates at234538. It improves agreement on unseen synthetic houses,
 but the final original-validation joint target is not met. No deployment replacement or
-further optimizer segment has been started. The first500-house generation batch
-is complete and its10,000-image pool is frozen. A second CPU batch has started
-on disjoint official training houses500–999.
+further optimizer segment has been started. Two500-house generation batches
+are complete and their20,000-image pool is combined with exact cross-batch and
+validation isolation. A third CPU batch has started on disjoint official
+training houses1000–1499. Only the earliest2,000 images participated in training.
 
 ## Sources and renderer
 
@@ -279,3 +280,54 @@ and invalid bounds. The first test invocation had two expected-error text
 mismatches; correcting the asserted message made all six pass, with runtime
 validation unchanged. This future helper has not rewritten the completed10,000
 pool or altered any training input.
+
+## Completed20,000-image pool and continued generation
+
+Batch03 closed all500 official training houses500–999 and10,000 RGB images in
+6,710.70 seconds, with222 failed camera actions omitted and zero house failures,
+uniform-frame rejections or within-batch pixel duplicates. Wrapper308305 and its
+controller exited normally. The existing range freezer verified every new
+encoded image, decoded pixel hash, closed-house receipt, source line and rendering
+contract. The frozen second manifest SHA is
+`f71e9bf8280868196dc6f2f476da7140676f537d1b4f3a2e2af5fabdd78ddbf9`;
+its report SHA is`4051ce6f3e85c57e92fd1447624ad4e9cceb8e0afdbc461ea062c820c9d3bd3c`.
+
+The new combination helper`4d01426`checks hash-bound frozen reports, complete
+source house ranges and all image/house identities before publication. Fifteen
+targeted CPU tests passed locally, including corrupt manifests, incomplete
+houses, incorrect projection, visible agents, source changes and overlap
+rejections. The actual20,000-row combination preserves both inputs byte for
+byte. Exact image paths, groups, decoded pixels, original-house hashes and
+empty-house hashes are disjoint between batches and from the fixed64-image
+official-validation selection. This does not certify near-duplicate absence
+or isolation from every unpublished validation view. Manifest SHA
+`7475936acbd13149a6b9cf4f87cefa009b96e2ac84036421b46e4db8c2ce2003`;
+combination report SHA
+`37383b0182f040b49363ce6b00beec600922cb05507c0ad04784735614d04bad`.
+
+All52 new sample images across26 houses and all five contact pages were viewed.
+They include48 fixed evenly spaced house/retained-view selections and the four
+lowest-contrast frames. All four low-contrast original640x480 PNGs were also
+viewed. No visible agent or failed framebuffer was observed in this sample.
+The four extrema (00618 slots15/13/14 and00763 slot19) and two sampled wall-only
+views (00760 slots00/10) have explicit low-context flags and remain feature-only
+RGB. Close walls, dark or glossy surfaces, strong textures and synthetic lighting
+remain. No new exclusions were issued, and this is not an all-image visual
+certification or physical-depth validation. Visual review SHA
+`70d63e9b68e6a5bf99c06feac438e13d165664924f6b7e97b13051112d186605`.
+The review launch first failed before reading data because its small immutable
+directory omitted an imported helper. Supplying the existing116bf4c dependency
+directory via PYTHONPATH fixed the launcher without changing any code or data.
+
+The new20,000-image pool has18,000 images not yet used by the completed mixed
+run. The current training inputs and all earlier evaluation proofs remain
+unchanged. The completed model's original-validation joint target still fails;
+no optimizer restart or deployment replacement follows from this data expansion.
+
+Batch04 wrapper309984 started11:43:44 UTC with the same774c84d renderer and
+private CPU OpenGL setup. It targets houses1000–1499, up to10,000 images, under
+the same7,200s generation/7,500s outer bounds. Only output path and source range
+differ from batch03. Keep one renderer/two CPU affinity cores/math threads1;
+do not duplicate the job. After completion, freeze the actual closed range
+with`--start-house1000`, compare all three frozen batches and the validation
+selection, and inspect only new samples. No ScanNet geometry work resumes.
