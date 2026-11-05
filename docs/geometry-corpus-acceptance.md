@@ -4579,3 +4579,44 @@ markers, rerender old numerical evidence, automatically regenerate the corpus,
 start an optimizer, or turn shared-acquisition corroboration into a physical
 accuracy guarantee. The native source remains unadmitted pending full-grid
 coverage and a qualified source decision.
+
+### Bounded full-grid implementation and start — November 5, 05:31 UTC
+
+The additive CPU implementation `8bfbc4e` (`code-scannet-dense-source-v2`)
+preserves the frozen source policy. It caches immutable coarse/fine angle
+directions, station-specific nine-ray first hits, and exact global edge incidence.
+Stable coarse ties, row-major fine ties and scalar chord arithmetic are preserved.
+Raw patches stay indexed by scanner pixel; exact target visibility and projected
+C0 correspondence are recomputed per target. No historical helper or threshold
+was changed. Twelve focused local/remote tests passed (0.92 s / 2.16 s), including
+ties, seam/duplicate angles, cache eviction, unselected nonmanifold faces, rounded
+poses, conflicting peer ranges, prior exclusions and incomplete-grid accounting.
+
+Benchmark attempt 01 stopped before data reads: its memory precheck counted all
+cgroup file cache as unavailable. Inspection found approximately 3.9 GB anonymous
+memory and 55.3 GB file cache. Version 2 reserves dirty, shared, mapped and
+unevictable pages and accounts only for clean unmapped cache as reclaimable;
+it does not request cache eviction or stop another process. This resource guard
+correction changes no source computation and explains no historical model result.
+
+The actual benchmark `scannetpp-native-v2-dense-benchmark-02/report.json`, SHA256
+`ed7005690ffeb6f7126b2ed8c4fa83c65ee21ca97b93531b2866d2cd81738389`,
+completed in 11.22 s with maximum process RSS 1.0954 GiB. On the first original
+development image, 851268, all 96 saved target geometries, scanner matches,
+footprints, exact visibility, residuals and final paired decisions matched exactly.
+Another 256 prospectively fixed positions measured throughput: all 352 DSLR slots
+and 704 scanner slots were retained. The conservative full-grid estimate is
+4,889.69 s (81.5 minutes); this is a runtime estimate, not source coverage.
+
+The separate one-image full-grid job `scannetpp-native-v2-dense-source-01`
+started at 05:30:59 UTC (wrapper PID 265901). It reuses saved numerical arrays and
+checks all 273,280 pixels against the same fixed scanner 0 and 1, with original
+96-point parity rechecked in the full batch. It is bounded to 7,200 seconds,
+24 GiB process RSS, 8 GiB new evidence, one CPU process and one raw scanner at a
+time. Unvisited pixels remain explicitly unverified. The saved mask cannot pass
+the >=5% and >=32 point coverage requirement until every grid position has been
+evaluated. No sparse interpolation, new RGB/numerical rendering, confirmation
+rerun, optimizer, automatic retry or bulk expansion is allowed by this job.
+At launch the full-grid result is pending; even a completed sufficient mask would
+remain conditional shared-acquisition evidence, not physical accuracy certification
+or automatic source-wide admission. Existing exclusions and source flags remain.
