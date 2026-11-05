@@ -5,7 +5,7 @@ Further ScanNet++ source/geometry investigations were explicitly stopped.
 This generation task uses ProcTHOR only; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov5 18:55 UTC: the user's latest instruction is to start training
+Current state, Nov5 19:31 UTC: the user's latest instruction is to start training
 after the cumulative qualified synthetic training pool reaches50,000 images.
 This was acknowledged as the existing frozen40,000 plus at least10,000 new
 qualified structural images. Validation, rejected frames, unclosed/unverified
@@ -16,10 +16,14 @@ manifest/config/model gate is required for this changed pool; the old2,000-image
 runner's admission cannot be reused. The threshold plan SHA is
 `919fc700797d6a9beaf6cdb50dd74090e3ea093be4915deb8156b9f29fe5f26a`.
 
-Controller02 / PID315828 is actively generating new training views with the
-strict whole-frame filter below. At18:53 UTC its first100-scene batch had18
-closed scenes and356 retained RGB images, with4 rejected frames omitted. These
-are generated candidates, not yet frozen additions to the40,000-image count.
+There are now40,890 qualified frozen training images: the old40,000 plus890
+new structural views from45 complete scenes. The new images passed all file,
+pixel, source and camera checks; a fixed64-image sample was actually viewed.
+Another9,110 qualified images are needed. Controller02 stopped at scene53;
+that incomplete scene is held in full. Controller03 / PID316684 resumed only
+new scenes54 onward at19:28:32 UTC, with bounded whole-scene quarantine as
+described below. At19:31 it had generated60 further images/3 complete scenes;
+these growing-batch images are not yet counted in40,890.
 Validation is already frozen at317 images/16 scenes; all64 selected sample
 images on16 contact pages were actually viewed. Those validation images never
 enter the50,000 training-image count.
@@ -180,6 +184,60 @@ exclusions were issued. This is a64-image sample, not visual certification of
 all317 images or proof of model improvement. Visual report SHA
 `3f5bb3aedb9e9894b6c043901cbb53b82e5f8f7d8f677bcf0ad6fdc520b6b456`.
 No model inference, baseline rerun or optimizer was launched during this review.
+
+## First890 structural training images and whole-scene quarantine
+
+Controller02 stopped when training scene53 produced its third invalid view.
+All three actual rejected originals (slots1,2,6) were viewed and their hashes
+checked. Each contains exactly one magenta sentinel pixel at a wall/corner
+boundary. All seven attempted images from this incomplete scene, including
+four otherwise-valid frames, are held and will not be retried. Its remaining
+camera slots were never generated. Hold report SHA
+`c30d7625c138f1bad0c3dea2169468e031b24e525cfd1b86a8c8b802e678f351`.
+The old terminal counter894 included those four unclosed frames; only890
+belong to the45 complete scene receipts8–52.
+
+The unchanged dedicated freezer verified all890 images, scene assets, camera
+records and complete attempted-slot accounting. Ten invalid frames in the
+closed scenes remain omitted. The frozen890 has800 perspective and90
+orthographic frames, with zero exact pixel/group/layout overlap against both
+validation pools and the old40,000 training images. Freeze report SHA
+`08107c9ee86067ee984d0dfd7617b94032e29aa77e21a5d804e8d80477dffa80`;
+manifest SHA
+`b032da1aa742572c82e248e1f373f8466211053bf9d4bd594a0504f3236ef104`.
+
+All64 fixed-angle images from16 evenly spaced scenes were actually viewed on
+16 contact pages. Closed walls and columns/beams are visible, with no observed
+window/exterior, simulator body or magenta failure in the sample. Highlights,
+blocky shadows and repeated motifs remain. No new exclusions resulted. This
+is sampled visual review, not inspection of every890 image. Visual report SHA
+`63c4de6f9654da6d58b9fb819b03203d27c0823a20b5ccbfeddae23598c0884b`;
+prefix closure SHA
+`70d01f5e3e3d07bd9b7209e1708e6f656a67e2a44bad8822d9fd4fb67a5937eb`.
+
+Renderer`6d5b736` / `code-structural-multiview-v3` keeps every frame predicate,
+scene, camera and drawing operation unchanged. New explicit production behavior
+holds an entire scene after its third invalid RGB view, retaining raw images,
+camera records, rejection proofs and unattempted-slot identities. No row from
+a held scene is committed to the candidate manifest. The next new scene can
+then proceed. There are at most five such holds per100-scene job; exceeding
+that bound or encountering other errors stops the batch. Four-view preflight
+and default behavior still fail immediately. There is no image repair,
+replacement camera or retry of a held scene. Seventeen renderer tests passed
+in7.04s, and fourteen existing freezer tests passed in8.86s. These are CPU tests;
+no paired rerender or empirical pixel-equality experiment was performed.
+
+Controller03 uses five new100-scene ranges54–153,154–253,254–353,354–453,
+454–553 with6,000-second bounds. Its plan SHA is
+`213afbf753dc262076248ffca1e155025192acf0b40a246d5be9a1a9ef92e5a6`.
+The first actual scene54 closed all20 unchanged planned views,18 perspective
+and2 orthographic, with zero rejected frames and feature-only metadata.
+The controller accounts separately for admitted candidate frames, invalid
+frames, held otherwise-valid frames and unattempted held slots. Completion
+of a range does not mean all its scenes were admitted. Continue to freeze only
+explicit closed-scene receipts and count actual eligible images toward50,000.
+The source/camera invariance flag in the plan describes unchanged code semantics,
+not a claim of a measured pixel-parity experiment. No training has started.
 
 ## Sources and renderer
 
