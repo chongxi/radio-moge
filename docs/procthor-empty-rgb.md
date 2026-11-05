@@ -2,21 +2,29 @@
 
 Chongxi requested large numbers of clean empty-room, first-person RGB views.
 Further ScanNet++ source/geometry investigations were explicitly stopped.
-This generation task uses ProcTHOR only; ZInD and UnrealZoo are not inputs.
+Generation uses official ProcTHOR houses and custom structural rooms rendered
+in the same pinned simulator; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov5 20:25 UTC: the user explicitly instructed "start now";
-the earlier50,000-image waiting threshold is superseded. A new bounded pure-feature
-run, `room-feature-mix-40890-training-02`, is launched under PID317643 using
-immutable `code-room-feature-mix-v2` / `b5fde32`. It has completed250 actual optimizer updates and is running its first validation.
-The initial adapter/RMS/all100 Adam states/RNG are exact;33 actual model cases
-and152 input presentations passed, including explicit orthographic probes.
-The first20 updates have finite losses/gradients and nonzero adapter changes;
-640 actual RGB keys match the plan (79 official rooms,1 structural,560 original).
-Attempt01 stopped before model construction
-or any update because the archived code lacked its vendor symlink. The same pinned
-MoGe/RADIO source directories are now linked and their exact commits checked;
-no package installation, model changes or geometry work was involved. Do not launch another copy.
+Current state, Nov5 20:49 UTC: `room-feature-mix-40890-training-02` completed
+its fixed1,000 updates normally at234538, using immutable
+`code-room-feature-mix-v2` / `b5fde32`. The user's "start now" instruction
+superseded the earlier50,000-image waiting threshold. All1,000 records are finite;
+the final adapter/all100 Adam states are finite at234538, cursor8000, and the
+fixed RMS, configuration and data identities match. The final checkpoint is
+preserved under `finish-verification-01`. All four saved paired reviews are
+complete. W&B is finished and all631 final validation scalars match numerically,
+including78 official-house and78 structural metrics. Existing one-ULP metadata
+display differences are recorded without changing the runtime configuration.
+`room-feature-40890-finish-closure-01/report.json` binds the final evidence; the
+old controller's `quality_review_pending` label is historical, not outstanding work.
+
+The initial adapter/RMS/full Adam/RNG proof,33 actual model cases/152 RGB
+presentations, and first20-update/640-key/online proofs are complete and reused.
+Attempt01 stopped before model construction or any update because the archived
+code lacked its vendor symlink; attempt02 used the original pinned clean vendor
+sources. No package installation, model changes or geometry work was involved.
+Do not relaunch either attempt or repeat the completed proofs.
 
 The fixed training pool contains40,890 qualified RGB images:40,000 earlier
 ProcTHOR empty-house views and890 new structural views from45 complete scenes.
@@ -46,8 +54,35 @@ validation population gets its own parent baseline; it is never training data.
 Validation runs every250 updates, with saved paired results reviewed against the
 same parent and archive. A larger image pool does not establish a quality gain.
 
-Controller03 / PID316684 continues generating only new scenes54 onward, separately
-from the frozen training pool. Its output is not inserted into this active run.
+At the fixed1,000-update endpoint, the original validation macro spatial cosine
+changes0.9646449821 to0.9644499831, summary cosine0.9357640150 to0.9358074926,
+and independent LiDAR AbsRel0.0931902844 to0.0954916715 (+2.4696% worse than
+the parent, +3.6618% worse than archive232288). The predefined joint target
+fails against both parent and archive. These original macro results include
+multiple real and synthetic sources; they must not be called an all-real average.
+
+The distinct unseen structural317 population improves spatial cosine
+0.9223505710 to0.9510275748 and summary cosine0.7415038003 to0.9381207416;
+teacher-depth discrepancy falls65.7567%. Official-house64 cosine improves
+0.9614996593 to0.9716912052 and0.8897025390 to0.9366651960, with teacher-depth
+discrepancy down41.3044%. These are synthetic heldout alignment results, not
+physical depth accuracy, real-wall planarity, a causal attribution, or replication.
+The250-update candidate had lower LiDAR error than the final endpoint; all existing
+best checkpoints are retained, with no automatic next segment or deployment.
+
+Controller03 / PID316684 continues generating new scenes separately from the
+frozen training pool. Batch08 closed all100 scenes54–153 with1,984 accepted RGB
+(1,784 perspective and200 orthographic),16 rejected frames and no quarantined
+scene. Dedicated freezing checked every encoded/decoded image, scene, mesh,
+material, camera and receipt; exact pixel/group/layout intersections with the old
+40,000, previous890, official64 and structural317 sets are zero. All64 fixed
+sample images on16 pages were actually viewed. No visible exterior/window/agent
+or magenta failure was observed in this sample; highlights, repetitive motifs and
+shadow aliasing remain limitations, without an all-image visual certification.
+`structural-batch08-closure-01/report.json` binds these new results. Qualified
+images now total42,874 in separate frozen manifests; the new1,984 were not added
+to the completed training run. Batch09, scenes154–253, is already running under
+the existing controller; do not duplicate it or change its configuration.
 Scene53 is held in full. Previously completed890-image and317-validation proofs
 and sample reviews must not be repeated. The withdrawn small pilot remains
 withdrawn; this new40890 run is separately bound to the latest user instruction.
