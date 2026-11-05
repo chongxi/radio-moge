@@ -5,7 +5,7 @@ Further ScanNet++ source/geometry investigations were explicitly stopped.
 This generation task uses ProcTHOR only; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov5 17:26 UTC: the user changed the requested future images to
+Current state, Nov5 18:03 UTC: the user changed the requested future images to
 farther wall views, no windows showing outdoors, and visible square/round pillars,
 rectangular beams and horizontal round members. The old batch06 was gracefully
 stopped at a complete-house boundary: 359 houses / 7,180 RGB, IDs2000–2358.
@@ -19,10 +19,11 @@ new parameterized closed rooms and actual runtime structural meshes, with a
 12m wall distance, square/round pillars, rectangular beams and horizontal round
 members. These are custom scenes, not unchanged official ProcTHOR houses.
 Both far frontal perspective (32-degree vertical FOV) and explicitly labelled
-orthographic comparisons (2m half-height) are available. The original clarification
-about “不要透视” is still pending. No orthographic image has been admitted to
-training, and no further bulk renderer is active while that interpretation remains
-unresolved. Neither camera choice changes the pure-feature/no-geometry objective.
+orthographic comparisons (2m half-height) are available. The user accepted the preview, then explicitly asked for MORE ordinary-camera
+views from different angles. This latest instruction supersedes an orthographic-only
+interpretation. The new batch uses18 ordinary pinhole views plus2 orthographic
+supplemental views per scene, with explicit projection labels. Neither camera
+choice changes the pure-feature/no-geometry objective.
 
 Immutable execution `code-structural-preview-v3` / `e7d75c2` passed eight local
 CPU tests for closed, outward-oriented primitive meshes, connected structure
@@ -47,6 +48,56 @@ The previous mixed-feature run completed its fixed1,000 updates at234538.
 Only the earliest2,000 generated images were used. All previous model proofs
 and results remain closed; no optimizer or deployment replacement is running.
 The user's stop on all ScanNet++ geometry/source work remains in force.
+
+
+## Current multiview structural generation
+
+`render_structural_room_batch.py`, immutable86dcd01 / `code-structural-multiview-v1`,
+creates parameterized closed rooms with no windows/doors or visible agents.
+Every scene has a grounded square pillar, round pillar, connected rectangular
+beam and horizontal round member. Four layout families add rear pillars/depth
+beams. Room dimensions, neutral wall colors, plain/textured wall materials,
+member sizes and indoor point lights vary deterministically by scene identity.
+These are custom procedural scenes rendered by the pinned ProcTHOR environment,
+not unchanged official ProcTHOR houses or measured geometry labels.
+
+The20-view camera plan contains18 perspective frames (front, left/right oblique,
+high/low, farther/closer;32–58-degree vertical FOV) and2 explicitly tagged
+orthographic frames. A smaller four-view preflight selects front, the two most
+oblique side positions, and an orthographic view. Its ratio is therefore3:1;
+the production ratio remains18:2. No projection type is mislabelled as another.
+Scene-level train/validation seeds and layout hashes are disjoint; image-level
+exact isolation must still be checked when the new pools are frozen.
+
+The new eight CPU tests passed in0.90s; lint/compile passed. Actual preflight
+`structural-room-multiview-preflight-01` completed8 scenes/32 images in128.91s,
+with24 perspective and8 orthographic frames, zero duplicate frames and no
+background-sentinel failures. Every encoded/decoded RGB hash was checked and
+ALL32 images were actually viewed on8 contact pages. Structure, room corners
+and perspective changes are visible; no window/exterior or simulator body was
+seen. Synthetic highlights and shadow aliasing remain limitations. These32
+images are preflight evidence, not the future training pool.
+
+Preflight report SHA`cbcb032a33242c5e3f4939c6b4e9f1f600e2851a3ba6d1e665c9db4f133d52bd`;
+visual review SHA`1871e5ac51db6fd4d24ca2e1e2926f1317eb9d4b1345212c340ffdb3cc777dbb`.
+New gallery: `.kanna/visualizations/structural-room-multiview.html`.
+
+Controller`structural-multiview-generation-controller-01`, PID315236, started
+Nov5 17:59:03 UTC. It runs one CPU renderer at a time:16 independent validation
+scenes/320 images, then training scene ranges8–257 and258–507, up to5,000 images
+each. This is a10,000-training-image target plus320 validation images, not a
+claim that those images already exist. Each250-scene job has a7200s inner bound;
+the controller stops on any partial job without retry/extension. The first full
+20-view validation scenes took about42s each, so a250-scene job may close only
+a prefix within its bound. Preserve that prefix and use a fresh bounded range for
+unprocessed scenes after inspection; never overwrite/retry completed scenes.
+The generation plan SHA is`361d153c821c21994517d4406beee70438ffc159b5e4abaf29ff539a84486c01`.
+
+No optimizer or training-manifest swap occurs in this controller. The old freezer
+correctly requires official-house perspective data and must not be weakened to
+mislabel this new source. A dedicated new-source freeze/isolation and explicit
+feature-only training configuration are required before the approved new RGB is
+used. All real-image validation identities/protocols remain unchanged.
 
 ## Sources and renderer
 
