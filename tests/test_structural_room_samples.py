@@ -62,7 +62,10 @@ def test_projection_options_are_explicit_and_camera_faces_far_wall():
         assert request['rotation'] == dict(x=0., y=0., z=0.)
         assert request['skyboxColor'] == '#ff00ff'
         assert 14 - request['position']['z'] == 12
-    assert options[0][1]['fieldOfView'] == 26
+    assert options[0][1]['fieldOfView'] == 32
+    ortho = options[1][1]
+    assert ortho['position']['y'] - ortho['orthographicSize'] > 0
+    assert ortho['position']['y'] + ortho['orthographicSize'] < 4.2
 
 
 def test_invalid_primitive_dimensions_are_rejected():

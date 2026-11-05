@@ -154,11 +154,11 @@ def structures(variant):
 
 def camera_requests():
     base = dict(position=vec((5., 2.1, 2.)), rotation=vec((0, 0, 0)),
-                fieldOfView=26., nearClippingPlane=.05, farClippingPlane=50.,
+                fieldOfView=32., nearClippingPlane=.05, farClippingPlane=50.,
                 skyboxColor='#ff00ff')
     return [
         ('frontal_far_perspective', dict(base, orthographic=False)),
-        ('orthographic_comparison_only', dict(base, orthographic=True, orthographicSize=2.25)),
+        ('orthographic_comparison_only', dict(base, orthographic=True, orthographicSize=2.0)),
     ]
 
 
@@ -185,10 +185,10 @@ def render(root, output):
             house_path = output / f'room-{variant:02d}.json'
             publish(house_path, house)
             if controller is None:
-                controller = create_controller(root, output, house, field_of_view=26)
+                controller = create_controller(root, output, house, field_of_view=32)
                 event = controller.last_event
             else:
-                event = controller.reset(scene=house, fieldOfView=26)
+                event = controller.reset(scene=house, fieldOfView=32)
             if not event.metadata['lastActionSuccess']:
                 raise RuntimeError(event.metadata.get('errorMessage', 'CreateHouse failed'))
             if controller.initialization_parameters.get('makeAgentsVisible') is not False:
