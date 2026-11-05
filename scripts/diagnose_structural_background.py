@@ -9,7 +9,7 @@ import time
 
 import numpy as np
 
-from render_structural_room_batch import camera_slots, scene_spec, spawn_structures
+from render_structural_room_batch import camera_slots, canonical_sha, scene_spec, spawn_structures
 from render_procthor_empty_pilot import create_controller, publish, sha
 from render_structural_room_samples import save_image
 
@@ -19,7 +19,7 @@ def run(root, output, source):
     (output / "assets").mkdir()
     os.sched_setaffinity(0, sorted(os.sched_getaffinity(0))[-2:])
     spec = json.loads(source.read_text())
-    if spec != scene_spec(spec["split"], spec["scene_ordinal"]):
+    if canonical_sha(spec) != canonical_sha(scene_spec(spec["split"], spec["scene_ordinal"])):
         raise ValueError("Retained scene differs from the pinned generator")
     started = time.monotonic()
     controller = create_controller(root, output, spec["house"], field_of_view=32)
