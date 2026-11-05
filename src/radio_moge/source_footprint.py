@@ -138,11 +138,9 @@ def planar_footprint(target, hits, scanner_origin, topology, contract=FootprintC
         incidence.append(float(abs(ray @ normals[h['face_id']])/np.linalg.norm(ray)))
     result.update(max_seed_plane_distance_m=max_distance, max_seed_normal_sine=max_sine,
                   minimum_incidence_cos=min(incidence), distinct_hit_faces=len(requested))
-    if (max_distance > contract.numerical_plane_distance_m
-            or max_sine > contract.numerical_normal_sine):
-        return dict(result, status='nonplanar_or_depth_discontinuous_unresolved')
-    if min(incidence) < contract.minimum_incidence_cos:
-        return dict(result, status='grazing_footprint_unresolved')
+    coplanar = (max_distance <= contract.numerical_plane_distance_m
+                and max_sine <= contract.numerical_normal_sine)
+    result['fixed_seed_coplanar'] = coplanar
     by_edge = defaultdict(list)
     for i in requested:
         f = records[i]['vertex_ids']
@@ -159,7 +157,7 @@ def planar_footprint(target, hits, scanner_origin, topology, contract=FootprintC
         fi = records[i]['vertex_ids']
         v0, v1 = (vertices[i][fi.index(x)] for x in edge)
         side = [float(np.cross(v1-v0, vertices[k].mean(axis=0)-v0) @ n) for k in (i, j)]
-        if side[0]*side[1] >= 0:
+        if coplanar and side[0]*side[1] >= 0:
             return dict(result, status='overlapping_same_side_faces_unresolved')
         graph[i].add(j)
         graph[j].add(i)
@@ -169,6 +167,14 @@ def planar_footprint(target, hits, scanner_origin, topology, contract=FootprintC
         if current not in reached:
             reached.add(current)
             pending.extend(graph[current]-reached)
+    result['indexed_component_connected'] = reached == requested
+    result['connected_sampled_faces'] = len(reached)
+    # Report indexed connectivity even for curved faces. It must not be
+    # confused with coplanarity or a physically reliable surface correspondence.
+    if not coplanar:
+        return dict(result, status='nonplanar_or_depth_discontinuous_unresolved')
+    if min(incidence) < contract.minimum_incidence_cos:
+        return dict(result, status='grazing_footprint_unresolved')
     if reached != requested:
         return dict(result, status='connectivity_unproven_with_retained_faces')
     # A point on an exposed/missing edge is not certified by a planar neighbor

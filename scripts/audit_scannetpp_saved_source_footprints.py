@@ -43,6 +43,11 @@ def coverage(rows):
                 footprint_status_counts=dict(Counter(r['footprint']['status'] for r in rows)),
                 source_status_counts=dict(Counter(r.get('range_evidence', {}).get('status',
                     'DSLR_numerically_unsupported') for r in rows)),
+                connected_nonplanar_observations=sum(
+                    r['footprint'].get('indexed_component_connected', False)
+                    and not r['footprint'].get('fixed_seed_coplanar', False) for r in rows),
+                multiface_planar_observations=sum(key(r) and r['footprint'].get('distinct_hit_faces', 0) > 1
+                                                   for r in rows),
                 physical_accepted_pixels=0, source_accepted_images=0)
 
 

@@ -48,7 +48,9 @@ def test_depth_jump_or_subcentimeter_foreground_is_not_skipped(shift):
     for hit in h:
         if hit['face_id'] == 1:
             hit['point_world'][2] += shift
-    assert classify(v, f, t, h)['status'] == 'nonplanar_or_depth_discontinuous_unresolved'
+    result = classify(v, f, t, h)
+    assert result['status'] == 'nonplanar_or_depth_discontinuous_unresolved'
+    assert not result['indexed_component_connected']
 
 
 def test_crease_is_unresolved_not_flattened():
@@ -57,7 +59,9 @@ def test_crease_is_unresolved_not_flattened():
     for hit in h:
         if hit['face_id'] == 1:
             hit['point_world'][2] = 2.03
-    assert classify(v, f, t, h)['status'] == 'nonplanar_or_depth_discontinuous_unresolved'
+    result = classify(v, f, t, h)
+    assert result['status'] == 'nonplanar_or_depth_discontinuous_unresolved'
+    assert result['indexed_component_connected']
 
 
 def test_global_third_face_cannot_be_hidden_by_selected_subset():
