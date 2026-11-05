@@ -156,3 +156,39 @@ def verify_clipped_cpu_intersections(intersector, intrinsics, c2w, depth, select
         final_depth='CPU clipped first-hit original-camera Z',
         independent_physical_depth_accuracy_checked=False)
     return np.where(support, cpu, 0), support, reason, stats
+
+
+def select_public_consensus(cpu_depth, cpu_support, public_depth, contract):
+    """Optional additional mask on already verified CPU/GPU support.
+
+    The public renderer must use the same source/camera/grid/clip contract;
+    callers bind those identities separately. All disagreement is unsupported,
+    regardless of which renderer covers the nearer surface. This selects only
+    existing CPU values, never public values or an alternative mesh hit.
+    Physical mesh correctness is a separate gate.
+    """
+    if not isinstance(contract, MeshClipContract):
+        raise ValueError('Explicit MeshClipContract required')
+    depth, support, reference = map(np.asarray, (cpu_depth, cpu_support, public_depth))
+    if (depth.ndim != 2 or depth.shape != support.shape or depth.shape != reference.shape
+            or support.dtype != np.bool_ or not np.isfinite(depth).all()
+            or not np.isfinite(reference).all() or np.any(reference < 0)
+            or not contract.interior(depth[support]).all()):
+        raise ValueError('Finite same-grid depths and previously verified interior support required')
+    reason = np.zeros(depth.shape, np.uint8)
+    reason[support] = 1
+    reason[support & (reference == 0)] = 2
+    reason[support & (reference > 0) & ~contract.interior(reference)] = 3
+    error = abs(depth.astype(np.float64)-reference.astype(np.float64))
+    reason[support & contract.interior(reference) & (error > contract.maximum_gpu_cpu_error_m)] = 4
+    retained = reason == 1
+    stats = dict(policy='public_consensus_additional_mask_v1', clip_contract=contract.as_dict(),
+        input_verified_pixels=int(support.sum()), retained_pixels=int(retained.sum()),
+        rejected_pixels=int((support & ~retained).sum()),
+        reason_codes={'0': 'prior_unsupported', '1': 'retained', '2': 'public_missing',
+                      '3': 'public_boundary_guard', '4': 'public_parity_disagreement'},
+        reason_counts={str(i): int((reason == i).sum()) for i in range(5)},
+        maximum_retained_public_error_m=float(error[retained].max()) if retained.any() else None,
+        depth_source='unchanged previously verified CPU depth', alternative_hit_selected=False,
+        physical_accuracy_established=False)
+    return np.where(retained, depth, 0), retained, reason, stats
