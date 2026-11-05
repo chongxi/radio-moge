@@ -7,6 +7,13 @@ requested renewed MoGe-v2 feature alignment on the projection-filtered RGB pool.
 The pending geometry wake-up was cancelled. Do not restart that investigation,
 additional dense images or bulk label generation under the old handoffs.
 
+Current follow-up: Chongxi explicitly authorized adding generated empty-room RGB.
+The first2,000 corrected ProcTHOR RGB are now in actual bounded feature training
+from checkpoint233538,12.5% synthetic/87.5% real, all F weights1 and no geometry
+loss. Original unreplaced real keys, crop/resolution conventions, batch32 and
+Adam/RMS/RNG are preserved. See `docs/procthor-empty-rgb.md` for current jobs,
+frozen manifests, independent official-house validation and completion checks.
+
 `projection-filtered-feature-continuation-01` launched at 06:41:17 UTC, wrapper
 PID266999, using immutable `code-filtered-feature-continuation-v1` / `002a58a`.
 It starts from the completed pure-feature A checkpoint at232538, SHA256
