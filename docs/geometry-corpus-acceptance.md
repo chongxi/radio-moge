@@ -4620,3 +4620,49 @@ rerun, optimizer, automatic retry or bulk expansion is allowed by this job.
 At launch the full-grid result is pending; even a completed sufficient mask would
 remain conditional shared-acquisition evidence, not physical accuracy certification
 or automatic source-wide admission. Existing exclusions and source flags remain.
+
+### Full-grid pilot and saved-evidence review complete — November 5, 06:19 UTC
+
+The one-image job finished normally in 2,596.16 seconds (43.27 minutes), with
+maximum process RSS 1.3685 GiB. Its report SHA256 is
+`fcdf956aad14ead18aba39800f2347c4487aa936ca540e85becf4d04b2d014ed`.
+All 273,280 pixels and 546,560 fixed-station observations were evaluated; the
+96 previously bound positions retained exact parity. The result keeps
+**27,388 pixels, or 10.02196% of the complete image**. It passes the unchanged
+5% full-image and 32-point floor for this image. A progress message such as
+"80%" referred to completed station checks, never a depth accuracy estimate.
+
+The separate saved-evidence reviewer `2034638` checked all 4,270 chunks,
+recomputed source decisions and nominal-angle comparisons from saved evidence,
+and exactly reconstructed both station masks and their intersection. Twelve
+focused tests passed locally and remotely. The review report is
+`scannetpp-native-v2-dense-review-01/report.json`, SHA256
+`76c1aa9bb8c382c40fbcb2c5c562f4c12659d6014b8c6cdc8c56e2d5077291c2`.
+It made no new ray queries, mesh reads, numerical renders or depth edits. One
+hash-checked original perspective RGB was read to display the result. All nine
+panel/inspection artifacts were copied locally and their hashes verified.
+
+The complete six-panel page was actually inspected. Retained support is visibly
+fragmented, with its largest visible concentration on the rear wall and smaller
+areas elsewhere; much of the cabinet, pipes and ceiling is not retained. The two
+scanner masks have different spatial coverage. No image region was manually
+filled or accepted because it looked plausible. This inspection establishes
+neither plane flatness nor physical depth accuracy.
+
+The full-image accounting is 70,174 pixels without numerical support, 175,718
+with numerical depth but unresolved source conditions, and 27,388 retained.
+The retained fraction among the 203,106 numerical candidates is 13.48458%.
+Individual scanner support counts are 48,627 and 98,890. Unresolved coverage
+includes missing evidence, occlusions, ambiguous correspondence and inconsistent
+ranges; it is not a count of incorrect depths. These are results for development
+image 851268 only, not a source-wide population estimate.
+
+The interactive page `.kanna/visualizations/scannet-dense-source-mask.html`
+shows the original RGB, fixed-scale before/after depth, classification mask and
+each station mask, with per-pixel saved reasons. The two depth displays use the
+same fixed logarithmic 0.05–20 m scale. The 1 cm budget remains an engineering
+filter on shared-acquisition evidence, not a physical accuracy guarantee.
+Source-wide qualification, training-crop usable coverage and training admission
+remain pending. No optimizer, automatic additional image, bulk regeneration,
+threshold change or new exclusion was started. All 4,190 existing geometry
+exclusions, source flags, the separate COCO hold and earlier evidence remain.
