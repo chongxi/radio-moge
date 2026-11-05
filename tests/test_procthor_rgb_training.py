@@ -238,6 +238,6 @@ def test_freeze_nonzero_house_range_keeps_original_ids_and_source_binding(tmp_pa
 @pytest.mark.parametrize('start', [-1, 1])
 def test_freeze_rejects_out_of_range_before_publication(tmp_path, monkeypatch, start):
     batch, _ = frozen_fixture(tmp_path, monkeypatch, 'train')
-    with pytest.raises(ValueError, match='source archive'):
+    with pytest.raises(ValueError, match='^Pinned official house source differs$'):
         freezer.freeze(tmp_path, batch, tmp_path/'frozen', 'train', 1, 20, start=start)
     assert not (tmp_path/'frozen').exists()
