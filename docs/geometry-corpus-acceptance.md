@@ -4520,3 +4520,62 @@ sample markers are conditional samples, never an interpolated dense source mask.
 The fixed source policy remains unchanged. At launch no completed confirmation
 result or visual review is claimed; inspect the saved report and all sixteen
 pages before drawing a conclusion. Source-wide admission and training remain off.
+
+### Sixteen-view confirmation complete — November 5, 04:47 UTC
+
+The bounded run finished normally after approximately 230 seconds. Its immutable
+report is `scannetpp-native-v2-source-confirmation-01/report.json`, SHA256
+`c754bfe88efddae6c7cfcfef7921265e9416f421022c083b315bbb89636fa506`.
+All sixteen original views, 1,536 DSLR slots and 3,072 scanner-station slots
+are present; no replacement image, station or threshold was used. All sixteen
+pages were actually inspected and their hashes verified. The visual review is
+`scannetpp-native-v2-confirmation-visual-review-01/report.json`, SHA256
+`19c2bed26f8983dd1c4e6a04e45631848ec390cbbf15e13f388f1a77f137c069`.
+Broad room structures look plausible at the displayed scale, with persistent
+missing furniture boundaries, glazing, thin structures and ceiling regions.
+This visual judgment does not establish physical calibration or dense eligibility.
+No new whole-image exclusion was made; all prior flags and 4,190 exclusions remain.
+
+The fixed policy retains **156/1,536 conditional samples (10.15625%)**. Five images
+have zero retained probes: 1203100, 1568466, 1058596, 1259697 and 890829. The saved
+analysis (`c7da080`) is
+`scannetpp-native-v2-confirmation-analysis-01/report.json`, SHA256
+`5b25ba25fc7d752856712d9ba49275ace2ac826ea14d5f3cd2364e250e43c2dc`.
+It reads saved JSON/pages only; no source image, mesh or ray was regenerated.
+A descriptive cumulative count is:
+
+| Fixed condition accumulated | DSLR slots remaining |
+| --- | ---: |
+| Numerical support | 1,123 |
+| Both exact target visibility checks | 595 |
+| Both C0 projected patches as well | 286 |
+| Both complete nine-pixel nominal comparisons as well | 161 |
+| Both within the frozen 1 cm budget | 156 |
+
+These cumulative counts depend on presentation order and are not causal error
+attributions. Holding every other condition fixed, only five further points fail
+the 1 cm budget. Their exact identities, signed station intervals and peer evidence
+are retained in the visual review. No threshold is relaxed. Across the station
+slots there are 601 exact-target occlusions, six target-triangle boundaries and
+826 numerically unsupported slots. Missing or ambiguous evidence is not a claim
+that the corresponding depth is physically wrong.
+
+Every image passes the unchanged numerical 5% floor; the additional public
+consensus removes sixteen pixels in total. Numerical support remains a different
+quantity from conditional source support. The first two scanner IDs were fixed
+before this run and are not optimized for camera coverage. They must not be
+replaced using these outcomes. The 156 samples are neither a dense mask nor an
+estimate of source-wide physical accuracy; all sixteen images still have zero
+source/training admission.
+
+The remaining concrete task is bounded **full-grid conditional support** using
+the unchanged policy, not more threshold selection or a rerun of these sixteen
+views. Reuse retained numerical arrays and existing development views. First
+implement and test batching that preserves exact target/scanner identities,
+nominal-pixel choices, boundary handling and all missing denominators; bound
+memory/runtime before a dense source pilot. Any optimization must preserve the
+fixed decisions and keep source conflicts observable. Do not interpolate sparse
+markers, rerender old numerical evidence, automatically regenerate the corpus,
+start an optimizer, or turn shared-acquisition corroboration into a physical
+accuracy guarantee. The native source remains unadmitted pending full-grid
+coverage and a qualified source decision.
