@@ -47,7 +47,10 @@ Local reports mirror under `/shared/radio-moge/chongxi/new-architecture-rgb-2026
 training houses and up to20 distinct RGB views each, with a7200s generation
 budget and7500s outer bound. Do not start another copy. Four camera-placement
 tests passed locally/remotely, including concave and narrow rooms and60 unique
-single-room camera slots. Actual image review follows as new images appear.
+single-room camera slots. The first16 corrected sample views across8 houses
+were actually reviewed; no visible agent silhouette was observed. At07:42 UTC,
+640 images across32 houses were closed, with0 duplicate images. Sixteen failed
+camera actions were recorded and omitted; all32 houses still yielded20 images.
 
 Cameras have a0.5m floor-boundary margin and distributed positions across rooms;
 Unity verifies each teleport. Perspective vertical FOV cycles55/70/85 degrees,
@@ -65,3 +68,8 @@ on the generated RGB, and test a declared synthetic share alongside real RGB.
 Keep feature weights1 and the restored augmentation/batch/optimizer conventions;
 do not silently change multiple settings or the current completed training run.
 Improved teacher alignment and flatter real-world predictions remain hypotheses.
+
+The1000 official validation-house descriptions have also been downloaded and
+verified against their pinned Git-LFS SHA
+`d808540514e26b6726cd2790490e669b572eeb94febb5188a2f403591dd21721`.
+No validation RGB has been rendered or added to training.
