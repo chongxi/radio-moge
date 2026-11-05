@@ -1,4 +1,4 @@
-"""Render a bounded RGB-only ProcTHOR pilot with CPU Vulkan and pinned houses."""
+"""Render a bounded RGB-only ProcTHOR pilot with CPU OpenGL and pinned houses."""
 import argparse
 import hashlib
 import importlib.metadata
@@ -35,19 +35,20 @@ def main(root, output):
         raise ValueError('Use the isolated pinned AI2THOR environment')
     if os.environ.get('CUDA_VISIBLE_DEVICES') != '':
         raise ValueError('Pilot must leave the training GPU unused')
-    icd = Path(os.environ['VK_ICD_FILENAMES'])
-    if 'libvulkan_lvp.so' not in json.loads(icd.read_text())['ICD']['library_path']:
-        raise ValueError('Only the private CPU lavapipe ICD is admitted for this pilot')
+    if (os.environ.get('LIBGL_ALWAYS_SOFTWARE') != '1'
+            or os.environ.get('GALLIUM_DRIVER') != 'llvmpipe'
+            or not os.environ.get('DISPLAY')):
+        raise ValueError('Require a private display and CPU llvmpipe OpenGL')
     output.mkdir(exist_ok=False)
     started = time.monotonic()
-    build = json.loads((root / 'procthor-unity-build-01/report.json').read_text())
+    build = json.loads((root / 'procthor-x11-setup-02/report.json').read_text())
     executable = Path(build['executable'])
     if build['commit'] != BUILD or sha(executable) != build['executable_sha256']:
         raise ValueError('Pinned Unity executable differs')
     from ai2thor.build import Build
     from ai2thor.controller import Controller
     from ai2thor.fifo_server import FifoServer
-    from ai2thor.platform import CloudRendering
+    from ai2thor.platform import Linux64
 
     class BoundedController(Controller):
         @property
@@ -55,12 +56,10 @@ def main(root, output):
             return str(output / 'runtime')
 
         def find_build(self, local_build, commit_id, branch, platform):
-            if local_build or branch or commit_id != BUILD or platform is not CloudRendering:
-                raise ValueError('Use only the pinned CloudRendering build')
-            if CloudRendering.validate(None):
-                raise RuntimeError('CPU Vulkan loader is unavailable')
-            result = Build(CloudRendering, BUILD, False,
-                           releases_dir=str(root / 'procthor-unity-build-01/releases'))
+            if local_build or branch or commit_id != BUILD or platform is not Linux64:
+                raise ValueError('Use only the pinned Linux OpenGL build')
+            result = Build(Linux64, BUILD, False,
+                           releases_dir=str(root / 'procthor-unity-linux-build-01/releases'))
             if Path(result.executable_path) != executable:
                 raise ValueError('Pinned build path differs')
             return result
@@ -71,7 +70,7 @@ def main(root, output):
 
         def unity_command(self, width, height, headless):
             return super().unity_command(width, height, headless) + [
-                '-force-vulkan', '-batchmode', '-job-worker-count', '1',
+                '-force-glcore', '-batchmode', '-job-worker-count', '1',
                 '-logFile', str(output / 'unity.log')]
 
     if hasattr(os, 'sched_getaffinity'):
@@ -92,7 +91,7 @@ def main(root, output):
     publish(output / 'status.json', dict(stage='starting_cpu_renderer', completed=0))
     try:
         controller = BoundedController(
-            platform=CloudRendering, commit_id=BUILD,
+            platform=Linux64, commit_id=BUILD,
             server_class=FifoServer, quality='High', scene=houses[0][1],
             width=640, height=480, fieldOfView=70, snapToGrid=False,
             renderDepthImage=False, renderInstanceSegmentation=False,
@@ -146,7 +145,8 @@ def main(root, output):
         publish(output / 'report.json', dict(stage='rendered_not_visually_reviewed',
             completed=len(records), houses=len(houses), records=records,
             initial_seconds=initial_seconds, elapsed_seconds=time.monotonic() - started,
-            cpu_affinity=sorted(os.sched_getaffinity(0)), cpu_vulkan_icd=str(icd),
+            cpu_affinity=sorted(os.sched_getaffinity(0)), renderer='CPU OpenGL llvmpipe',
+            private_display=os.environ['DISPLAY'],
             build=build, ai2thor='5.0.0', generator=dict(path=str(Path(__file__)),
             sha256=sha(Path(__file__))), training_admission=False, geometry_loss=False,
             description='Empty structural scenes; original materials, lights, walls, openings retained. '
