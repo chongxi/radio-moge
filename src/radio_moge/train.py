@@ -52,11 +52,17 @@ from .selection import validate_selections, selection_winners
 from .projection_hold import require_unheld_sources
 from .feature_replay import (validate_feature_replay, load_replay_records, make_replay_loader,
                              is_replay_batch, replay_feature_losses)
+from .rgb_replacement import ReplacementBatches, validate_replacement
 
 
 def make_loader(records, config, start, count, calibration=False, reference=None, sidecar=None):
     data, train = config["data"], config["train"]
-    if data.get("mixture_weights"):
+    if data.get('rgb_replacement'):
+        if calibration:
+            raise ValueError('RGB replacement inherits calibrated feature statistics')
+        sampler = ReplacementBatches(records, data['rgb_replacement'], train['batch_size'],
+                                     data['buckets'], train['seed'], start, count)
+    elif data.get("mixture_weights"):
         sampler = MixtureBatches(
             records,
             data["mixture_weights"],
@@ -118,6 +124,7 @@ def validate_config(config, *, corpus_preflight=False):
     The trainer never sets this flag.
     """
     validate_ordinary_config(config)
+    validate_replacement(config)
     validate_selections(config.get('evaluation', {}).get('checkpoint_metrics', {}))
     validate_feature_replay(config)
     train, data = config["train"], config["data"]
@@ -323,6 +330,8 @@ def train(
     invocation_started = time.monotonic()
     elapsed_before = 0.0
     validate_config(config)
+    if config['data'].get('rgb_replacement') and reference is None:
+        raise ValueError('RGB replacement requires its verified data-fork observer')
     if reference is not None and (not fork_from or not data_fork or resume or init
             or config.get('geometry_supervision') or config.get('feature_replay')
             or config.get('ordinary_geometry') is not None
@@ -568,7 +577,9 @@ def train(
                 parent_digests=state['data_digests'], digests=digests,
                 parent_manifest=state['config']['data']['train_manifest'],
                 manifest=config['data']['train_manifest'],
-                sampling='source/scene mixture' if config['data'].get('mixture_weights') else 'permutation')
+                sampling=('original permutation with one in eight RGB slots replaced'
+                          if config['data'].get('rgb_replacement') else 'source/scene mixture'
+                          if config['data'].get('mixture_weights') else 'permutation'))
             fork_provenance['restored'].remove('cursor')
             fork_provenance['reset'].append('data_cursor_for_new_manifest')
         atomic_json(fork_provenance, output / "fork-state.json")
