@@ -5,21 +5,58 @@ Further ScanNet++ source/geometry investigations were explicitly stopped.
 This generation task uses ProcTHOR only; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov5 15:47 UTC: the first mixed-feature run has completed its
-fixed1,000 updates at234538. It improves agreement on unseen synthetic houses,
-but the final original-validation joint target is not met. No deployment replacement or
-further optimizer segment has been started. Four500-house generation batches
-are complete and their40,000-image pool is combined with exact cross-batch and
-fixed-validation isolation. A fifth CPU batch has started on disjoint official
-training houses2000–2499. Only the earliest2,000 images participated in training.
+Current state, Nov5 17:26 UTC: the user changed the requested future images to
+farther wall views, no windows showing outdoors, and visible square/round pillars,
+rectangular beams and horizontal round members. The old batch06 was gracefully
+stopped at a complete-house boundary: 359 houses / 7,180 RGB, IDs2000–2358.
+Its final report is complete with `all_requested_houses_closed=false`; those
+images are preserved separately and are not frozen into the40,000-image pool.
+No next batch with the old camera/window policy will start automatically.
+
+The bounded three-scene/six-image preview has completed in41.54 seconds using
+the existing CPU Unity environment; all six actual images were viewed. It creates
+new parameterized closed rooms and actual runtime structural meshes, with a
+12m wall distance, square/round pillars, rectangular beams and horizontal round
+members. These are custom scenes, not unchanged official ProcTHOR houses.
+Both far frontal perspective (32-degree vertical FOV) and explicitly labelled
+orthographic comparisons (2m half-height) are available. The original clarification
+about “不要透视” is still pending. No orthographic image has been admitted to
+training, and no further bulk renderer is active while that interpretation remains
+unresolved. Neither camera choice changes the pure-feature/no-geometry objective.
+
+Immutable execution `code-structural-preview-v3` / `e7d75c2` passed eight local
+CPU tests for closed, outward-oriented primitive meshes, connected structure
+placement, and camera origins inside the room. The actual render returned six
+unique640x480 RGB images, zero visible magenta-background sentinel pixels,
+zero windows/doors and hidden simulator agents. All39 referenced image/scene/
+mesh/material files were hash-verified after copying. Actual image inspection
+also found no window/exterior scene or simulator agent. Bright material highlights
+and synthetic lighting remain limitations; this is a six-image preview, not a
+diverse training corpus. Orthographic views crop the floor/ceiling and pillar ends.
+
+Renderer report: `structural-room-camera-preview-03/report.json`, SHA
+`c949e8f3a77f4818b5b35b93a1b4e1ed34b0c8874faacc09127600202a562435`.
+Visual review: `structural-room-preview-review-01/report.json`, SHA
+`bbc9c7a358404fbef67203b36073628dd79e712dfb358ac0a26ec831a907c477`.
+Gallery: `.kanna/visualizations/structural-walls-columns-preview.html`.
+The first preview attempt failed before RGB on a required `skyboxId`; the second
+caught an orthographic frustum extending above/below the room. Both are preserved
+as failed development attempts, and neither failure was bypassed or admitted.
+
+The previous mixed-feature run completed its fixed1,000 updates at234538.
+Only the earliest2,000 generated images were used. All previous model proofs
+and results remain closed; no optimizer or deployment replacement is running.
+The user's stop on all ScanNet++ geometry/source work remains in force.
 
 ## Sources and renderer
 
 The official ProcTHOR-10K training source is pinned to repository revision
 `439193522244720b86d8c81cde2e51e3a4d150cf`:10,000 houses, archive SHA
 `ee3c4aa14b4d8f0895fecfb5fdaca59395427ca1018b2f9aeeedbc61e5824587`.
-Only the top-level objects list is cleared. Structural walls, floors, doors,
-windows, materials and lighting remain. Columns/railings coverage is not established.
+For the earlier house-derived batches02–06, only the top-level objects list was
+cleared. Structural walls, floors, doors, windows, materials and lighting remained;
+columns/railings coverage was not established. The new preview above uses a
+separate custom structural-scene policy and does not relabel those old batches.
 The eventual200,000-image target is a plan, not an existing dataset.
 
 AI2THOR5.0.0 / Unity build`f0825767cd50d69f666c7f282e54abfe58f1e917`
