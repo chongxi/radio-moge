@@ -1,5 +1,49 @@
 # Geometry attached to the restored feature stream
 
+## November 5 priority change: pure-feature continuation for deployment
+
+Chongxi explicitly stopped further ScanNet++ geometry/source validation and
+requested renewed MoGe-v2 feature alignment on the projection-filtered RGB pool.
+The pending geometry wake-up was cancelled. Do not restart that investigation,
+additional dense images or bulk label generation under the old handoffs.
+
+`projection-filtered-feature-continuation-01` launched at 06:41:17 UTC, wrapper
+PID266999, using immutable `code-filtered-feature-continuation-v1` / `002a58a`.
+It starts from the completed pure-feature A checkpoint at232538, SHA256
+`99b315124ae08905980f500245e828299f9586bc58deb673b2ba0c4b6c6c2375`.
+The new bounded segment allows1,000 further updates to233538 or3,600 seconds,
+with save50/eval250 and no automatic retry or additional segment. It has a new
+output and W&B identity; the completed250-step A artifacts stay immutable.
+
+All trainer `src` bytes are identical to the previously exercised A execution
+83efb10. The additive launcher reuses its four-thread ordered metadata loader
+and per-consumed-image SHA checks. It verifies adapter/RMS/full Adam/RNG/cursor,
+model revisions, data digests and performance at the actual initial save before
+the first optimizer update. A normal constant-LR fork preserves cursor2000 and
+Adam state; only constant scheduler bookkeeping, stage budget, selection and
+tracking are new. Four feature coefficients stay1, LR1e-5, three resolutions,
+effective batch32 and the original permutation/crop pipeline are preserved.
+There is no geometry loss, sidecar or replay mixture. Thirteen targeted tests
+passed locally and remotely, including actual tiny-model fork preservation and
+metadata equivalence; eleven new launcher tests passed again after adding CPU
+copies for cross-device initial-state comparison.
+
+At06:41:55 the process was loading metadata (94,208 rows), with zero verified
+new optimizer updates. Read its current `status.json` and actual `train.jsonl`;
+do not interpret successful process launch as completed training. The plan SHA
+is `25baa4bcda2ad70679bc1b43d17fa2f9719fcad8bada8471cc7a7fa795b7b0d5`,
+config SHA `000d128c1842b4df47342268d40816fc1a90e82b71df3d07e77ef2b4b2d23125`.
+
+The retained1,597,911 RGB rows exclude all39,997 unscreened COCO images and
+white210812. This is a documented source hold, not individual projection
+certification of every remaining image. ZInD panoramas were never admitted.
+The contamination is confirmed but its role as the main historical regression
+cause is unproven. The cleaned250-step A result itself had slightly lower
+primary cosines and2.18% worse iPhone LiDAR AbsRel than archived232288.
+Keep that archive and A as deployment candidates; evaluate the new checkpoints
+on the same six-source/four-view protocols before choosing a deployment model.
+No live model replacement is implied by a later training step.
+
 November4 projection correction: the historical1,637,908-row stream below is
 superseded for future launches by the COCO hold. Materialized candidates contain
 1,597,911 RGB rows and558,314 geometry targets; primary validation retains1012
