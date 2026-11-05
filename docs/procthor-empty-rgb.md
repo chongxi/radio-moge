@@ -5,28 +5,52 @@ Further ScanNet++ source/geometry investigations were explicitly stopped.
 This generation task uses ProcTHOR only; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov5 19:31 UTC: the user's latest instruction is to start training
-after the cumulative qualified synthetic training pool reaches50,000 images.
-This was acknowledged as the existing frozen40,000 plus at least10,000 new
-qualified structural images. Validation, rejected frames, unclosed/unverified
-outputs and the stopped7,180-image old batch do not count. The proposed small
-structural pilot was withdrawn before tests or launch. No optimizer is active.
-All four feature-component weights remain1; geometry loss stays off. A new
-manifest/config/model gate is required for this changed pool; the old2,000-image
-runner's admission cannot be reused. The threshold plan SHA is
-`919fc700797d6a9beaf6cdb50dd74090e3ea093be4915deb8156b9f29fe5f26a`.
+Current state, Nov5 20:25 UTC: the user explicitly instructed "start now";
+the earlier50,000-image waiting threshold is superseded. A new bounded pure-feature
+run, `room-feature-mix-40890-training-02`, is launched under PID317643 using
+immutable `code-room-feature-mix-v2` / `b5fde32`. It has completed250 actual optimizer updates and is running its first validation.
+The initial adapter/RMS/all100 Adam states/RNG are exact;33 actual model cases
+and152 input presentations passed, including explicit orthographic probes.
+The first20 updates have finite losses/gradients and nonzero adapter changes;
+640 actual RGB keys match the plan (79 official rooms,1 structural,560 original).
+Attempt01 stopped before model construction
+or any update because the archived code lacked its vendor symlink. The same pinned
+MoGe/RADIO source directories are now linked and their exact commits checked;
+no package installation, model changes or geometry work was involved. Do not launch another copy.
 
-There are now40,890 qualified frozen training images: the old40,000 plus890
-new structural views from45 complete scenes. The new images passed all file,
-pixel, source and camera checks; a fixed64-image sample was actually viewed.
-Another9,110 qualified images are needed. Controller02 stopped at scene53;
-that incomplete scene is held in full. Controller03 / PID316684 resumed only
-new scenes54 onward at19:28:32 UTC, with bounded whole-scene quarantine as
-described below. At19:31 it had generated60 further images/3 complete scenes;
-these growing-batch images are not yet counted in40,890.
-Validation is already frozen at317 images/16 scenes; all64 selected sample
-images on16 contact pages were actually viewed. Those validation images never
-enter the50,000 training-image count.
+The fixed training pool contains40,890 qualified RGB images:40,000 earlier
+ProcTHOR empty-house views and890 new structural views from45 complete scenes.
+The old images retain their earlier camera/window policy; only the new structural
+source promises closed rooms with no windows or exterior background. Source labels
+are preserved:40,800 perspective images plus90 explicitly approved orthographic
+supplements. All source file/pixel checks and prior sampled reviews are reused.
+The stopped7,180-image old batch, scene53 and growing generation outputs are held
+out of this run. The combined manifest preserves every original row byte-for-byte
+and has zero exact training/validation pixel, group or layout intersections.
+
+Training starts independently from the existing pure-feature checkpoint233538,
+preserving its adapter, RMS, full Adam and RNG. The original real permutation
+continues at cursor10000; exactly4/32 slots use a seed43 permutation of the fixed
+40,890 pool. All other real keys, crop seeds, three resolutions and effective32
+remain unchanged. All four feature weights are1; no geometry targets or loss.
+The bound is1,000 new updates or3,600 seconds, with an outer4,200-second timeout.
+There is no automatic retry, next segment or deployment replacement.
+W&B run: https://forge.coreweave.com/wandb/brainsim/radio-moge/runs/80b05757 .
+The full1000-update plan draws3905 official-room and95 structural RGB images
+from the pool, plus28000 original RGB; it does not claim a full40890-image epoch.
+
+The completed new gate verified the actual initial state and model backward/pixel
+behavior, including both structural projection types. Original holdout protocols and the
+saved64-image official-house baseline are reused. The distinct317-image structural
+validation population gets its own parent baseline; it is never training data.
+Validation runs every250 updates, with saved paired results reviewed against the
+same parent and archive. A larger image pool does not establish a quality gain.
+
+Controller03 / PID316684 continues generating only new scenes54 onward, separately
+from the frozen training pool. Its output is not inserted into this active run.
+Scene53 is held in full. Previously completed890-image and317-validation proofs
+and sample reviews must not be repeated. The withdrawn small pilot remains
+withdrawn; this new40890 run is separately bound to the latest user instruction.
 
 The user changed the requested future images to
 farther wall views, no windows showing outdoors, and visible square/round pillars,
@@ -69,7 +93,8 @@ as failed development attempts, and neither failure was bypassed or admitted.
 
 The previous mixed-feature run completed its fixed1,000 updates at234538.
 Only the earliest2,000 generated images were used. All previous model proofs
-and results remain closed; no optimizer or deployment replacement is running.
+and results remain closed. The separately launched40890-image run does not alter
+those artifacts; no deployment replacement has been made.
 The user's stop on all ScanNet++ geometry/source work remains in force.
 
 
