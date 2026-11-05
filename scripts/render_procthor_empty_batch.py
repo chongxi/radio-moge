@@ -15,6 +15,15 @@ from render_procthor_empty_pilot import create_controller, publish, sha
 
 
 TRAIN_SHA = 'ee3c4aa14b4d8f0895fecfb5fdaca59395427ca1018b2f9aeeedbc61e5824587'
+VAL_SHA = 'd808540514e26b6726cd2790490e669b572eeb94febb5188a2f403591dd21721'
+
+
+def source_spec(root, split):
+    if split == 'train':
+        return root / 'procthor-source-01/train.jsonl.gz', TRAIN_SHA, 10000
+    if split == 'val':
+        return root / 'procthor-validation-source-01/val.jsonl.gz', VAL_SHA, 1000
+    raise ValueError('Only the pinned official train and val house splits are supported')
 
 
 def inside(point, polygon):
@@ -98,13 +107,13 @@ def houses_from(archive, start, count):
             yield ordinal, json.loads(line), hashlib.sha256(line.encode()).hexdigest()
 
 
-def run(root, output, start, count, views, maximum_seconds):
-    if not 0 <= start < 10000 or not 1 <= count <= 500 or start + count > 10000:
-        raise ValueError('Use a bounded batch within the official 10000 training houses')
+def run(root, output, start, count, views, maximum_seconds, split='train'):
+    archive, archive_sha, source_count = source_spec(root, split)
+    if not 0 <= start < source_count or not 1 <= count <= 500 or start + count > source_count:
+        raise ValueError('Use a bounded batch within the selected official house split')
     if views != 20 or not 60 <= maximum_seconds <= 7200:
         raise ValueError('This version pins 20 views per house and at most two hours')
-    archive = root / 'procthor-source-01/train.jsonl.gz'
-    if sha(archive) != TRAIN_SHA:
+    if sha(archive) != archive_sha:
         raise ValueError('Official pinned source archive changed')
     output.mkdir(exist_ok=False)
     for name in ('rgb', 'houses', 'house-reports'):
@@ -125,7 +134,7 @@ def run(root, output, start, count, views, maximum_seconds):
                     break
                 house_started = time.monotonic()
                 house = dict(original, objects=[])
-                house_path = output / 'houses' / f'train-{ordinal:05d}.json'
+                house_path = output / 'houses' / f'{split}-{ordinal:05d}.json'
                 publish(house_path, house)
                 fov = (55, 70, 85)[ordinal % 3]
                 if controller is None:
@@ -135,8 +144,8 @@ def run(root, output, start, count, views, maximum_seconds):
                     event = controller.reset(scene=house, fieldOfView=fov)
                 if controller.initialization_parameters.get('makeAgentsVisible') is not False:
                     raise ValueError('Simulator agent must stay hidden after every house reset')
-                summary = dict(house_id=f'procthor10k/train/{ordinal:05d}',
-                    archive_sha256=TRAIN_SHA, source_line_sha256=line_hash,
+                summary = dict(house_id=f'procthor10k/{split}/{ordinal:05d}',
+                    archive_sha256=archive_sha, source_line_sha256=line_hash,
                     empty_house_sha256=sha(house_path), original_objects=len(original.get('objects', [])),
                     rooms=len(house['rooms']), vertical_fov_degrees=fov, images=[], failed_actions=[],
                     uniform_slots=[], duplicate_slots=[])
@@ -170,14 +179,14 @@ def run(root, output, start, count, views, maximum_seconds):
                             summary['duplicate_slots'].append(slot)
                             continue
                         seen.add(pixel_hash)
-                        image = output / 'rgb' / f'train-{ordinal:05d}-slot-{slot["index"]:02d}.png'
+                        image = output / 'rgb' / f'{split}-{ordinal:05d}-slot-{slot["index"]:02d}.png'
                         incoming = image.with_suffix('.incoming')
                         Image.fromarray(rgb).save(incoming, format='PNG')
                         os.rename(incoming, image)
                         row = dict(image=str(image), sha256=sha(image), decoded_rgb_sha256=pixel_hash,
-                            dataset='procthor_empty', split='train', group=summary['house_id'],
+                            dataset='procthor_empty', split=split, group=summary['house_id'],
                             width=640, height=480, projection='perspective', vertical_fov_degrees=fov,
-                            source_archive_sha256=TRAIN_SHA, source_line_sha256=line_hash,
+                            source_archive_sha256=archive_sha, source_line_sha256=line_hash,
                             house=dict(path=str(house_path), sha256=summary['empty_house_sha256']),
                             room=slot['room'], requested_pose=pose,
                             actual_agent=event.metadata['agent'],
@@ -191,7 +200,7 @@ def run(root, output, start, count, views, maximum_seconds):
                 records.flush()
                 os.fsync(records.fileno())
                 summary['elapsed_seconds'] = time.monotonic() - house_started
-                publish(output / 'house-reports' / f'train-{ordinal:05d}.json', summary)
+                publish(output / 'house-reports' / f'{split}-{ordinal:05d}.json', summary)
                 house_summaries.append(dict(ordinal=ordinal, images=len(summary['images']),
                     rooms=summary['rooms'], elapsed_seconds=summary['elapsed_seconds']))
                 totals['houses_closed'] += 1
@@ -207,11 +216,12 @@ def run(root, output, start, count, views, maximum_seconds):
             next_house=next_house, all_requested_houses_closed=next_house == start + count,
             elapsed_seconds=time.monotonic() - started, maximum_seconds=maximum_seconds,
             manifest=dict(path=str(manifest), sha256=sha(manifest)), houses=house_summaries,
-            source_archive_sha256=TRAIN_SHA, generator_sha256=sha(Path(__file__)),
+            source_archive_sha256=archive_sha, generator_sha256=sha(Path(__file__)),
             cpu_only=True, geometry_labels=False, training_admission=False, agent_visible=False,
             camera_selection='0.5m interior floor margin; farthest-spread poses and round-robin rooms; '
                              'engine checks every teleport; 55/70/85-degree pinhole vertical FOV',
-            unique_rgb_pixels_in_batch=len(seen), dataset_split='Official training houses only')
+            unique_rgb_pixels_in_batch=len(seen), dataset_split=split,
+            source_house_count=source_count)
         publish(output / 'report.json', report)
         publish(output / 'status.json', dict(stage=report['stage'], next_house=next_house, **totals))
     except Exception as error:
@@ -231,6 +241,7 @@ if __name__ == '__main__':
     parser.add_argument('--houses', type=int, default=500)
     parser.add_argument('--views', type=int, default=20)
     parser.add_argument('--maximum-seconds', type=int, default=7200)
+    parser.add_argument('--split', choices=('train', 'val'), default='train')
     args = parser.parse_args()
     run(args.root.resolve(), args.output.resolve(), args.start_house,
-        args.houses, args.views, args.maximum_seconds)
+        args.houses, args.views, args.maximum_seconds, args.split)

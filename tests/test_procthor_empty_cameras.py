@@ -1,6 +1,12 @@
 import importlib.util
 from pathlib import Path
 import sys
+import gzip
+import json
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
 
 
 scripts = Path(__file__).parents[1] / 'scripts'
@@ -53,3 +59,51 @@ def test_single_room_does_not_repeat_the_camera_cycle_before_twenty_images():
     slots, _ = batch.camera_slots(house, 60)
     keys = [(s['position']['x'], s['position']['z'], s['rotation']['y'], s['horizon']) for s in slots]
     assert len(keys) == len(set(keys)) == 60
+
+
+@pytest.mark.parametrize('split', ['train', 'val'])
+def test_actual_published_rows_keep_official_split(tmp_path, monkeypatch, split):
+    house = dict(objects=[{'id': 'chair'}], rooms=[room('one', [(0, 0), (4, 0), (4, 4), (0, 4)])],
+                 metadata=dict(agent=dict(position=dict(y=.95))))
+    archive = tmp_path / 'houses.jsonl.gz'
+    with gzip.open(archive, 'wt') as file:
+        file.write(json.dumps(house) + '\n')
+    digest = batch.sha(archive)
+    monkeypatch.setattr(batch, 'source_spec', lambda root, chosen: (archive, digest, 1))
+    monkeypatch.setattr(batch.os, 'sched_setaffinity', lambda *args: None)
+
+    class Controller:
+        initialization_parameters = dict(makeAgentsVisible=False)
+        last_event = SimpleNamespace(metadata=dict(lastActionSuccess=True))
+        index = 0
+
+        def step(self, **pose):
+            self.index += 1
+            rgb = np.zeros((480, 640, 3), np.uint8)
+            rgb[:, :320] = 100 + self.index
+            return SimpleNamespace(frame=rgb, metadata=dict(lastActionSuccess=True, agent=pose,
+                                                           cameraPosition=pose['position']))
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(batch, 'create_controller', lambda *args, **kwargs: Controller())
+    output = tmp_path / 'render'
+    batch.run(tmp_path, output, 0, 1, 20, 60, split=split)
+    rows = [json.loads(line) for line in (output / 'rgb-candidates.jsonl').read_text().splitlines()]
+    assert len(rows) == 20
+    assert {r['split'] for r in rows} == {split}
+    assert {r['group'] for r in rows} == {f'procthor10k/{split}/00000'}
+    assert all(r['source_archive_sha256'] == digest and not r['training_admission'] for r in rows)
+    assert json.loads((output / 'houses' / f'{split}-00000.json').read_text())['objects'] == []
+    assert (output / 'house-reports' / f'{split}-00000.json').exists()
+    assert json.loads((output / 'report.json').read_text())['dataset_split'] == split
+
+
+def test_source_split_cannot_alias_training_houses(tmp_path):
+    train = batch.source_spec(tmp_path, 'train')
+    val = batch.source_spec(tmp_path, 'val')
+    assert train[0] != val[0] and train[1] != val[1]
+    assert train[2] == 10000 and val[2] == 1000
+    with pytest.raises(ValueError, match='official'):
+        batch.source_spec(tmp_path, 'test')
