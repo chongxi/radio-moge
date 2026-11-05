@@ -133,6 +133,8 @@ def run(root, output, start, count, views, maximum_seconds):
                     event = controller.last_event
                 else:
                     event = controller.reset(scene=house, fieldOfView=fov)
+                if controller.initialization_parameters.get('makeAgentsVisible') is not False:
+                    raise ValueError('Simulator agent must stay hidden after every house reset')
                 summary = dict(house_id=f'procthor10k/train/{ordinal:05d}',
                     archive_sha256=TRAIN_SHA, source_line_sha256=line_hash,
                     empty_house_sha256=sha(house_path), original_objects=len(original.get('objects', [])),
@@ -180,7 +182,8 @@ def run(root, output, start, count, views, maximum_seconds):
                             room=slot['room'], requested_pose=pose,
                             actual_agent=event.metadata['agent'],
                             actual_camera_position=event.metadata.get('cameraPosition'),
-                            spatial_rgb_std=spatial_std, geometry_label=None, training_admission=False)
+                            spatial_rgb_std=spatial_std, agent_visible=False,
+                            geometry_label=None, training_admission=False)
                         records.write(json.dumps(row, allow_nan=False) + '\n')
                         summary['images'].append(dict(image=str(image), sha256=row['sha256'],
                                                       room=slot['room'], slot=slot['index']))
