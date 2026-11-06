@@ -28,8 +28,19 @@ controller563783, first-arm trainer563785. At19:15:41 the first arm had read
 controller starts the second arm only after the first completes its fixed
 budget, and compares both complete actual input hashes. New actual model,
 initial-state and startup proofs are pending, not inferred from CPU tests.
-Fixed final results and all six views will be compared; no best-checkpoint
-selection or higher-LR benefit is presumed.
+At19:28 UTC the first arm was actively training, with243 finite updates/global
+262364 and W&B `5a310516`. Its new actual first/last128-image model checks passed
+on256 RGB presentations, with unchanged frozen/model state. Actual initial
+adapter/RMS/all100 Adam states/RNG matched262121; the constant scheduler reset
+was explicit. The first20 updates matched2,560 planned RGB keys/crops/groups:
+260 ProcTHOR,60 structural and2,240 original images; measured parameter update
+norm0.03169997 was nonzero. All442 online training scalar values were numerically
+exact. Two saved-baseline metadata fields differed by exactly one display ULP;
+seven metadata and20 training integer/float representations were numerically
+equal. No configuration or training behavior was changed for this check.
+These first-arm startup proofs are complete; the second arm and paired quality
+comparison are pending. Fixed final results and all six views will be compared;
+no best-checkpoint selection or higher-LR benefit is presumed.
 
 Completed run, Nov6 08:20 UTC: the user explicitly requested larger **actual**
 model batches (128 preferred, at least64), fast loading and batched inference,
