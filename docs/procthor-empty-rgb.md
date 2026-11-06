@@ -6,13 +6,14 @@ Generation uses official ProcTHOR houses and custom structural rooms rendered
 in the same pinned simulator; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov6 01:32 UTC: the user explicitly requested starting with the
+Current state, Nov6 01:41 UTC: the user explicitly requested starting with the
 qualified data and passing **every new image through training**. A separate
-`room-feature-full-epoch-46844-training-01` is now running under the original GPU
-lock, wrapper342237/trainer342238, immutable `code-room-full-epoch-v1` / `71c9d2b`.
-W&B run `b73f7bb0` is online. The initial state and first20 actual updates are
-verified; this is an active optimizer, not a queued plan. Previous prohibitions
-on automatically starting another segment do not override this explicit request.
+`room-feature-full-epoch-46844-training-01` has completed its11,711 updates and
+final evaluation normally at246249. Wrapper342237/trainer342238 exited; W&B run
+`b73f7bb0` is finished. Immutable training execution remains
+`code-room-full-epoch-v1` / `71c9d2b`. All46,844 synthetic images were presented
+exactly once, with zero omissions or repeats. Final state, all twelve saved paired
+reviews and online checks are complete. No optimizer or generator remains active.
 
 The new frozen pool appends qualified batches08–10 to the earlier40,890 rows,
 without altering those rows:46,844 RGB images =40,000 official ProcTHOR views
@@ -22,7 +23,7 @@ checks are reused and combined. Growing batch11/12 images are not inserted into
 this run. The prior old-house camera/window limitations remain; the closed-room,
 no-window promise applies to the custom structural source.
 
-The run continues from the verified234538 checkpoint with bitwise-preserved
+The run continued from the verified234538 checkpoint with bitwise-preserved
 adapter, RMS, all100 Adam states and RNG. The original RGB cursor continues at
 18000 (previous base10000 plus8000 mixed logical batches); the new mixed cursor
 starts at0 explicitly. Four synthetic images per effective32 update require
@@ -51,14 +52,13 @@ representations. Configuration bytes are unchanged. Startup closure
 `room-feature-full-epoch-startup-closure-01/report.json` has SHA
 `256d6147f6bd3921dd5e54e0ddefdcd609f98d336d50431889e46b1f44b672e5`.
 Saved-result/full-coverage/final-online reviewers in `code-room-epoch-review-v1`
-(`47758c0`) passed22 local and22 remote CPU tests. All eleven scheduled validation
-reviews through11,000 updates are complete; final coverage and final checkpoint
-reviews remain. At01:32 UTC11,308 updates are finite, with no OOM. The periodic
-11,250-update coverage record contains45,000 distinct synthetic identities, zero
-repeats, and1,844 still missing. This is partial progress through the46,844-image
-epoch.
-The runtime status keeps its startup update count until closure; use actual
-`training/train.jsonl` and committed `coverage-progress.json` for progress.
+(`47758c0`) passed22 local and22 remote CPU tests. All twelve scheduled validation
+reviews, full coverage and final checkpoint reviews are complete. All11,711
+training records are finite. The complete actual-input audit contains374,752
+presentations:40,000 official-room,6,844 structural and327,908 original RGB,
+with all planned keys matched and uncommitted prefetch excluded. Every synthetic
+count is exactly1. The controller's `quality_review_pending` flag reflects its
+publication before review; the final closure below supersedes it.
 
 The first1,000- and2,000-update evaluations retain all six parent populations,
 per-image identities, protocols, teacher values and support. All actual planned
@@ -80,6 +80,7 @@ respectively. The original-validation comparison is:
 | +9,000 /243538 |0.9646211579|0.9360376001|0.0948682129|
 | +10,000 /244538 |0.9645768229|0.9360804793|0.0935048023|
 | +11,000 /245538 |0.9645637924|0.9360956301|0.0934422740|
+| Final +11,711 /246249 |0.9646110087|0.9358942373|0.0937995260|
 
 Both endpoints jointly improve the three primary metrics against this epoch's
 parent. LiDAR error is2.8256% lower at1,000 and0.5391% lower at2,000. The2,000
@@ -126,6 +127,14 @@ reaches its highest observed value in this epoch, while spatial falls slightly
 from10,000. The1,000 checkpoint still has the lowest observed LiDAR error.
 Recovery after8,000 does not establish monotonic gains or the best final model.
 
+The fixed final endpoint passes the current-parent joint criterion: both original
+cosines rise and LiDAR is1.7720% lower. Against archive232288, spatial is still
+lower and LiDAR is1.8249% higher, so the archive joint target fails. Compared
+with11,000, final spatial recovers but summary and LiDAR worsen. The best observed
+original spatial, summary and LiDAR endpoints differ:4,000,11,000 and1,000
+respectively. The final weights are preserved without assuming they are the best
+deployment candidate or starting another epoch.
+
 Unseen structural317 cosine reaches0.9581754851/0.9645105841 at2,000, compared
 with parent0.9510275748/0.9381207416; teacher-depth discrepancy is16.8250% lower.
 Official-house64 also improves both cosines. These remain synthetic validation
@@ -156,6 +165,12 @@ and discrepancy is0.0787834318. Official-house64 at11,000 reaches
 0.9746892648/0.9550570790, but its discrepancy0.0575116036 is worse than10,000's
 0.0534912956. These are separate synthetic alignment results, not evidence of
 flatter real-world walls or a unique explanation for earlier regression.
+At the fixed final endpoint, structural317 cosines are0.9627747684/0.9765969056,
+both new observed highs, while teacher-depth discrepancy rebounds to0.0877798609
+(28.7837% below parent). Official-house64 cosines reach0.9750142004/0.9561273092,
+with discrepancy0.0561751809 (19.9436% below parent). This confirms synthetic
+feature-alignment gains in these fixed validation populations, not real-world
+planarity, significance or causality.
 
 The first parent-joint-improving checkpoint235538 is preserved by immutable
 hardlink under `checkpoint-235538-parent-joint-candidate-01`, SHA
@@ -190,6 +205,19 @@ with37 equal integer/float representations each. Closure
 `1464a974581389a8121d664900819080dd089de62aeec5140bb5bf500d0cae8f`,
 binds the new saved reviews and online checks. No inference, old proof rerun or
 training mutation was performed.
+
+Final CPU readback verified finite adapter/RNG and all100 Adam states at246249,
+cursor93688, unchanged RMS, configuration, model revisions and data identities.
+The fixed final checkpoint is hardlinked under `finish-verification-01`, SHA
+`10c12511ea3f50798ec893b99f471eb0a39516707fefd301d186cb873dffe788`.
+No earlier model or checkpoint proof was repeated. All631 final online scalars
+match numerically, with37 equal integer/float forms. The same two one-ULP API
+baseline displays and seven equal metadata representations remain; config bytes
+are unchanged. All12 endpoints therefore have7,572 verified online validation
+scalars in total. Final closure
+`room-feature-full-epoch-46844-finish-closure-01/report.json` has SHA
+`1eca8f0a3ca9f5d1abbf934b2a32edb043bec45fcc975d0e55af465cb7eedb66`.
+The existing1,000-step LiDAR candidate and all older bests remain preserved.
 
 Existing structural batch11 has closed100 scenes354–453 with1,981 RGB,
 19 rejected frames, zero duplicates and no held scenes. All1,981 encoded/pixel,
