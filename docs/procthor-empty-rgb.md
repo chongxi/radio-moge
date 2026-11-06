@@ -269,7 +269,10 @@ MoGe infers focal/shift rather than receiving the known sensor intrinsics.
 A separately labeled diagnostic fits one median scale per image: parent/final
 AbsRel becomes0.0497093317/0.0502954050, a1.1790% increase. This shows sensitivity
 to absolute scale; it is neither a replacement benchmark nor a proof of the
-cause. Twelve of30 scenes improve and18 worsen on the published score. These
+cause. The unchanged MoGe-v2 teacher itself scores0.1213605191 on this same
+sensor protocol, higher than the final student's0.0972530157. Closer teacher
+agreement therefore does not guarantee a lower sensor-reference error.
+Twelve of30 scenes improve and18 worsen on the published score. These
 reused validation scenes do not establish statistical significance or a unique
 cause. Sensor calibration, reference noise, confidence, and direct wall-flatness
 measurements remain unproven. The earlier interpretation is narrowed to an
