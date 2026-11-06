@@ -6,7 +6,7 @@ Generation uses official ProcTHOR houses and custom structural rooms rendered
 in the same pinned simulator; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov5 23:43 UTC: the user explicitly requested starting with the
+Current state, Nov6 00:12 UTC: the user explicitly requested starting with the
 qualified data and passing **every new image through training**. A separate
 `room-feature-full-epoch-46844-training-01` is now running under the original GPU
 lock, wrapper342237/trainer342238, immutable `code-room-full-epoch-v1` / `71c9d2b`.
@@ -52,10 +52,12 @@ representations. Configuration bytes are unchanged. Startup closure
 `256d6147f6bd3921dd5e54e0ddefdcd609f98d336d50431889e46b1f44b672e5`.
 Saved-result/full-coverage/final-online reviewers in `code-room-epoch-review-v1`
 (`47758c0`) passed22 local and22 remote CPU tests. The first two saved validation
-reviews are now complete; final coverage and final checkpoint reviews remain.
-At23:43 UTC2,581 updates are finite, with no OOM. The periodic2,500-update
-coverage record contains10,000 distinct synthetic identities, zero repeats,
-and36,844 still missing. This is partial progress through the46,844-image epoch.
+reviews and the next3,000/4,000-update reviews are complete; final coverage and
+final checkpoint reviews remain. At00:12 UTC5,000 updates are finite, with no
+OOM; the5,000-update validation is running. The committed coverage record contains
+20,000 distinct synthetic identities, zero repeats, and26,844 still missing.
+This is partial progress through
+the46,844-image epoch.
 The runtime status keeps its startup update count until closure; use actual
 `training/train.jsonl` and committed `coverage-progress.json` for progress.
 
@@ -69,6 +71,8 @@ respectively. The original-validation comparison is:
 | Parent234538 |0.9644499831|0.9358074926|0.0954916715|
 | +1,000 /235538 |0.9646070817|0.9358768267|0.0927934218|
 | +2,000 /236538 |0.9645692867|0.9360401285|0.0949768736|
+| +3,000 /237538 |0.9645070946|0.9359933445|0.0945354724|
+| +4,000 /238538 |0.9646226233|0.9358286189|0.0947856377|
 
 Both endpoints jointly improve the three primary metrics against this epoch's
 parent. LiDAR error is2.8256% lower at1,000 and0.5391% lower at2,000. The2,000
@@ -78,10 +82,24 @@ both still have lower spatial cosine and higher LiDAR error (+0.7327%/+3.1030%).
 Therefore the archived-baseline joint target still fails. No significance,
 causal explanation or real-world wall-planarity improvement is established.
 
+The3,000/4,000 reviews retain all six populations, exact per-image identities,
+protocols, teacher values and support. Their actual12,000/16,000 synthetic
+presentations are unique and match the planned keys. Both endpoints also jointly
+improve against the current parent; LiDAR is1.0013%/0.7394% lower. Against
+archive232288, spatial remains lower and LiDAR is2.6238%/2.8954% higher. At4,000,
+spatial is this epoch's best observed value, summary has fallen from2,000, and
+the1,000 checkpoint still has the lowest observed LiDAR error. The first four
+endpoints do not establish monotonic generalization gains.
+
 Unseen structural317 cosine reaches0.9581754851/0.9645105841 at2,000, compared
 with parent0.9510275748/0.9381207416; teacher-depth discrepancy is16.8250% lower.
 Official-house64 also improves both cosines. These remain synthetic validation
 results and are reported separately from the original macro/independent LiDAR.
+At4,000, structural317 cosine reaches0.9602283230/0.9691518064, with teacher-depth
+discrepancy28.1575% below the parent. Both structural cosines have improved at
+each of the four scheduled evaluations. This supports completing the requested
+one-pass coverage, while preserving earlier validation candidates; it does not
+establish that additional epochs or the final checkpoint will be better.
 
 The first parent-joint-improving checkpoint235538 is preserved by immutable
 hardlink under `checkpoint-235538-parent-joint-candidate-01`, SHA
@@ -98,10 +116,25 @@ hundreds of mostly empty filtered requests. Its orphaned read-only verifier was
 stopped, and `code-room-epoch-review-v2` / `09bfc31` uses the SDK's1,000-step
 page size. Both actual checks passed. The final online helper uses the same
 paging correction; training code/configuration and metric tolerances are unchanged.
+The3,000/4,000 online checks also match all631 saved scalars per endpoint exactly
+in numeric value, with37 equal integer/float representations each. These proofs
+are complete; no inference or repeated earlier checkpoint readback was required.
 
-Existing structural batch11 continues under controller316684/child341968;
-at23:43 it has76 closed scenes and1,505 RGB, with15 rejected frames, zero
-duplicates or held scenes. It is not yet frozen or included in this epoch.
+Existing structural batch11 has closed100 scenes354–453 with1,981 RGB,
+19 rejected frames, zero duplicates and no held scenes. All1,981 encoded/pixel,
+source-scene/camera/receipt checks are complete; all seven prior train/validation
+isolation comparisons have zero exact overlaps. All64 selected images from16
+fixed evenly spaced scenes were actually viewed on16 pages. No windows, outside
+background, simulator bodies or failed magenta frames were observed in the
+sample; fine beam-junction seams, coarse shadows and bright highlights remain
+synthetic appearance limitations. This is a sampled review, not visual
+certification of all1,981 images. The batch has1,781 perspective and200 explicitly
+labelled orthographic views. Qualified available data totals48,825 images, while
+the active epoch's46,844-image manifest remains unchanged. Controller316684 has
+already advanced to batch12, scenes454–553; at00:12 it has17 closed scenes and338
+RGB, with2 rejected frames and no duplicates or holds. Neither batch is inserted
+into the active epoch. Batch11 closure is bound by
+`structural-feature-train-scene354-453-closure-01/report.json`.
 
 The preceding run, `room-feature-mix-40890-training-02`, completed
 its fixed1,000 updates normally at234538, using immutable
