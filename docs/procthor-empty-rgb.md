@@ -79,6 +79,33 @@ with maximum1.867ms and peak allocated memory96.21GiB. These are pipeline
 measurements, not validation gains. First saved validation is259196 (+250);
 all startup proofs are complete and must be reused.
 
+The first two actual128 saved validations are complete. All six views retain
+the same images, protocols, frozen teacher and support. Their32,000/64,000
+committed RGB prefixes match the plan, including4,000/8,000 unique synthetic
+images with no repetition. All1,262 online validation scalars match numerically;
+each endpoint has37 equal integer/float representation differences only.
+
+| Actual128 comparison | Primary spatial cosine | Primary summary cosine | LiDAR-reference AbsRel |
+| --- | ---: | ---: | ---: |
+| Immediate parent258946 |0.9646147596|0.9360840607|0.0972530157|
+| +250 /259196 |0.9647335855|0.9361621222|0.0952842571|
+| +500 /259446 |0.9646708565|0.9362329607|0.0943515258|
+| Same-population archive232288 |0.9647740929|0.9356613590|0.0921184475|
+
+Both early endpoints meet the three-metric criterion against their immediate
+parent, but neither meets it against the archive. At+500 LiDAR-reference AbsRel
+is2.9834% lower than the parent and2.4241% higher than the archive. Spatial
+cosine declines between+250 and+500, while summary and the reference-depth metric
+improve; gains are not uniformly monotonic. This is not proof of a causal batch
+effect, statistical significance or real-wall planarity improvement.
+
+Structural317 at+500 has cosines0.9653114603/0.9819599388 and teacher-depth
+discrepancy3.6621% below the parent. ProcTHOR64 has cosines0.9756405717/0.9608373558;
+its teacher-depth discrepancy is essentially unchanged (-0.0086%). Synthetic
+populations remain separate from the primary six-dataset macro. At06:24:59 UTC
+the existing run is healthy at554 updates/259500; no input, loss, optimizer,
+inference protocol or training bound changed during these reviews.
+
 Previous completed epoch, Nov6 05:04 UTC: the expanded training run and all final checks
 are complete. The user-authorized frozen pool contains
 **50,787 images**:40,000 official ProcTHOR and10,787 custom structural RGB,
