@@ -323,6 +323,7 @@ def train(
     budget_started_at=None,
     resolution_fork=False,
     data_fork=False,
+    batch_fork=False,
     lr_adjustment=None,
     reference=None,
 ):
@@ -330,6 +331,10 @@ def train(
     invocation_started = time.monotonic()
     elapsed_before = 0.0
     validate_config(config)
+    if batch_fork and (not fork_from or not data_fork or reference is None
+            or not callable(getattr(reference, 'check_batch_transition', None))
+            or resume or init or resolution_fork or extension or not performance):
+        raise ValueError('Batch fork requires a separately checked RGB data-fork observer')
     if config['data'].get('rgb_replacement') and reference is None:
         raise ValueError('RGB replacement requires its verified data-fork observer')
     if reference is not None and (not fork_from or not data_fork or resume or init
@@ -489,7 +494,9 @@ def train(
                 parent_effective = (state.get('performance') or {}).get(
                     'effective_batch', state['config']['train']['batch_size'] *
                     state['config']['train']['accumulation'])
-                if (performance['effective_batch'] != parent_effective
+                if batch_fork:
+                    reference.check_batch_transition(config, state, performance)
+                elif (performance['effective_batch'] != parent_effective
                         or performance.get('autotune') or performance.get('data_autotune')):
                     raise ValueError('Resolution fork preserves effective batch and forbids tuning')
             optimizer.load_state_dict(state["optimizer"])
@@ -582,6 +589,14 @@ def train(
                           if config['data'].get('mixture_weights') else 'permutation'))
             fork_provenance['restored'].remove('cursor')
             fork_provenance['reset'].append('data_cursor_for_new_manifest')
+        if batch_fork:
+            fork_provenance['batch_change'] = dict(
+                parent_effective_batch=parent_effective,
+                effective_batch=performance['effective_batch'],
+                actual_forward_batch=performance['compute_batch'],
+                accumulation_of_model_gradients=False,
+                resolution_policy='one uniform bucket per complete forward batch',
+                learning_rate_policy='unchanged constant learning rate')
         atomic_json(fork_provenance, output / "fork-state.json")
     if resume:
         atomic_json(
@@ -895,6 +910,10 @@ def train(
                 batches = grouped_window(iterator, accumulation, performance['compute_batch'])
             else:
                 batches = (next(iterator) for _ in range(accumulation))
+            input_wait_seconds = time.perf_counter() - started
+            if batch_fork and (not isinstance(batches, list) or len(batches) != 1
+                    or len(batches[0]) != performance['effective_batch']):
+                raise ValueError('True batch fork may not split an optimizer update into forwards')
             for cpu_batch in batches:
                 cpu_image = (cpu_batch.image if isinstance(cpu_batch, RGBGeometryBatch) else
                              cpu_batch['image'] if isinstance(cpu_batch, dict) else cpu_batch)
@@ -1039,6 +1058,9 @@ def train(
                            compute_batch_limit=performance['compute_batch'],
                            logical_data_cursor=cursor,
                            schedule_position=schedule_position(step, performance))
+            if batch_fork:
+                row.update(actual_forward_batch=len(batches[0]), model_forwards_per_update=1,
+                           input_wait_seconds=input_wait_seconds)
             if settings.get('record_cosine_speed', False):
                 row.update(optimizer_seconds=optimizer_seconds, elapsed_seconds=elapsed_seconds(),
                            spatial_cosine=1 - totals['cosine'],

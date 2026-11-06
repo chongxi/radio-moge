@@ -29,7 +29,7 @@ def verify(root, steps):
             if row['step'] in records:
                 raise ValueError('Repeated local validation endpoint')
             records[row['step']] = row
-    if set(records) != set(steps) or not set(steps).issubset(endpoints(plan['source_step'])):
+    if set(records) != set(steps) or not set(steps).issubset(endpoints(plan['source_step'], plan.get('actual_batch',32))):
         raise ValueError('Only complete predefined validation endpoints may be checked')
     reviews = {}
     for step in steps:

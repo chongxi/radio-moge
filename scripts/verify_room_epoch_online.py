@@ -9,8 +9,7 @@ import wandb
 
 from radio_moge.corpus_admission import checked_json, file_ref
 from radio_moge.geometry_cache import publish_json
-from review_room_feature_epoch import endpoints
-from run_room_feature_epoch import UPDATES
+from review_room_feature_epoch import endpoints, epoch_shape
 from wandb_verification import compare_metadata
 
 
@@ -42,6 +41,7 @@ def exact_values(actual, expected, label):
 
 def verify(root, mode):
     plan = checked_json(file_ref(root/'plan.json'))
+    batch, updates, _ = epoch_shape(plan)
     config = checked_json(plan['config'])
     provenance_ref = file_ref(root/'training/provenance.json')
     provenance = checked_json(provenance_ref)
@@ -77,15 +77,15 @@ def verify(root, mode):
     else:
         completion_ref = file_ref(root/'completed.json')
         completion = checked_json(completion_ref)
-        if not completion['full_epoch_complete'] or completion['new_updates'] != UPDATES or run.state != 'finished':
+        if not completion['full_epoch_complete'] or completion['new_updates'] != updates or run.state != 'finished':
             raise ValueError('A finished online run and complete image epoch are required')
         validation_ref = file_ref(root/'training/validation.jsonl')
         records = [json.loads(line) for line in Path(validation_ref['path']).read_text().splitlines()]
-        if [r['step'] for r in records] != endpoints(plan['source_step']):
+        if [r['step'] for r in records] != endpoints(plan['source_step'], batch):
             raise ValueError('Unexpected validation endpoints')
         expected = {'validation/'+k:v for k,v in records[-1].items() if k != 'step'}
         final = [row for row in run.scan_history(keys=['optimizer_step']+list(expected), page_size=1000)
-                 if row['optimizer_step'] == plan['source_step']+UPDATES]
+                 if row['optimizer_step'] == plan['source_step']+updates]
         if len(final) != 1:
             raise ValueError('Missing or repeated final online validation')
         values = exact_values({k:final[0][k] for k in expected}, expected, 'final_metrics')

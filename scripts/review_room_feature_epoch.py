@@ -16,12 +16,22 @@ VIEWS = {'original', 'native-640x400', 'dataset-scannetpp-dslr',
          'dataset-scannetpp-lidar', 'dataset-procthor-empty', 'dataset-structural-rooms'}
 
 
-def endpoints(source_step):
-    return [source_step+n for n in range(1000, UPDATES, 1000)] + [source_step+UPDATES]
+def epoch_shape(plan):
+    batch = plan.get('actual_batch', 32)
+    if batch == 32:
+        return batch, UPDATES, 1000
+    from run_room_true_batch_epoch import updates_for
+    return batch, updates_for(batch), 32000//batch
+
+
+def endpoints(source_step, batch=32):
+    _, updates, cadence = epoch_shape(dict(actual_batch=batch))
+    return [source_step+n for n in range(cadence, updates, cadence)] + [source_step+updates]
 
 
 def check_identity(plan, config, parent, old, provenance, initial, metadata, baseline):
-    if (plan['synthetic_images'] != IMAGES or plan['additional_updates'] != UPDATES
+    _, updates, _ = epoch_shape(plan)
+    if (plan['synthetic_images'] != IMAGES or plan['additional_updates'] != updates
             or plan['coverage_goal'] != 'every_frozen_synthetic_rgb_once'
             or plan['source_step'] != parent['step'] or set(parent['views']) != VIEWS
             or provenance['revisions'] != old['revisions'] or provenance['adapter'] != old['adapter']
@@ -42,8 +52,12 @@ def check_identity(plan, config, parent, old, provenance, initial, metadata, bas
         raise ValueError('Actual initial and evaluated populations differ')
 
 
-def committed_prefix(path, planned, synthetic, real_images, source_step, updates):
-    tracker = Coverage(real_images, synthetic)
+def committed_prefix(path, planned, synthetic, real_images, source_step, updates, batch=32):
+    if batch == 32:
+        tracker = Coverage(real_images, synthetic)
+    else:
+        from run_room_true_batch_epoch import BatchCoverage
+        tracker = BatchCoverage(real_images, synthetic, batch)
     sources, digest, byte_count = Counter(), hashlib.sha256(), 0
     with path.open('rb') as stream:
         for number in range(updates):
@@ -52,15 +66,19 @@ def committed_prefix(path, planned, synthetic, real_images, source_step, updates
                 raise ValueError('Missing committed RGB input audit')
             row = json.loads(raw)
             images = row['logical_images']
-            if (row['update'] != source_step+number+1 or len(images) != 32
-                    or [r['key'] for r in images] != planned[number*32:(number+1)*32]
+            if (row['update'] != source_step+number+1 or len(images) != batch
+                    or [r['key'] for r in images] != planned[number*batch:(number+1)*batch]
                     or any(r['dataset'] == 'coco2017' or 'ordinary_geometry' in r for r in images)):
                 raise ValueError('Committed update, source or RGB keys differ from the frozen plan')
+            if batch != 32 and (len(row['compute_groups']) != 1
+                    or row['compute_groups'][0]['shape'][0] != batch
+                    or row['compute_groups'][0]['logical_image_slots'] != list(range(batch))):
+                raise ValueError('Actual true batch was split/reordered')
             tracker.commit(tracker.validate(images))
             sources.update(r['dataset'] for r in images)
             digest.update(raw)
             byte_count += len(raw)
-    return dict(updates=updates, presentations=updates*32, source_counts=dict(sources),
+    return dict(updates=updates, presentations=updates*batch, source_counts=dict(sources),
         actual_planned_keys_matched=True, synthetic_identity_and_no_repeats_verified=True,
         synthetic_coverage=tracker.report(), actual_input_prefix=dict(path=str(path),
             bytes=byte_count, sha256=digest.hexdigest(), lines=updates, file_may_still_grow=True),
@@ -69,6 +87,7 @@ def committed_prefix(path, planned, synthetic, real_images, source_step, updates
 
 def run(root, step, output):
     plan = checked_json(file_ref(root/'plan.json'))
+    batch, total_updates, _ = epoch_shape(plan)
     parent = checked_json(plan['source_results'])
     config = checked_json(plan['config'])
     provenance_ref = file_ref(root/'training/provenance.json')
@@ -79,7 +98,7 @@ def run(root, step, output):
     baseline = checked_json(file_ref(root/'baseline-reuse.json'))
     check_identity(plan, config, parent, old, provenance, initial, metadata, baseline)
     updates = step-parent['step']
-    if step not in endpoints(parent['step']):
+    if step not in endpoints(parent['step'], batch):
         raise ValueError('Only a predefined committed validation endpoint may be reviewed')
     chosen = [r for line in (root/'training/validation.jsonl').read_text().splitlines()
               if (r := json.loads(line))['step'] == step]
@@ -91,8 +110,8 @@ def run(root, step, output):
     if len(synthetic) != IMAGES or Counter(r['dataset'] for r in synthetic) != SOURCES:
         raise ValueError('Frozen source totals changed')
     prefix = committed_prefix(root/'training/actual-rgb-inputs.jsonl', planned, synthetic,
-                              metadata['real_images'], parent['step'], updates)
-    if updates == UPDATES and not prefix['synthetic_coverage']['each_image_exactly_once']:
+                              metadata['real_images'], parent['step'], updates, batch)
+    if updates == total_updates and not prefix['synthetic_coverage']['each_image_exactly_once']:
         raise ValueError('The final endpoint omitted or repeated a synthetic image')
     destination = root/'training'/f'eval-{step:07d}'
     views = {}
@@ -108,7 +127,7 @@ def run(root, step, output):
     current = {k:views[v]['metrics'][m]['final'] for k,(v,m) in names.items()}
     archive = {k:parent['against_archive']['metrics'][k]['before'] for k in names}
     report = dict(stage='saved_full_room_epoch_validation_reviewed', step=step, new_updates=updates,
-        full_epoch_complete=updates == UPDATES, parent=plan['source_results'],
+        full_epoch_complete=updates == total_updates, parent=plan['source_results'],
         provenance=provenance_ref, plan=file_ref(root/'plan.json'), views=views, actual_inputs=prefix,
         against_parent=joint_result(before, current), against_archive=joint_result(archive, current),
         model_inference=False, checkpoint_payload_read=False, optimizer_updates_by_reviewer=0,
