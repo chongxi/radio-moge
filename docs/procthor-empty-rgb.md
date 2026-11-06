@@ -6,7 +6,62 @@ Generation uses official ProcTHOR houses and custom structural rooms rendered
 in the same pinned simulator; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov6 05:04 UTC: the expanded training run and all final checks
+Current work, Nov6 05:55 UTC: the user explicitly requested larger **actual**
+model batches (128 preferred, at least64), fast loading and batched inference,
+and authorized continuing training. `room-feature-truebatch128-50787-training-01`
+launched at05:55:17 UTC, wrapper483459/trainer483460, from the verified258946
+checkpoint. Immutable execution `code-room-true-batch-epoch-v1` / `3180ddf`
+keeps all four feature weights1, geometry off, LR1e-5, all three resolutions,
+Adam moments/RMS/RNG and the same50,787 synthetic plus1,597,911 original pool.
+
+Each update now makes **one actual128-image forward/backward**, with16 synthetic
+and112 original images normally. The last update uses3 synthetic and125
+original images. A complete pass requires3,175 updates to262121,406,400 RGB
+presentations, and101,600 logical four-image transport groups. The original
+sampler resumes at213264; the new mixed cursor is explicitly0. Four-image
+DataLoader transport groups protect the64MiB shared-memory limit and are
+concatenated before the model call; they are not gradient accumulation.
+
+To make a true128 batch possible without padding/warping, one resolution is
+chosen per complete update instead of independently per four-image transport
+group. The three resolutions and uniform draw rule remain; original image
+identities and crop seeds remain, but per-image resolution assignments can
+change. This additional grouping change is explicit, so later results cannot
+isolate a pure effective-batch causal effect. No LR scaling was introduced.
+Four decode workers, compact transport, pinned prepared windows and a separate
+CUDA copy stream keep the next batch ready. Actual batch size, forwards per
+update and input-wait time are recorded in every committed training row.
+
+The bounded zero-update performance probe completed on the actual258946 model
+and real saved RGB inputs at all three sizes. In `room-true-batch-probe-02`,
+actual128 forward/loss/backward/clipping throughput is71.85--89.10images/s,
+peak allocated memory81.10--95.91GiB, and warmed consumer queue wait0.10--0.14ms.
+All measured future windows were already copied before consumption. This
+measurement excludes Adam.step, final evaluation and output writing; production
+training speed is reported separately. Actual64 was72.11--87.73images/s, so128
+increases images per update, without establishing a throughput improvement.
+No model state changed and no optimizer step was taken by the probe.
+
+For student inference (RADIO, adapter and raw decoder), actual64 passed all
+three sizes at85.04--102.97images/s with inputs resident on the GPU. These figures
+exclude focal recovery/postprocessing and disk I/O. Actual128 raw inference
+passed400x640 but hit upstream padding's32-bit indexing limit at480x640 and
+640x480; this is separate from the successful128 feature-training path. The
+universal tested depth-inference batch is64. The existing public viewer and
+its chosen checkpoint remain unchanged. Probe01 stopped on that decoder error;
+probe02 explicitly records it and reuses the three completed64 measurements.
+
+The new narrow batch-fork guard rejects unplanned model/loss/LR/data changes,
+and requires a single full compute tensor before every optimizer update.
+87 local sampler/core regression checks and22 saved-review checks passed;
+55 relevant tests also passed remotely, including actual tiny trainer loops
+at64 and128, inherited initial Adam/RMS/RNG and one encoder call per update.
+The runtime additionally checks the actual first and final128-image batches
+before updates. Results will be reviewed every250 updates (32,000 presented
+images) and at the fixed final endpoint, using the six saved parent baselines.
+The wall bound is14,400s, with no automatic retry, extra epoch or deployment.
+
+Previous completed epoch, Nov6 05:04 UTC: the expanded training run and all final checks
 are complete. The user-authorized frozen pool contains
 **50,787 images**:40,000 official ProcTHOR and10,787 custom structural RGB,
 including3,943 images generated after the previous frozen epoch. Its50,787 rows
@@ -24,8 +79,8 @@ original GPU lock, wrapper409645/trainer409646. Immutable execution is
 run`20d7e04c` is finished. All50,787 synthetic images were presented exactly
 once, with zero omissions or repetitions. All13 saved validations and8,203
 online scalar comparisons are complete and numerically exact. Geometry stayed
-off and all four feature weights stayed1. No optimizer or generator remains
-active, and no additional epoch or deployment was launched.
+off and all four feature weights stayed1. At that closure no optimizer or generator remained active. The newly authorized
+true-batch continuation is described above; no deployment was launched.
 
 The new parent is the verified final246249 checkpoint, preserving its full Adam,
 adapter,RMS and RNG state. Original logical cursor111688 continues from
