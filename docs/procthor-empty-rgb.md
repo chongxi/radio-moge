@@ -86,6 +86,36 @@ paired comparison remain pending. The first arm's full closure is recorded in
 `room-feature-lr-pair-01/lr1e-5/final-closure-01/report.json`; those proofs must
 be reused, with no repeated checkpoint readback or inference.
 
+Nov6 20:21 UTC: the2e-5 arm is actively training as W&B`3fcc0f3f`, with250
+finite actual128 updates and its first validation in progress. Its actual
+initial adapter/RMS/all100 Adam moments and counters/RNG match the same262121
+source; only the declared LR fields differ from the reference arm, with the
+same constant-scheduler position. Both first/last128-image model cases preserve
+frozen state and have identical input keys, pixels and initial loss to1e-5.
+The actual first20 updates contain2,560 RGB presentations (260 ProcTHOR,60
+structural,2,240 original); their pixel/key/metadata prefix SHA is exactly the
+reference's`b3fa53f651770b1debff50ea5c88f565813a8f5b990e9e72bc50763aec6c81e9`.
+Measured update norm0.06278372 is nonzero. All442 online training scalars are
+numerically exact. Two baseline metadata values and the start timestamp have
+one-ULP display differences; seven other metadata and20 training integer/float
+representations are equal. These startup checks are complete in
+`lr2e-5/startup-closure-01/report.json`. Complete128,000-input equality and the
+fixed final LR comparison remain pending; no training configuration changed.
+
+At20:23 UTC the second arm's250-update six-view review completed, with all631
+online validation values numerically exact (37 equal integer/float forms).
+Its complete32,000-RGB input prefix, including4,000 unique synthetic images,
+has exactly the same bytes/hash as the reference arm at250. Primary spatial
+0.9646430589 is above the common parent, but summary0.9361995972 is below;
+LiDAR reference AbsRel0.0957755232 is0.5542% lower than the parent. This endpoint
+fails both parent and archive joint criteria. Against1e-5 at the same250 steps,
+both cosines are slightly lower; LiDAR is only0.01747% lower. No overall higher
+LR advantage is established. Structural317 spatial rises from the parent but
+summary falls, with teacher-depth discrepancy25.4395% higher; ProcTHOR64 both
+cosines fall and teacher-depth discrepancy rises6.6546%. These are interim,
+separate synthetic results, not a final LR decision or physical planarity
+measurement. The unchanged authorized1,000-update comparison continues.
+
 Completed run, Nov6 08:20 UTC: the user explicitly requested larger **actual**
 model batches (128 preferred, at least64), fast loading and batched inference,
 and authorized continuing training. `room-feature-truebatch128-50787-training-01`
