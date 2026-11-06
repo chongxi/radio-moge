@@ -39,6 +39,29 @@ def exact_values(actual, expected, label):
     return differences
 
 
+def final_validation_record(rows, step, expected_keys):
+    """Ignore null-only history padding, but reject partial or repeated results."""
+    keys = tuple(expected_keys)
+    if not keys:
+        raise ValueError('Final validation metrics are required')
+    complete = []
+    empty = []
+    for row in rows:
+        if row.get('optimizer_step') != step:
+            continue
+        values = [row.get(key) for key in keys]
+        if all(value is None for value in values):
+            empty.append(dict(internal_step=row.get('_step'), optimizer_step=step,
+                              all_expected_validation_values_null_or_absent=True))
+            continue
+        if any(value is None for value in values):
+            raise ValueError('Partially missing final online validation')
+        complete.append(row)
+    if len(complete) != 1:
+        raise ValueError('Missing or repeated final online validation')
+    return complete[0], empty
+
+
 def verify(root, mode):
     plan = checked_json(file_ref(root/'plan.json'))
     batch, updates, _ = epoch_shape(plan)
@@ -84,12 +107,12 @@ def verify(root, mode):
         if [r['step'] for r in records] != endpoints(plan['source_step'], batch):
             raise ValueError('Unexpected validation endpoints')
         expected = {'validation/'+k:v for k,v in records[-1].items() if k != 'step'}
-        final = [row for row in run.scan_history(keys=['optimizer_step']+list(expected), page_size=1000)
-                 if row['optimizer_step'] == plan['source_step']+updates]
-        if len(final) != 1:
-            raise ValueError('Missing or repeated final online validation')
-        values = exact_values({k:final[0][k] for k in expected}, expected, 'final_metrics')
-        checked = dict(completion=completion_ref, validation=validation_ref, metrics_count=len(expected))
+        final, empty = final_validation_record(
+            run.scan_history(keys=['optimizer_step']+list(expected), page_size=1000),
+            plan['source_step']+updates, expected)
+        values = exact_values({k:final[k] for k in expected}, expected, 'final_metrics')
+        checked = dict(completion=completion_ref, validation=validation_ref,
+                       metrics_count=len(expected), empty_history_rows_ignored=empty)
     output = root/f'online-{mode}-01'
     output.mkdir(exist_ok=False)
     report = dict(stage=f'room_epoch_online_{mode}_verified', checked_at=time.time(),
