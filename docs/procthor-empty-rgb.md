@@ -116,6 +116,19 @@ cosines fall and teacher-depth discrepancy rises6.6546%. These are interim,
 separate synthetic results, not a final LR decision or physical planarity
 measurement. The unchanged authorized1,000-update comparison continues.
 
+Nov6 20:40 UTC: the second arm's500-update review and all631 online values
+are complete, again with37 equal integer/float forms. Its64,000 actual RGB
+inputs/8,000 unique synthetic presentations match the reference prefix bytes
+exactly. Primary spatial0.9647363316 rises from the parent, summary0.9362376372
+remains below it, and LiDAR reference AbsRel0.0957458814 falls0.5850%. Both
+parent and archive joint criteria still fail. Compared with1e-5 at500, spatial
+is slightly higher and LiDAR is0.2940% lower, but summary is lower: this is
+a mixed interim result. Structural317 spatial rises and summary falls versus
+the parent, with teacher-depth discrepancy0.9590% lower; ProcTHOR64 both
+cosines remain below the parent and teacher-depth discrepancy is5.9535% higher.
+No final LR choice, physical planarity benefit or monotonic improvement is
+established. The existing trainer is proceeding toward the fixed1,000 updates.
+
 Completed run, Nov6 08:20 UTC: the user explicitly requested larger **actual**
 model batches (128 preferred, at least64), fast loading and batched inference,
 and authorized continuing training. `room-feature-truebatch128-50787-training-01`
