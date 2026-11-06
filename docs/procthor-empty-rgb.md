@@ -6,7 +6,7 @@ Generation uses official ProcTHOR houses and custom structural rooms rendered
 in the same pinned simulator; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov6 03:16 UTC: the user explicitly requested expanding the next
+Current state, Nov6 03:40 UTC: the user explicitly requested expanding the next
 training run to the latest qualified dataset. The new frozen pool contains
 **50,787 images**:40,000 official ProcTHOR and10,787 custom structural RGB,
 including3,943 images generated after the previous frozen epoch. Its50,787 rows
@@ -20,9 +20,9 @@ Pool manifest SHA`1173ca7e84f2939ae15de47988ec42e402a4228f1e817fbb25b954e6f1a266
 `room-feature-full-epoch-50787-training-01` launched at02:04:08 UTC under the
 original GPU lock, wrapper409645/trainer409646. Immutable execution is
 `code-room-full-epoch-v2` / `00f95a8`. W&B run`20d7e04c` is active. The first
-5,464 actual updates are finite; the latest periodic5,250-update coverage records
-21,000 unique synthetic images and zero repetitions, with29,787 still missing.
-The first five saved validations and online comparisons are complete. The root status counter remains0 until closure; committed train.jsonl
+7,401 actual updates are finite; the latest periodic7,250-update coverage records
+29,000 unique synthetic images and zero repetitions, with21,787 still missing.
+The first seven saved validations and online comparisons are complete. The root status counter remains0 until closure; committed train.jsonl
 and coverage-progress.json are the live counters. Geometry remains off and all
 four feature weights remain1. Do not launch another copy.
 
@@ -81,6 +81,8 @@ numerically;37 values differ only by equal integer/float representation.
 | Expanded epoch +3,000 /249249 |0.9645448126|0.9360928243|0.0964023908|
 | Expanded epoch +4,000 /250249 |0.9645538756|0.9361691227|0.0969707513|
 | Expanded epoch +5,000 /251249 |0.9645651862|0.9359653671|0.0980188375|
+| Expanded epoch +6,000 /252249 |0.9646610397|0.9361102704|0.0977118384|
+| Expanded epoch +7,000 /253249 |0.9646985648|0.9360524568|0.0959907461|
 | Same-population archive232288 |0.9647740929|0.9356613590|0.0921184475|
 
 At the first validation, summary rises, but spatial falls and LiDAR is1.2827% worse than the parent,
@@ -137,6 +139,25 @@ improve, with teacher-depth discrepancy 5.4123% lower than the parent. These
 synthetic gains do not establish improved original-data performance or real-wall
 planarity. The user-authorized single pass continues unchanged; earlier best
 weights remain preserved, with no automatic additional epoch or deployment.
+
+The +6,000 and +7,000 saved reviews preserve all six views and exact image,
+protocol, teacher and support identities. All 192,000 and 224,000 actual input
+keys match the plan, with 24,000 and 28,000 unique synthetic images, zero repeats
+and unused prefetch excluded. All 1,262 new online values match numerically,
+with 37 equal integer/float representations per endpoint. No new inference,
+model gate or checkpoint read was needed. Closure SHA
+`a00cc17c32448bf1ac61f6d7c97054becb68d307f9236368c7245cc458da2e02`.
+
+Both original cosines now exceed the immediate parent at +6,000 and +7,000.
+LiDAR recovers from +5,000, ending at 2.3361% worse than the parent and 4.2036%
+worse than the archive at +7,000. Thus neither joint criterion passes; the
+earlier five-endpoint LiDAR deterioration does not continue monotonically.
+Archive spatial cosine remains higher than this endpoint. Structural317
+cosines are 0.9645291533/0.9791871856 and teacher-depth discrepancy is 3.0256%
+lower than the parent, less favorable than at +5,000. Official-house64 cosines
+both exceed the parent while teacher-depth discrepancy is 1.6086% higher.
+These mixed changes do not establish causality or improved real-wall planarity.
+The fixed single pass continues without input, loss or learning-rate changes.
 
 
 Previous completed state, Nov6 01:41 UTC: the user explicitly requested starting with the
