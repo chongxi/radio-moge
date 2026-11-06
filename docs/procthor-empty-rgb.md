@@ -61,6 +61,24 @@ before updates. Results will be reviewed every250 updates (32,000 presented
 images) and at the fixed final endpoint, using the six saved parent baselines.
 The wall bound is14,400s, with no automatic retry, extra epoch or deployment.
 
+At06:04 UTC the actual run is active as W&B`55dca03c`, with76 finite
+updates at259022. All76 recorded updates use exactly one128-image model
+forward/backward. Initial adapter,RMS,all100 Adam states and RNG match the
+258946 parent bitwise. The actual first and last128-image model gates both
+passed without optimizer updates, and restore RNG/frozen state exactly.
+The earlier all-three-resolution performance probe is reused.
+
+The first20 committed updates and2,560 actual RGB inputs match the new plan:
+260 ProcTHOR,60 structural and2,240 original images. Image identities/crop
+seeds, one128-image compute group, all feature coefficients1 and geometry off
+are checked. The measured nonzero update norm is0.018689. All442 online startup
+scalars match numerically; only one baseline display value differs by one ULP,
+with seven other metadata and20 training values using equal integer/float
+forms. The first76 updates average0.288ms waiting for the prefetched input,
+with maximum1.867ms and peak allocated memory96.21GiB. These are pipeline
+measurements, not validation gains. First saved validation is259196 (+250);
+all startup proofs are complete and must be reused.
+
 Previous completed epoch, Nov6 05:04 UTC: the expanded training run and all final checks
 are complete. The user-authorized frozen pool contains
 **50,787 images**:40,000 official ProcTHOR and10,787 custom structural RGB,
