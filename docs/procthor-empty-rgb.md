@@ -79,10 +79,10 @@ with maximum1.867ms and peak allocated memory96.21GiB. These are pipeline
 measurements, not validation gains. First saved validation is259196 (+250);
 all startup proofs are complete and must be reused.
 
-The first six actual128 saved validations are complete. All six views retain
+The first eight actual128 saved validations are complete. All six views retain
 the same images, protocols, frozen teacher and support. Their32,000/64,000/
-96,000/128,000/160,000/192,000 committed RGB prefixes match the plan, including
-4,000/8,000/12,000/16,000/20,000/24,000 unique synthetic images with no repetition. All3,786 online
+96,000/128,000/160,000/192,000/224,000/256,000 committed RGB prefixes match the plan, including
+4,000/8,000/12,000/16,000/20,000/24,000/28,000/32,000 unique synthetic images with no repetition. All5,048 online
 validation scalars match numerically;
 each endpoint has37 equal integer/float representation differences only.
 
@@ -95,10 +95,13 @@ each endpoint has37 equal integer/float representation differences only.
 | +1000 /259946 |0.9646628006|0.9363029492|0.0955888441|
 | +1250 /260196 |0.9647164502|0.9362204487|0.0959826544|
 | +1500 /260446 |0.9646592495|0.9362024370|0.0971774676|
+| +1750 /260696 |0.9647315295|0.9362519977|0.0943507718|
+| +2000 /260946 |0.9645660295|0.9363477593|0.0953588753|
 | Same-population archive232288 |0.9647740929|0.9356613590|0.0921184475|
 
-All six early endpoints meet the numerical three-metric criterion against their immediate
-parent, but none meets it against the archive. At+500 LiDAR-reference AbsRel
+The first seven endpoints meet the numerical three-metric criterion against their immediate
+parent; the eighth (+2000) fails because spatial cosine falls below that parent.
+None meets the criterion against the archive. At+500 LiDAR-reference AbsRel
 is2.9834% lower than the parent and2.4241% higher than the archive. Spatial
 cosine declines between+250 and+500, while summary and the reference-depth metric
 improve; gains are not uniformly monotonic. This is not proof of a causal batch
@@ -139,6 +142,23 @@ mixed secondary results are retained; stronger feature cosines do not by
 themselves establish better decoded depth or physical wall-flatness. At07:13:14
 UTC the existing trainer has1,731 finite updates at260677; actual batch128,
 one forward per update, preserved viewer and zero OOM remain verified.
+
+The+1750/+2000 reviews preserve all six evaluation identities and verify
+224,000/256,000 actual RGB prefixes plus another1,262 exact online values.
+At+1750 all three primary metrics improve versus the parent, with LiDAR-reference
+AbsRel2.9842% lower. At+2000 spatial cosine falls to0.9645660295, below the
+parent0.9646147596; summary rises to0.9363477593 and LiDAR-reference AbsRel
+remains1.9476% lower than the parent (3.5177% above the archive). This is the
+first current-run endpoint without all three simultaneous improvements.
+Its score remains evidence of fluctuation, not a unique diagnosed cause.
+
+At+2000 structural317 cosines are0.9659929341/0.9824190100 with teacher-depth
+discrepancy8.4000% below the parent; ProcTHOR64 cosines are0.9758166699/
+0.9612071076 with discrepancy3.4263% below the parent. ProcTHOR discrepancy
+had been9.1419% worse at+1750, another nonmonotonic secondary result. At07:38:31
+UTC the trainer has2,250 finite actual128 updates at261196 and is evaluating
+that endpoint. No optimizer, data, loss or bound was changed; all old proofs
+are reused and the fixed single pass continues without an extra epoch.
 
 Previous completed epoch, Nov6 05:04 UTC: the expanded training run and all final checks
 are complete. The user-authorized frozen pool contains
