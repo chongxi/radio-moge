@@ -1,4 +1,4 @@
-"""Extend the closed 40,890 RGB pool with reviewed, disjoint structural batches."""
+"""Extend the closed 46,844 RGB pool with the last two reviewed structural batches."""
 import argparse
 from collections import Counter
 import json
@@ -9,33 +9,43 @@ from radio_moge.geometry_cache import publish_json
 from prepare_room_rgb_pool import check_rows, overlap
 
 
+def check_review(closure, frozen, visual):
+    if (frozen['stage'] != 'frozen_verified_structural_feature_rgb'
+            or frozen['split'] != 'train' or not frozen['feature_training_eligible']
+            or not frozen['every_selected_rgb_decoded_and_hashed']
+            or closure['manifest'] != frozen['manifest']
+            or closure.get('images', closure.get('qualified_images')) != frozen['images']
+            or visual['source_report'] != closure['freeze']
+            or not visual['all64_images_actually_viewed']
+            or not visual['all16_pages_actually_viewed']
+            or visual['new_exclusions'] or not visual['feature_rgb_data_eligible']
+            or visual.get('rejected_image_admitted', False)
+            or visual.get('replacement_images', 0)):
+        raise ValueError('New batch lacks its exact freeze and actual sampled review')
+    if visual.get('rejected_diagnostic_images', 0):
+        if (visual['rejected_diagnostic_images'] != 1 or visual['admitted_sample_images'] != 63
+                or visual.get('rejected_image_admitted') is not False):
+            raise ValueError('Rejected review-only images must remain outside the training population')
+
+
 def prepare(request, output):
     parent = checked_json(request['parent_pool'])
-    if parent['stage'] != 'frozen_room_feature_pool_ready' or parent['images'] != 40890:
+    if parent['stage'] != 'frozen_room_full_epoch_pool_ready' or parent['images'] != 46844:
         raise ValueError('Expected the already qualified parent room pool')
     proofs = [parent]
     for reference in request['new_closures']:
         closure = checked_json(reference)
         frozen = checked_json(closure['freeze'])
         visual = checked_json(closure['visual_review'])
-        if (frozen['stage'] != 'frozen_verified_structural_feature_rgb'
-                or frozen['split'] != 'train' or not frozen['feature_training_eligible']
-                or not frozen['every_selected_rgb_decoded_and_hashed']
-                or closure['manifest'] != frozen['manifest']
-                or closure['images'] != frozen['images']
-                or visual['source_report'] != closure['freeze']
-                or not visual['all64_images_actually_viewed']
-                or not visual['all16_pages_actually_viewed']
-                or visual['new_exclusions'] or not visual['feature_rgb_data_eligible']):
-            raise ValueError('New batch lacks its exact freeze and actual sampled review')
+        check_review(closure, frozen, visual)
         proofs.append(frozen)
     paths = [checked_path(p['manifest']) for p in proofs]
     contents = [p.read_bytes() for p in paths]
     if any(not c.endswith(b'\n') for c in contents):
         raise ValueError('Manifest is not closed')
     populations = [[json.loads(line) for line in c.splitlines()] for c in contents]
-    if [len(p) for p in populations] != [40890, 1984, 1984, 1986]:
-        raise ValueError('The authorized 46,844-image scope changed')
+    if [len(p) for p in populations] != [46844, 1981, 1962]:
+        raise ValueError('The authorized 50,787-image scope changed')
     validations = []
     for reference in request['validation_manifests']:
         rows = [json.loads(line) for line in checked_path(reference).read_text().splitlines()]
@@ -57,9 +67,9 @@ def prepare(request, output):
     rows = [r for population in populations for r in population]
     counts = dict(Counter(r['dataset'] for r in rows))
     projections = dict(Counter(r['projection'] for r in rows))
-    if counts != dict(procthor_empty=40000, structural_rooms=6844):
+    if counts != dict(procthor_empty=40000, structural_rooms=10787):
         raise ValueError('Source counts changed')
-    if projections != dict(perspective=46154, orthographic=690):
+    if projections != dict(perspective=49699, orthographic=1088):
         raise ValueError('Projection counts changed')
     output.mkdir(exist_ok=False)
     incoming = output / 'rgb.jsonl.incoming'

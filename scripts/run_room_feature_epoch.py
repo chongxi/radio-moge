@@ -1,4 +1,4 @@
-"""One complete, audited permutation of the frozen 46,844 room RGB images."""
+"""One complete, audited permutation of the frozen 50,787 room RGB images."""
 import argparse
 from collections import Counter
 from copy import deepcopy
@@ -12,7 +12,7 @@ import torch
 
 from radio_moge.checkpoint import atomic_json
 from radio_moge.corpus_admission import checked_json, checked_path, file_ref
-from radio_moge.data import check_split, read_manifest
+from radio_moge.data import DeterministicBatches, check_split, read_manifest
 from radio_moge.geometry_cache import publish_json, sha_file
 from radio_moge.rgb_input_audit import RGBInputAudit, load_reference_records
 from radio_moge.rgb_replacement import ReplacementRecords, ReplacementBatches, validate_replacement
@@ -21,10 +21,27 @@ from prepare_room_rgb_pool import check_rows
 from run_feature_reference import observe_reference_model
 from run_room_feature_mix import initial_state_check
 
-IMAGES = 46844
-UPDATES = IMAGES // 4
+IMAGES = 50787
+UPDATES = (IMAGES + 3) // 4
 SECONDS = 28800
-SOURCES = dict(procthor_empty=40000, structural_rooms=6844)
+SOURCES = dict(procthor_empty=40000, structural_rooms=10787)
+TAIL_POLICY = 'remaining_unique_synthetic_then_original_slots'
+
+
+class SingleEpochBatches(ReplacementBatches):
+    """Retain original slots after the one synthetic permutation is exhausted.
+
+    The final update can have fewer than four synthetic images. It still has
+    32 images, with unchanged original keys filling the remaining slots. Any
+    unused prefetch beyond this endpoint also stays original, never wrapping.
+    """
+    def __iter__(self):
+        real = DeterministicBatches(self.records.real_size, self.batch_size, self.buckets,
+            self.seed, self.spec['real_start_cursor'] + self.start, self.count)
+        limit = self.records.synthetic_size * self.spec['every_images']
+        for absolute, (mixed, original) in enumerate(zip(super().__iter__(), real, strict=True), self.start):
+            yield [key if absolute*self.batch_size+offset < limit else old
+                   for offset, (key, old) in enumerate(zip(mixed, original, strict=True))]
 
 
 def real_cursor(parent):
@@ -40,6 +57,7 @@ def check_epoch_contract(config, parent, plan):
     spec = config['data']['rgb_replacement']
     perf = parent['performance']
     if (plan.get('authorized') is not True or plan.get('coverage_goal') != 'every_frozen_synthetic_rgb_once'
+            or plan.get('tail_policy') != TAIL_POLICY
             or plan['synthetic_images'] != IMAGES or plan['additional_updates'] != UPDATES
             or plan['maximum_training_seconds'] != SECONDS
             or plan['source_step'] != parent['step'] or plan['source_parent_cursor'] != parent['cursor']
@@ -67,6 +85,7 @@ class Coverage:
         self.real_size = real_size
         self.identities = [(r['image'], r['sha256'], r['dataset']) for r in synthetic]
         self.counts = [0] * len(synthetic)
+        self.used = 0
 
     def validate(self, rows):
         indices = []
@@ -83,13 +102,15 @@ class Coverage:
             if self.counts[index] or index in indices:
                 raise ValueError('A synthetic image repeated before the complete epoch ended')
             indices.append(index)
-        if len(indices) != 4:
-            raise ValueError('Each update must contain four synthetic images')
+        expected = min(4, len(self.counts)-self.used)
+        if expected <= 0 or len(indices) != expected:
+            raise ValueError('Each update must contain the remaining unique synthetic slots, up to four')
         return indices
 
     def commit(self, indices):
         for index in indices:
             self.counts[index] += 1
+        self.used += len(indices)
 
     def report(self):
         return dict(expected=len(self.counts), committed=sum(self.counts),
@@ -126,7 +147,7 @@ class EpochAudit(RGBInputAudit):
         check_split(real, synthetic)
         self.records = ReplacementRecords(real, synthetic)
         self.coverage = Coverage(len(real), synthetic)
-        self.planned_keys = [list(k) for batch in ReplacementBatches(self.records,
+        self.planned_keys = [list(k) for batch in SingleEpochBatches(self.records,
             self.config['data']['rgb_replacement'], 4, self.config['data']['buckets'],
             self.config['train']['seed'], 0, UPDATES*8) for k in batch]
         indices = [k[0]-len(real) for k in self.planned_keys if k[0] >= len(real)]
@@ -144,6 +165,8 @@ class EpochAudit(RGBInputAudit):
             real_start_cursor=real_cursor(self.parent), parent_mixed_cursor=self.parent['cursor'],
             real_unreplaced_keys_preserved=True, hashes_checked_on_each_consumed_rgb=True,
             full_batch_images=32, synthetic_images_per_update=4, geometry_loss=False,
+            last_update_synthetic_images=IMAGES-4*(UPDATES-1),
+            last_update_original_images=32-(IMAGES-4*(UPDATES-1)), tail_policy=TAIL_POLICY,
             seconds=time.monotonic()-started))
         return self.records
 
@@ -160,7 +183,8 @@ class EpochAudit(RGBInputAudit):
             expected_sources={r['dataset'] for r in records},
             extra_probe_keys=[(i, 43+j, h, w) for h, w in config['data']['buckets']
                 for j, i in enumerate([i for i, r in enumerate(records)
-                                      if r.get('projection') == 'orthographic'][:4])])
+                                      if r.get('projection') == 'orthographic'][:4])]
+                + self.planned_keys[-32:])
         publish_json(self.root/'mixed-model-zero-update.json', proof)
         baseline = checked_json(self.plan['source_results'])
         if baseline['step'] != self.parent['step'] or len(baseline['views']) != 6:
@@ -227,6 +251,8 @@ def run(plan_path):
             if config['output_dir'] != str(root/'training'):
                 raise ValueError('Separate training output required')
             code, previous = Path(__file__).resolve().parents[1], Path(plan['source_execution'])
+            if checked_path(plan['runner']) != Path(__file__).resolve():
+                raise ValueError('The frozen single-epoch sampler/runner changed')
             names = ('train.py', 'data.py', 'losses.py', 'system.py', 'performance.py', 'prefetch.py',
                 'evaluate.py', 'decoder.py', 'adapters.py', 'architecture_screen.py',
                 'attention_tricks.py', 'feature_refinement.py', 'rgb_replacement.py', 'rgb_input_audit.py')
@@ -240,7 +266,7 @@ def run(plan_path):
             performance = deepcopy(parent['performance'])
             performance.update(anchor_step=parent['step'], anchor_cursor=0,
                 anchor_schedule_position=float(parent['step']), original_started_at=time.time(),
-                data_policy='Continue original real cursor; exactly4/32 synthetic slots; all46844 once',
+                data_policy='Continue original real cursor; up to4/32 synthetic slots; all50787 once; final3+29',
                 lr_policy='Preserve full parent Adam/RNG/RMS; unchanged constant1e-5')
             audit = EpochAudit(root, plan, config, parent, progress)
             save = trainer.atomic_save
@@ -256,7 +282,8 @@ def run(plan_path):
                         optimizer_updates=0, data_digests=value['data_digests'], performance=performance))
                 else:
                     save(value, path)
-            with patch.object(trainer, 'atomic_save', checked_save):
+            with patch.object(trainer, 'atomic_save', checked_save), \
+                    patch.object(trainer, 'ReplacementBatches', SingleEpochBatches):
                 final = trainer.train(config, fork_from=source, data_fork=True, performance=performance,
                     reference=audit, execution_revision=plan['execution_revision'])
             stop = json.loads((root/'training/stop-report.json').read_text())

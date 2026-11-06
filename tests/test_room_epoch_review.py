@@ -5,7 +5,7 @@ import math
 import pytest
 
 from review_room_feature_epoch import VIEWS, check_identity, committed_prefix, endpoints
-from run_room_feature_epoch import IMAGES, UPDATES
+from run_room_feature_epoch import IMAGES, UPDATES, SOURCES
 from verify_room_epoch_finish import check_closure
 from verify_room_epoch_online import exact_values, metadata_differences
 
@@ -76,7 +76,7 @@ def test_saved_prefix_counts_committed_identities_not_total_steps(tmp_path, muta
 def closed():
     coverage = dict(expected=IMAGES, committed=IMAGES, unique=IMAGES, missing=0,
                     repeated=0, each_image_exactly_once=True)
-    sources = dict(procthor_empty=40000, structural_rooms=6844, original=UPDATES*28)
+    sources = dict(**SOURCES, original=UPDATES*32-IMAGES)
     audit = dict(optimizer_updates=UPDATES, cursor=UPDATES*8, presentations=UPDATES*32,
         planned_keys_matched=True, unused_prefetch_excluded=True, actual_compute_groups_verified=True,
         source_counts=sources, resolution_counts={'three_resolutions':UPDATES*32}, records={'sha256':'full'})
@@ -104,13 +104,13 @@ def test_final_epoch_requires_independent_full_count_and_same_closed_audit(mutat
     elif mutation == 'hash': args[3]['actual_inputs']['actual_input_prefix']['sha256'] = 'different'
     elif mutation == 'geometry': args[1]['geometry_supervision'] = {}
     if mutation is None:
-        assert check_closure(*args) == 246249
+        assert check_closure(*args) == 234538+UPDATES
     else:
         with pytest.raises(ValueError): check_closure(*args)
 
 
 def test_validation_schedule_includes_short_final_interval():
-    assert endpoints(234538) == [234538+n for n in range(1000, 12000, 1000)] + [246249]
+    assert endpoints(234538) == [234538+n for n in range(1000, 13000, 1000)] + [234538+UPDATES]
 
 
 def test_online_keeps_logged_values_exact_and_bounds_only_metadata_serialization():
