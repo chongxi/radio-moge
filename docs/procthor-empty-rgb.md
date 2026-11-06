@@ -6,8 +6,8 @@ Generation uses official ProcTHOR houses and custom structural rooms rendered
 in the same pinned simulator; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov6 04:29 UTC: the user explicitly requested expanding the next
-training run to the latest qualified dataset. The new frozen pool contains
+Current state, Nov6 05:04 UTC: the expanded training run and all final checks
+are complete. The user-authorized frozen pool contains
 **50,787 images**:40,000 official ProcTHOR and10,787 custom structural RGB,
 including3,943 images generated after the previous frozen epoch. Its50,787 rows
 preserve all earlier input bytes. Cross-batch image/group/pixel/layout checks and
@@ -19,21 +19,24 @@ Pool manifest SHA`1173ca7e84f2939ae15de47988ec42e402a4228f1e817fbb25b954e6f1a266
 
 `room-feature-full-epoch-50787-training-01` launched at02:04:08 UTC under the
 original GPU lock, wrapper409645/trainer409646. Immutable execution is
-`code-room-full-epoch-v2` / `00f95a8`. W&B run`20d7e04c` is active. The first
-11,516 actual updates are finite; the latest periodic11,500-update coverage records
-46,000 unique synthetic images and zero repetitions, with4,787 still missing.
-The first eleven saved validations and online comparisons are complete. The root status counter remains0 until closure; committed train.jsonl
-and coverage-progress.json are the live counters. Geometry remains off and all
-four feature weights remain1. Do not launch another copy.
+`code-room-full-epoch-v2` / `00f95a8`. It finished normally at04:46 UTC after
+12,697 finite updates, final step258946. Both processes exited and W&B
+run`20d7e04c` is finished. All50,787 synthetic images were presented exactly
+once, with zero omissions or repetitions. All13 saved validations and8,203
+online scalar comparisons are complete and numerically exact. Geometry stayed
+off and all four feature weights stayed1. No optimizer or generator remains
+active, and no additional epoch or deployment was launched.
 
 The new parent is the verified final246249 checkpoint, preserving its full Adam,
 adapter,RMS and RNG state. Original logical cursor111688 continues from
 18000+93688; the explicitly new mixed cursor begins at0. The three resolutions,
-effective batch32 and LR1e-5 remain. A single synthetic permutation takes12,697
+effective batch32 and LR1e-5 remained. A single synthetic permutation took12,697
 updates to258946. The last update uses3 synthetic and29 original images, so all
 50,787 synthetic images can appear exactly once without padding by repetition.
-Total planned presentations are406,304, including355,517 original RGB images.
-The bound is28,800s, outer29,400s, with no automatic retry or extra epoch.
+The actual406,304 presentations include355,517 original RGB presentations.
+This is one complete pass over the synthetic pool, not the full original RGB
+pool. It reached the step bound within9,709.19 seconds including startup and
+final evaluation; the unchanged time bound was28,800s, outer29,400s.
 
 The scoped single-epoch sampler leaves all other original keys unchanged, also
 on resume and unused prefetch. The core training, losses, models, data transforms
@@ -63,8 +66,11 @@ No model, checkpoint or startup proof needs to be repeated.
 
 All six saved parent views are reused without baseline inference. Saved reviews
 and online checks are scheduled every1,000 updates and at final258946; comparison
-remains both original cosines up and independent LiDAR AbsRel down, against both
-the immediate parent and the same-population archive. No final coverage is claimed.
+remains both original cosines up and iPhone-LiDAR-reference AbsRel down, against
+both the immediate parent and the same-population archive. Full final coverage
+and all100 Adam counters at258946 are verified. The sensor metric is not an
+independent physical calibration or a wall-flatness measurement; see the new
+metric audit below.
 No generation or ScanNet geometry work resumes.
 
 The first saved six-view review at247249 (+1,000 updates) retains all image,
@@ -96,6 +102,8 @@ student depth AbsRel against the ScanNet++ LiDAR reference.
 | Expanded epoch +9,000 /255249 |0.9646997786|0.9363011115|0.0949404479|
 | Expanded epoch +10,000 /256249 |0.9646211579|0.9363219419|0.0954678102|
 | Expanded epoch +11,000 /257249 |0.9645506524|0.9361307469|0.0948617947|
+| Expanded epoch +12,000 /258249 |0.9644747915|0.9360612218|0.0972581755|
+| Expanded epoch final +12,697 /258946 |0.9646147596|0.9360840607|0.0972530157|
 | Same-population archive232288 |0.9647740929|0.9356613590|0.0921184475|
 
 At the first validation, summary rises, but spatial falls and LiDAR is1.2827% worse than the parent,
@@ -204,6 +212,70 @@ discrepancy is now 7.4092% worse than the parent. ProcTHOR64 cosines are
 Feature and decoded-depth metrics remain distinct; these fluctuations establish
 neither a cause nor improved real-wall planarity. The existing run continues to
 its fixed final step258946, followed by full coverage and final-state checks.
+
+Those final checks are now complete. The last two saved reviews retain all six
+populations, image identities, protocols, teacher values and support. Their
+384,000 and406,304 actual input presentations match the plan. Final coverage is
+40,000 official-room and10,787 structural identities, each once. Final CPU
+readback verifies all100 finite Adam states at258946, cursor101576, finite
+adapter/RNG state, unchanged RMS statistics, config, data and model revisions.
+The closed final checkpoint is preserved by hardlink, SHA
+`c5d1e6b2b98a54fd0031906d27d5c623a1448de62c9ba1dd09080c33a73d0840`.
+All13 endpoints have631 numerically exact online scalars each,8,203 total.
+The three known baseline display differences are exactly one ULP; no runtime
+configuration was changed. Final closure SHA
+`5d9cf4d6f30871d14791d495b43bc8b89ca6ebaef335052dd366c1116b1ce711`.
+The original controller's `quality_review_pending` field is historical and is
+superseded by that closure. Earlier235538 and246249 checkpoints remain intact.
+
+At the fixed final endpoint, primary spatial cosine rises only0.0000037509 and
+summary rises0.0001898234 versus the immediate parent. Published iPhone LiDAR
+AbsRel is3.6818% higher than the parent and5.5739% higher than the archive;
+archive spatial cosine also remains higher. The predefined numerical joint
+criterion therefore fails against both baselines. This is not a claim that real
+walls became less planar. Structural317 cosines reach0.9649753879/0.9811997077
+and its teacher-depth discrepancy falls15.5410% versus the parent. Official
+ProcTHOR64 reaches0.9756197520/0.9602337917 with discrepancy7.5941% lower.
+Synthetic agreement and real-scene physical accuracy remain separate claims.
+
+The user then questioned whether the LiDAR score itself was computed correctly.
+The new read-only `scannetpp-lidar-evaluation-audit-20261106-01` checks that
+question separately from the already completed training closure. Seven CPU
+fixtures pass. All120 prepared RGB/depth payload hashes match, and an independent
+mean of the120 stored image scores exactly reproduces both published scores.
+A bounded optimizer-free inference audit saves actual arrays for the same120
+images and both checkpoints. All240 re-evaluated student AbsRel values exactly
+match their original logs. Independent float64 NumPy AbsRel differs from the
+tensor implementation by at most2.711e-8; no arithmetic error was found.
+
+An independent native decoder and analytic distortion map reproduce every
+supported prepared value for eight frames in two scenes covering both actual
+compressed formats: uint16 millimeters and float32 meters. This is bounded unit
+and mapping evidence, not physical calibration of all120 views. The
+[publisher documents RGB-aligned iPhone depth at256x192](https://scannetpp.mlsg.cit.tum.de/scannetpp/documentation)
+and provides the [two decoding paths](https://github.com/scannetpp/scannetpp/blob/main/iphone/prepare_iphone_data.py).
+The iPhone reference is separate from the previously investigated mesh labels
+and panocam images. None of the120 manifest records contains a confidence map.
+
+The prepared768x576 depth is resized to480x640. Independent nearest-neighbor
+indexing initially disagrees at2,379,719 depth pixels across120 images, but all
+coordinate differences occur at exactly equidistant nearest-neighbor ties.
+Using the alternative tie rule yields parent/final AbsRel0.0938107574/
+0.0972726925, a3.6903% increase, so this convention does not explain the observed
+3.6818% increase. Neither the input nor the published metric was replaced.
+
+The primary score uses absolute metric depth, without GT scale fitting, and
+MoGe infers focal/shift rather than receiving the known sensor intrinsics.
+A separately labeled diagnostic fits one median scale per image: parent/final
+AbsRel becomes0.0497093317/0.0502954050, a1.1790% increase. This shows sensitivity
+to absolute scale; it is neither a replacement benchmark nor a proof of the
+cause. Twelve of30 scenes improve and18 worsen on the published score. These
+reused validation scenes do not establish statistical significance or a unique
+cause. Sensor calibration, reference noise, confidence, and direct wall-flatness
+measurements remain unproven. The earlier interpretation is narrowed to an
+increase on this particular iPhone-reference protocol, not demonstrated real
+geometry degradation. CPU/model/robustness reports are immutable; no training,
+source labels, thresholds or existing scores were changed.
 
 
 Previous completed state, Nov6 01:41 UTC: the user explicitly requested starting with the
