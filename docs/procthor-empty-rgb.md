@@ -6,7 +6,7 @@ Generation uses official ProcTHOR houses and custom structural rooms rendered
 in the same pinned simulator; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov6 02:04 UTC: the user explicitly requested expanding the next
+Current state, Nov6 02:25 UTC: the user explicitly requested expanding the next
 training run to the latest qualified dataset. The new frozen pool contains
 **50,787 images**:40,000 official ProcTHOR and10,787 custom structural RGB,
 including3,943 images generated after the previous frozen epoch. Its50,787 rows
@@ -19,10 +19,12 @@ Pool manifest SHA`1173ca7e84f2939ae15de47988ec42e402a4228f1e817fbb25b954e6f1a266
 
 `room-feature-full-epoch-50787-training-01` launched at02:04:08 UTC under the
 original GPU lock, wrapper409645/trainer409646. Immutable execution is
-`code-room-full-epoch-v2` / `00f95a8`. At publication it is loading original
-metadata; no actual optimizer update or new model/initial-state proof is claimed
-yet. Those mandatory checks run before the first update. No second copy should
-be launched. Geometry remains off and all four feature weights remain1.
+`code-room-full-epoch-v2` / `00f95a8`. W&B run`20d7e04c` is active. The first
+1,177 actual updates are finite; the latest periodic1,000-update coverage records
+4,000 unique synthetic images and zero repetitions, with46,787 still missing.
+First saved validation and its online comparison are complete. The root status counter remains0 until closure; committed train.jsonl
+and coverage-progress.json are the live counters. Geometry remains off and all
+four feature weights remain1. Do not launch another copy.
 
 The new parent is the verified final246249 checkpoint, preserving its full Adam,
 adapter,RMS and RNG state. Original logical cursor111688 continues from
@@ -43,11 +45,55 @@ commit-only audit, final review and exclusion bindings. Two earlier fixture-only
 failures lacked tiny-loader batch_size/seed; no runtime constraint was weakened.
 The actual model probe additionally includes the final32 planned presentations.
 
+The new actual CUDA/model gate passed41 cases/184 RGB presentations, including
+all sources/resolutions, the approved orthographic supplements and final32 keys.
+Original pixel parity, all frozen module state and restored RNG are exact. The
+actual independent trainer initial checkpoint preserves adapter,RMS,all100 Adam
+states,RNG and model revisions bitwise at246249, with new cursor0. Metadata loading
+finished in363.54s. The first20 committed updates contain640 images:60 official
+room,20 structural and560 original RGB. Original keys/crop seeds/buckets are
+exact, all feature terms retain weight1, losses/gradients are finite and the
+measured update norm is0.034979. Six saved parent views are reused without model
+inference. All382 first20 online training values are numerically exact. Only
+three allowed checkpoint-baseline display values differ by exactly one ULP;
+seven metadata and20 schedule values use equal integer/float forms. Config bytes
+remain unchanged. Actual startup closure SHA
+`481eee68312db590989929fe803d9cdf3f3955f3e773e810e3703c737d571c87`.
+No model, checkpoint or startup proof needs to be repeated.
+
 All six saved parent views are reused without baseline inference. Saved reviews
 and online checks are scheduled every1,000 updates and at final258946; comparison
 remains both original cosines up and independent LiDAR AbsRel down, against both
-the immediate parent and the same-population archive. No improvement or final
-coverage is claimed at launch. No generation or ScanNet geometry work resumes.
+the immediate parent and the same-population archive. No final coverage is claimed.
+No generation or ScanNet geometry work resumes.
+
+The first saved six-view review at247249 (+1,000 updates) retains all image,
+protocol, frozen-teacher and support identities. All32,000 actual inputs match
+planned keys:3,198 official-room,802 structural and28,000 original RGB. The4,000
+synthetic identities are unique. All631 online validation values match
+numerically;37 values differ only by equal integer/float representation.
+
+| Comparison | Spatial cosine | Summary cosine | LiDAR AbsRel |
+| --- | ---: | ---: | ---: |
+| Immediate parent246249 |0.9646110087|0.9358942373|0.0937995260|
+| Expanded epoch +1,000 /247249 |0.9645510395|0.9359580217|0.0950027198|
+| Same-population archive232288 |0.9647740929|0.9356613590|0.0921184475|
+
+Summary rises, but spatial falls and LiDAR is1.2827% worse than the parent,
+3.1310% worse than the archive. Both joint targets fail at this endpoint. The
+user-authorized complete image pass continues without changing inputs, learning
+rate or loss. Earlier candidates and the prior final checkpoint remain preserved;
+this result does not justify deploying the latest weights or claiming that
+longer training improves every metric.
+
+Structural317 cosines rise slightly to0.9629938352/0.9766264086, while decoded
+teacher-depth discrepancy worsens14.2320% to0.1002726873. Official-house64 cosines
+both decline and its teacher-depth discrepancy worsens7.9811%. Native400x640
+original cosines improve slightly; it remains a secondary view, not a substitute
+for the fixed primary criterion. No unique cause, significance or real-wall
+planarity gain is established. First-review closure SHA
+`80e9231a8ff36a008134ec7deba6762418f6f741a2e02d7acc49a592d905527a`.
+
 
 Previous completed state, Nov6 01:41 UTC: the user explicitly requested starting with the
 qualified data and passing **every new image through training**. A separate
