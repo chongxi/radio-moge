@@ -6,6 +6,40 @@ Generation uses official ProcTHOR houses and custom structural rooms rendered
 in the same pinned simulator; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
+**Completed LR comparison, Nov6:** both matched arms finished1,000 actual128
+updates at263121. All128,000 input presentations per arm have identical bytes,
+including16,000 distinct synthetic and112,000 original presentations. Both
+started independently from262121 with preserved Adam/RMS/RNG; only the declared
+LR fields differ, with the same constant-scheduler reset. This fixed comparison
+budget is not a full50,787-image epoch. All eight saved six-view validations and
+all5,048 online validation scalar values are verified. Both final checkpoints
+are preserved, finite, with100 Adam states at263121/cursor32000 and unchanged
+RMS/data/config identities. Both W&B runs finished and all training processes
+exited; no extra training or deployment started.
+
+| Fixed endpoint | Primary spatial cos | Primary summary cos | LiDAR reference AbsRel |
+| --- | ---: | ---: | ---: |
+| Common262121 start | 0.9646276428 | 0.9362591955 | 0.0963093091 |
+| LR1e-5, +1,000 | 0.9646639170 | 0.9363278162 | 0.0957372693 |
+| LR2e-5, +1,000 | 0.9645971339 | 0.9362241694 | 0.0957647715 |
+
+The primary cosines are the fixed1,012-image, six-dataset equal macro average,
+not all training images. At the predefined final endpoint,2e-5 is lower on
+both primary cosines and has0.0287% higher LiDAR reference error than1e-5.
+The differences are small; this one pair establishes neither statistical
+significance nor a universal LR rule. It supports retaining1e-5 for a future
+authorized run. The1e-5 arm passes the parent joint criterion;2e-5 fails it.
+Neither passes the archive232288 joint criterion. No best endpoint was selected.
+
+The separate synthetic final comparisons also favor1e-5: both cosines are
+lower at2e-5 on structural317 and ProcTHOR64, with teacher-depth discrepancy
+7.5532% and5.0823% higher, respectively. All six views and every metric remain
+in `room-feature-lr-pair-01/results-review-01/report.json`, SHA
+`656e2587dc033ba869dee29329718f49ac66220e14fbfbade10161be4d002846`.
+Full closure is `results-closure-01/report.json`; the controller's original
+`training_complete_review_pending` receipt is historical and is preserved.
+No inference, earlier proof or first-arm checkpoint readback was repeated.
+
 Nov6 19:12 UTC: the user authorized a matched LR comparison after the completed
 actual128 epoch. The new frozen arms start independently from checkpoint262121,
 preserve all100 Adam states, RMS and RNG, and compare constant1e-5 against2e-5.
