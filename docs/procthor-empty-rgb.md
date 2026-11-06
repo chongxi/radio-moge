@@ -6,7 +6,7 @@ Generation uses official ProcTHOR houses and custom structural rooms rendered
 in the same pinned simulator; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov6 03:40 UTC: the user explicitly requested expanding the next
+Current state, Nov6 04:03 UTC: the user explicitly requested expanding the next
 training run to the latest qualified dataset. The new frozen pool contains
 **50,787 images**:40,000 official ProcTHOR and10,787 custom structural RGB,
 including3,943 images generated after the previous frozen epoch. Its50,787 rows
@@ -20,9 +20,9 @@ Pool manifest SHA`1173ca7e84f2939ae15de47988ec42e402a4228f1e817fbb25b954e6f1a266
 `room-feature-full-epoch-50787-training-01` launched at02:04:08 UTC under the
 original GPU lock, wrapper409645/trainer409646. Immutable execution is
 `code-room-full-epoch-v2` / `00f95a8`. W&B run`20d7e04c` is active. The first
-7,401 actual updates are finite; the latest periodic7,250-update coverage records
-29,000 unique synthetic images and zero repetitions, with21,787 still missing.
-The first seven saved validations and online comparisons are complete. The root status counter remains0 until closure; committed train.jsonl
+9,347 actual updates are finite; the latest periodic9,250-update coverage records
+37,000 unique synthetic images and zero repetitions, with13,787 still missing.
+The first nine saved validations and online comparisons are complete. The root status counter remains0 until closure; committed train.jsonl
 and coverage-progress.json are the live counters. Geometry remains off and all
 four feature weights remain1. Do not launch another copy.
 
@@ -73,6 +73,15 @@ planned keys:3,198 official-room,802 structural and28,000 original RGB. The4,000
 synthetic identities are unique. All631 online validation values match
 numerically;37 values differ only by equal integer/float representation.
 
+The primary cosine columns below are `original` view macro averages: first
+average within each of six datasets, then average those six values equally.
+The fixed 1,012-image population is ARKitScenes256, Hypersim256, IRS128,
+NYUv2116, Structured3D128 and TartanAir128. It contains real and synthetic
+sources. ProcTHOR64, structural317, ScanNet++ DSLR128 and LiDAR120 are separate
+views and do not enter these primary cosine averages. Cosines compare student
+and frozen MoGe-v2 teacher features; the primary LiDAR column separately uses
+student depth AbsRel against the ScanNet++ LiDAR reference.
+
 | Comparison | Spatial cosine | Summary cosine | LiDAR AbsRel |
 | --- | ---: | ---: | ---: |
 | Immediate parent246249 |0.9646110087|0.9358942373|0.0937995260|
@@ -83,6 +92,8 @@ numerically;37 values differ only by equal integer/float representation.
 | Expanded epoch +5,000 /251249 |0.9645651862|0.9359653671|0.0980188375|
 | Expanded epoch +6,000 /252249 |0.9646610397|0.9361102704|0.0977118384|
 | Expanded epoch +7,000 /253249 |0.9646985648|0.9360524568|0.0959907461|
+| Expanded epoch +8,000 /254249 |0.9645417578|0.9361976697|0.0951506437|
+| Expanded epoch +9,000 /255249 |0.9646997786|0.9363011115|0.0949404479|
 | Same-population archive232288 |0.9647740929|0.9356613590|0.0921184475|
 
 At the first validation, summary rises, but spatial falls and LiDAR is1.2827% worse than the parent,
@@ -158,6 +169,22 @@ lower than the parent, less favorable than at +5,000. Official-house64 cosines
 both exceed the parent while teacher-depth discrepancy is 1.6086% higher.
 These mixed changes do not establish causality or improved real-wall planarity.
 The fixed single pass continues without input, loss or learning-rate changes.
+
+The +8,000 and +9,000 saved reviews preserve all six view identities, protocols,
+teacher values and support. All 256,000 and 288,000 actual input keys match
+the plan, with 32,000 and 36,000 unique synthetic images and zero repetitions.
+All 1,262 new online values are numerically exact, with 37 equal integer/float
+representations per endpoint. No inference or checkpoint read was repeated.
+Closure SHA `9b08ece4823a093353215f5de4de374aa8e9c48feae7f98d9a526b6ee1a96af2`.
+
+At +9,000 both primary cosines exceed the immediate parent; spatial had dipped
+below it at +8,000. LiDAR continues recovering but remains 1.2163% worse than
+the parent and 3.0634% worse than the archive. Both joint criteria still fail.
+Structural317 cosines reach 0.9646387918/0.9798911650 and teacher-depth discrepancy
+is 10.0452% lower than the parent. ProcTHOR64 cosines reach
+0.9758128310/0.9594018944, with teacher-depth discrepancy 7.8963% lower. These
+synthetic results do not establish real-wall planarity or a causal explanation.
+Earlier best weights remain preserved; no automatic extra epoch or deployment.
 
 
 Previous completed state, Nov6 01:41 UTC: the user explicitly requested starting with the
