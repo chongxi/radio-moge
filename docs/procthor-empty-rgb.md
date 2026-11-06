@@ -42,6 +42,20 @@ These first-arm startup proofs are complete; the second arm and paired quality
 comparison are pending. Fixed final results and all six views will be compared;
 no best-checkpoint selection or higher-LR benefit is presumed.
 
+Nov6 19:45 UTC: the1e-5 reference arm passed its saved250/500-update six-view
+reviews, including32,000/64,000 actual RGB keys and4,000/8,000 unique synthetic
+presentations with no repeats. All1,262 online validation values matched
+numerically (37 equal integer/float representations per endpoint). At500,
+primary macro spatial/summary cosines were0.9647269617/0.9363057642 versus
+0.9646276428/0.9362591955 at262121; LiDAR reference AbsRel0.0960282073 was
+0.2919% lower than that parent, but worse than the250-update value. Both observed
+endpoints pass the parent joint criterion and fail the archive232288 criterion.
+Separate synthetic outcomes remain mixed: structural317 spatial rose, summary
+was slightly below its parent, and teacher-depth discrepancy fell3.2617%;
+ProcTHOR64 spatial fell, summary rose, and teacher-depth discrepancy rose5.1780%.
+These are reference-arm observations only. The2e-5 arm remains queued, so there
+is no higher-LR comparison result or real-world planarity conclusion yet.
+
 Completed run, Nov6 08:20 UTC: the user explicitly requested larger **actual**
 model batches (128 preferred, at least64), fast loading and batched inference,
 and authorized continuing training. `room-feature-truebatch128-50787-training-01`
