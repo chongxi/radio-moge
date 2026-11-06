@@ -6,7 +6,50 @@ Generation uses official ProcTHOR houses and custom structural rooms rendered
 in the same pinned simulator; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov6 01:41 UTC: the user explicitly requested starting with the
+Current state, Nov6 02:04 UTC: the user explicitly requested expanding the next
+training run to the latest qualified dataset. The new frozen pool contains
+**50,787 images**:40,000 official ProcTHOR and10,787 custom structural RGB,
+including3,943 images generated after the previous frozen epoch. Its50,787 rows
+preserve all earlier input bytes. Cross-batch image/group/pixel/layout checks and
+both fixed synthetic validation populations have zero exact overlap. Prior
+payload verification and actual sampled visual reviews are reused; quarantined
+scene493 and rejected diagnostic507-slot11 remain outside training. Projection
+labels remain explicit:49,699 perspective and1,088 approved orthographic views.
+Pool manifest SHA`1173ca7e84f2939ae15de47988ec42e402a4228f1e817fbb25b954e6f1a26637`.
+
+`room-feature-full-epoch-50787-training-01` launched at02:04:08 UTC under the
+original GPU lock, wrapper409645/trainer409646. Immutable execution is
+`code-room-full-epoch-v2` / `00f95a8`. At publication it is loading original
+metadata; no actual optimizer update or new model/initial-state proof is claimed
+yet. Those mandatory checks run before the first update. No second copy should
+be launched. Geometry remains off and all four feature weights remain1.
+
+The new parent is the verified final246249 checkpoint, preserving its full Adam,
+adapter,RMS and RNG state. Original logical cursor111688 continues from
+18000+93688; the explicitly new mixed cursor begins at0. The three resolutions,
+effective batch32 and LR1e-5 remain. A single synthetic permutation takes12,697
+updates to258946. The last update uses3 synthetic and29 original images, so all
+50,787 synthetic images can appear exactly once without padding by repetition.
+Total planned presentations are406,304, including355,517 original RGB images.
+The bound is28,800s, outer29,400s, with no automatic retry or extra epoch.
+
+The scoped single-epoch sampler leaves all other original keys unchanged, also
+on resume and unused prefetch. The core training, losses, models, data transforms
+and original sampler files are byte-identical to the previous execution. The
+modified wrapper is independently hash-bound; old model gates are not relabeled
+for the new configuration.63 local and63 remote CPU tests pass, including exact
+50,787 coverage, production-loader selection, tail/continuation semantics,
+commit-only audit, final review and exclusion bindings. Two earlier fixture-only
+failures lacked tiny-loader batch_size/seed; no runtime constraint was weakened.
+The actual model probe additionally includes the final32 planned presentations.
+
+All six saved parent views are reused without baseline inference. Saved reviews
+and online checks are scheduled every1,000 updates and at final258946; comparison
+remains both original cosines up and independent LiDAR AbsRel down, against both
+the immediate parent and the same-population archive. No improvement or final
+coverage is claimed at launch. No generation or ScanNet geometry work resumes.
+
+Previous completed state, Nov6 01:41 UTC: the user explicitly requested starting with the
 qualified data and passing **every new image through training**. A separate
 `room-feature-full-epoch-46844-training-01` has completed its11,711 updates and
 final evaluation normally at246249. Wrapper342237/trainer342238 exited; W&B run
