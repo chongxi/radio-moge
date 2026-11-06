@@ -6,7 +6,7 @@ Generation uses official ProcTHOR houses and custom structural rooms rendered
 in the same pinned simulator; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current state, Nov6 00:35 UTC: the user explicitly requested starting with the
+Current state, Nov6 00:59 UTC: the user explicitly requested starting with the
 qualified data and passing **every new image through training**. A separate
 `room-feature-full-epoch-46844-training-01` is now running under the original GPU
 lock, wrapper342237/trainer342238, immutable `code-room-full-epoch-v1` / `71c9d2b`.
@@ -51,11 +51,11 @@ representations. Configuration bytes are unchanged. Startup closure
 `room-feature-full-epoch-startup-closure-01/report.json` has SHA
 `256d6147f6bd3921dd5e54e0ddefdcd609f98d336d50431889e46b1f44b672e5`.
 Saved-result/full-coverage/final-online reviewers in `code-room-epoch-review-v1`
-(`47758c0`) passed22 local and22 remote CPU tests. All six scheduled validation
-reviews through6,000 updates are complete; final coverage and final checkpoint
-reviews remain. At00:35 UTC6,833 updates are finite, with no OOM. The periodic
-6,750-update coverage record contains27,000 distinct synthetic identities, zero
-repeats, and19,844 still missing. This is partial progress through the46,844-image
+(`47758c0`) passed22 local and22 remote CPU tests. All eight scheduled validation
+reviews through8,000 updates are complete; final coverage and final checkpoint
+reviews remain. At00:59 UTC8,819 updates are finite, with no OOM. The periodic
+8,750-update coverage record contains35,000 distinct synthetic identities, zero
+repeats, and11,844 still missing. This is partial progress through the46,844-image
 epoch.
 The runtime status keeps its startup update count until closure; use actual
 `training/train.jsonl` and committed `coverage-progress.json` for progress.
@@ -74,6 +74,8 @@ respectively. The original-validation comparison is:
 | +4,000 /238538 |0.9646226233|0.9358286189|0.0947856377|
 | +5,000 /239538 |0.9645942229|0.9359031434|0.0935841831|
 | +6,000 /240538 |0.9645106678|0.9358969830|0.0942630424|
+| +7,000 /241538 |0.9644845004|0.9358905418|0.0952495001|
+| +8,000 /242538 |0.9644182869|0.9358918334|0.0962238367|
 
 Both endpoints jointly improve the three primary metrics against this epoch's
 parent. LiDAR error is2.8256% lower at1,000 and0.5391% lower at2,000. The2,000
@@ -100,6 +102,16 @@ lower spatial cosine and higher LiDAR (+1.5911%/+2.3281%). At6,000 all three
 primary values are slightly worse than5,000; the1,000 checkpoint remains the best
 observed LiDAR endpoint in this epoch. No monotonic or causal gain is established.
 
+The7,000/8,000 saved reviews retain all six populations, image identities,
+protocols, teacher values and support. All28,000/32,000 committed synthetic
+identities are unique and match the plan. At7,000 the parent joint criterion still
+passes, with LiDAR0.2536% lower. At8,000 it fails for the first time in this epoch:
+spatial cosine is slightly below the parent and LiDAR is0.7667% higher, while
+summary cosine remains above the parent. LiDAR is3.3989%/4.4566% higher than
+archive232288 at the two endpoints. The archive joint criterion fails at both.
+The requested full-image pass continues unchanged, retaining the earlier1,000-step
+candidate; the latest weights are not assumed to be the best model.
+
 Unseen structural317 cosine reaches0.9581754851/0.9645105841 at2,000, compared
 with parent0.9510275748/0.9381207416; teacher-depth discrepancy is16.8250% lower.
 Official-house64 also improves both cosines. These remain synthetic validation
@@ -115,6 +127,14 @@ rises to0.9712064710. At6,000 both reach new observed highs,
 Official-house64 cosine reaches0.9742144151/0.9517380241. Its teacher-depth
 discrepancy worsens from5,000 to6,000 while remaining15.2131% below the parent,
 another reason to retain each metric's trajectory rather than claim uniform gains.
+At7,000 structural cosines dip to0.9611236335/0.9726681536. At8,000 they rise to
+0.9616520758/0.9740716027, but teacher-depth discrepancy rebounds from0.0822227726
+to0.1104664014, leaving only10.3780% improvement over the parent. Both saved
+endpoints have zero postprocessing failures and zero invalid depth fraction on
+the317 structural cases; this is not evidence of a unique cause. Higher feature
+cosine does not by itself establish improved decoded depth or flatter real walls.
+Official-house64 cosine at8,000 reaches0.9746606052/0.9530785996, with teacher-depth
+discrepancy0.0543011085. The source-specific results remain separate.
 
 The first parent-joint-improving checkpoint235538 is preserved by immutable
 hardlink under `checkpoint-235538-parent-joint-candidate-01`, SHA
@@ -139,6 +159,10 @@ equal integer/float representations each. New closure
 `room-feature-epoch-five-six-reviews-closure-01/report.json` binds these saved
 reviews and online checks. Earlier startup, model and checkpoint proofs were not
 repeated, and the running training configuration was not changed.
+The7,000/8,000 online checks also match all631 scalars per endpoint numerically,
+with37 equal integer/float representations each. The new saved-review closure is
+`room-feature-epoch-seven-eight-reviews-closure-01/report.json`. No model inference,
+checkpoint readback, test rerun or training mutation was needed for these reviews.
 
 Existing structural batch11 has closed100 scenes354–453 with1,981 RGB,
 19 rejected frames, zero duplicates and no held scenes. All1,981 encoded/pixel,
@@ -151,8 +175,8 @@ synthetic appearance limitations. This is a sampled review, not visual
 certification of all1,981 images. The batch has1,781 perspective and200 explicitly
 labelled orthographic views. Qualified available data totals48,825 images, while
 the active epoch's46,844-image manifest remains unchanged. Controller316684 has
-already advanced to batch12, scenes454–553; at00:35 it has50 closed scenes and991
-RGB, with12 rejected frames and one quarantined scene. That scene's14 held
+already advanced to batch12, scenes454–553; at00:59 it has87 closed scenes and1,724
+RGB, with19 rejected frames and one quarantined scene. That scene's14 held
 candidate frames and3 unattempted slots remain outside the candidate pool. There
 are zero duplicate frames. This is the existing third-invalid-frame quarantine
 policy, not a new exclusion or an optimizer failure. At final closure, only the
