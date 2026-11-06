@@ -21,9 +21,15 @@ history remain. Both arms retain F1/G0. Wall bounds are5,400s per arm, with a
 or deployment. New current-checkpoint first/last actual128 model checks precede
 updates; earlier three-resolution throughput evidence is explicitly historical.
 The46 CPU contract, sampler, initial-state, tiny actual-loop and result-checking
-tests pass locally. GPU-machine tests and actual launch are pending at this
-documentation revision. Fixed final results and all six views will be compared;
-no best-checkpoint selection or higher-LR benefit is presumed.
+tests pass locally and remotely. Immutable `code-room-lr-pair-v1` / `39e1851`
+launched at19:14:33 UTC in `room-feature-lr-pair-01`, wrapper563782,
+controller563783, first-arm trainer563785. At19:15:41 the first arm had read
+262,144 original metadata rows; zero actual updates were verified yet. The
+controller starts the second arm only after the first completes its fixed
+budget, and compares both complete actual input hashes. New actual model,
+initial-state and startup proofs are pending, not inferred from CPU tests.
+Fixed final results and all six views will be compared; no best-checkpoint
+selection or higher-LR benefit is presumed.
 
 Completed run, Nov6 08:20 UTC: the user explicitly requested larger **actual**
 model batches (128 preferred, at least64), fast loading and batched inference,
