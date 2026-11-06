@@ -33,6 +33,15 @@ def probe(args):
         report = dict(stage='loading', rows=[], production_optimizer_updates=0,
                       optimizer_steps_by_probe=0, started_at=time.time(), plan=file_ref(args.plan))
         atomic_json(report, root / 'report.json')
+        if plan.get('reuse_64'):
+            prior = json.loads(checked_path(plan['reuse_64']).read_text())
+            prior_plan = json.loads(checked_path(prior['plan']).read_text())
+            if prior_plan['checkpoint'] != plan['checkpoint'] or prior_plan['input_prefix'] != plan['input_prefix']:
+                raise ValueError('Reused batch64 measurements have different inputs/weights')
+            reused = [r for r in prior['rows'] if r['batch'] == 64 and r['stage'] == 'passed']
+            if len(reused) != 3 or {tuple(r['bucket']) for r in reused} != {(480,640),(640,480),(400,640)}:
+                raise ValueError('Incomplete batch64 measurements')
+            report.update(rows=reused, reused_64=plan['reuse_64'])
         state = torch.load(checked_path(plan['checkpoint']), map_location='cpu',
                            mmap=True, weights_only=True)
         config = state['config']
@@ -62,7 +71,7 @@ def probe(args):
                       memory_fraction_limit=.88, viewer_preserved=True)
         atomic_json(report, root / 'report.json')
         del state
-        for batch in (64, 128):
+        for batch in ((128,) if plan.get('reuse_64') else (64, 128)):
             batch_failed = False
             for height, width in config['data']['buckets']:
                 if time.monotonic() - start > plan['max_seconds']:
@@ -134,6 +143,7 @@ def probe(args):
                         preparation_timings=windows.preparation_timings,
                         peak_allocated_gib=torch.cuda.max_memory_allocated()/2**30,
                         peak_reserved_gib=torch.cuda.max_memory_reserved()/2**30)
+                    atomic_json(dict(report, current=row), root / 'report.json')
                     windows.close()
                     windows = None
                     optimizer.zero_grad(set_to_none=True)
@@ -166,6 +176,12 @@ def probe(args):
                     row.update(stage='oom', error=str(e).split('\n')[0],
                                peak_allocated_gib=torch.cuda.max_memory_allocated()/2**30)
                     batch_failed = True
+                except RuntimeError as e:
+                    if row['stage'] != 'passed' or '32-bit index math' not in str(e):
+                        raise
+                    row['student_raw_inference'] = dict(batch=batch, stage='unsupported',
+                        error=str(e), training_forward_backward_passed=True,
+                        action='Keep actual student depth inference at tested batch64; do not silently split training')
                 finally:
                     image = features = target = prediction = loss = losses = raw = None
                     optimizer.zero_grad(set_to_none=True)
