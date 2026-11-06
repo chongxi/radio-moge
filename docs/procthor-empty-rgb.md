@@ -56,6 +56,36 @@ ProcTHOR64 spatial fell, summary rose, and teacher-depth discrepancy rose5.1780%
 These are reference-arm observations only. The2e-5 arm remains queued, so there
 is no higher-LR comparison result or real-world planarity conclusion yet.
 
+Nov6 20:05 UTC: the1e-5 reference arm finished all1,000 updates at263121 and
+all four saved six-view validations. Actual128,000 RGB presentations comprise
+12,688 ProcTHOR,3,312 structural and112,000 original images; the16,000 synthetic
+identities are unique and match the frozen plan. This is the comparison budget,
+not a full synthetic epoch. Final adapter/all100 Adam states are finite at
+263121, cursor32000, with unchanged RMS/config/data identities. The final
+checkpoint is preserved by a hardlink with SHA`beee224c45488aef53d476617c5d3d609a34e9cfc4b59815aaaea0ed2f8bd2de`.
+The complete actual input record SHA is
+`b4fd4a309ae3750f36fe97818bf490df2fc805f2a98de817e0382f69627adcab`;
+the second arm must match it. W&B`5a310516` is finished and all2,524 validation
+scalar values across the four endpoints are numerically exact. The two known
+baseline metadata display differences remain one ULP; training was unchanged.
+
+Final primary spatial/summary cosines are0.9646639170/0.9363278162, both above
+the common262121 parent. LiDAR reference AbsRel0.0957372693 is0.5940% below
+that parent and3.9284% above archive232288. All four reference endpoints pass
+the parent joint criterion and fail the archive criterion; changes are not
+monotonic. Separate structural317 spatial rises but summary falls slightly,
+with teacher-depth discrepancy1.0378% higher. ProcTHOR64 spatial falls slightly,
+summary rises, and teacher-depth discrepancy falls2.7155%. No physical
+planarity or higher-LR benefit is established from this reference arm.
+
+The original controller automatically started the2e-5 arm, trainer586053,
+at20:04:55 UTC, independently from the same262121 checkpoint. At20:05:30 it
+was reading original metadata (135,168 rows), with no verified optimizer
+updates yet. Its actual model/initial-state/startup proofs and the fixed final
+paired comparison remain pending. The first arm's full closure is recorded in
+`room-feature-lr-pair-01/lr1e-5/final-closure-01/report.json`; those proofs must
+be reused, with no repeated checkpoint readback or inference.
+
 Completed run, Nov6 08:20 UTC: the user explicitly requested larger **actual**
 model batches (128 preferred, at least64), fast loading and batched inference,
 and authorized continuing training. `room-feature-truebatch128-50787-training-01`
