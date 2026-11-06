@@ -6,13 +6,18 @@ Generation uses official ProcTHOR houses and custom structural rooms rendered
 in the same pinned simulator; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
-Current work, Nov6 05:55 UTC: the user explicitly requested larger **actual**
+Completed run, Nov6 08:20 UTC: the user explicitly requested larger **actual**
 model batches (128 preferred, at least64), fast loading and batched inference,
 and authorized continuing training. `room-feature-truebatch128-50787-training-01`
 launched at05:55:17 UTC, wrapper483459/trainer483460, from the verified258946
 checkpoint. Immutable execution `code-room-true-batch-epoch-v1` / `3180ddf`
-keeps all four feature weights1, geometry off, LR1e-5, all three resolutions,
+kept all four feature weights1, geometry off, LR1e-5, all three resolutions,
 Adam moments/RMS/RNG and the same50,787 synthetic plus1,597,911 original pool.
+It finished normally at the planned3,175 updates/global262121. Both training
+processes exited. All50,787 synthetic images were presented exactly once;
+406,400 total RGB presentations include355,613 original images. The fixed final
+checkpoint, all100 Adam states and cursor101600 passed CPU readback. No extra
+epoch or deployment was started.
 
 Each update now makes **one actual128-image forward/backward**, with16 synthetic
 and112 original images normally. The last update uses3 synthetic and125
@@ -79,12 +84,14 @@ with maximum1.867ms and peak allocated memory96.21GiB. These are pipeline
 measurements, not validation gains. First saved validation is259196 (+250);
 all startup proofs are complete and must be reused.
 
-The first eleven actual128 saved validations are complete. All six views retain
+All thirteen actual128 saved validations are complete. All six views retain
 the same images, protocols, frozen teacher and support. Every reviewed committed
-RGB prefix matches the plan. The latest (+2750) covers352,000 presentations,
-including44,000 unique synthetic images with no repetition. All6,941 online
-validation scalars match numerically;
-each endpoint has37 equal integer/float representation differences only.
+RGB prefix matches the plan. The final (+3175) covers406,400 presentations,
+including all50,787 synthetic images with no omissions or repetitions. All8,203
+online validation values match numerically and W&B`55dca03c` is finished. Each
+endpoint has37 equal integer/float representation differences only. The one
+previously bound baseline display ULP and seven metadata integer/float forms
+remain unchanged; actual final validation values have no numerical difference.
 
 | Actual128 comparison | Primary spatial cosine | Primary summary cosine | LiDAR-reference AbsRel |
 | --- | ---: | ---: | ---: |
@@ -100,9 +107,11 @@ each endpoint has37 equal integer/float representation differences only.
 | +2250 /261196 |0.9646356767|0.9364488603|0.0948713978|
 | +2500 /261446 |0.9645059323|0.9362618706|0.0974016903|
 | +2750 /261696 |0.9647176330|0.9363110939|0.0961006664|
+| +3000 /261946 |0.9646713266|0.9363431548|0.0960200150|
+| Fixed final+3175 /262121 |0.9646276428|0.9362591955|0.0963093091|
 | Same-population archive232288 |0.9647740929|0.9356613590|0.0921184475|
 
-Nine of these eleven endpoints meet the numerical three-metric criterion against
+Eleven of these thirteen endpoints meet the numerical three-metric criterion against
 their immediate parent. The exceptions are+2000 (spatial below parent) and+2500
 (spatial below and LiDAR-reference error above parent). None meets the criterion
 against the archive. At+500 LiDAR-reference AbsRel
@@ -178,7 +187,62 @@ discrepancy5.1693% below the parent. ProcTHOR64 has cosines0.9758289559/
 metrics remain in the paired reports. At08:05:18 UTC the existing trainer
 has2,916 finite actual128 updates at261862. Only the predefined+3000 and
 fixed final+3175 reviews remain; complete synthetic coverage and final state
-verification are still pending. No new epoch or deployment has been started.
+verification were still pending at that snapshot. No new epoch or deployment
+was started.
+
+The run subsequently reached its fixed endpoint and completed final evaluation
+in8,666.11 seconds (about2h24m, including startup and validation). All3,175
+committed updates were finite, used one actual128-image model forward, and
+preserved the feature-only contract. The measured update time sums to5,337.60s,
+or76.14 images/s excluding startup, validation and checkpoint work. Mean input
+queue wait is0.260ms, p951.170ms and maximum1.867ms; this is consumer wait with
+prefetch, not individual disk-decode latency. Peak allocated GPU memory is
+96.25GiB and OOM counters remain zero. Viewer3462 is preserved.
+
+At fixed final262121, spatial cosine rises by0.0000128831 and summary cosine by
+0.0001751348 versus the immediate parent258946. LiDAR-reference AbsRel is0.97036%
+lower. The spatial increase is very small, and the trajectory includes two
+joint failures, so this is a numerical endpoint improvement rather than an
+established stable or causal gain. Relative to archive232288, spatial remains
+0.0001464501 lower and LiDAR-reference error4.54943% higher; summary is higher.
+
+Final structural317 cosines are0.9656564223/0.9825944254 and teacher-depth
+discrepancy is5.04759% below the parent. ProcTHOR64 cosines are0.9760322012/
+0.9618501803, but its teacher-depth discrepancy is0.50359% higher. These synthetic
+feature gains do not establish physical wall-flatness or universal decoded-depth
+improvement. All other metrics remain in the six-view reports.
+
+The final checkpoint is preserved as
+`finish-verification-01/checkpoint-step262121.pt`, SHA
+`510ed857872d99e10b18bf60edcc86d96da9b55097e7ffead94c08fdd8ac7781`.
+The final readback verifies all100 finite Adam states at262121, cursor101600,
+unchanged RMS/statistics, config/model/data revisions and complete input coverage.
+Finish report SHA`25295bd5631018fc9681bebd0d9353dd03488bfa97d48c84803b1d677c3201a6`;
+fixed final six-view review SHA
+`3cb0d42c1a6fa69463dcce96bf828a58f3bef98f838560ef1a504649eb755bf4`.
+Historical bests, including235538/246249/258946, remain preserved. All generation
+is complete, and the user's stop on ScanNet geometry work remains in force.
+
+The original final-online checker stopped before publication because the API
+returned two rows with final optimizer_step262121: internal3186 is the last
+training row with every validation field null; internal3187 is the complete
+validation row. Cached and uncached bounded history tails are identical, so
+the observed mismatch is not resolved by bypassing cache. The diagnostic first
+used an unavailable SDK attribute and stopped before history reads; the actual
+SDK property is`lastHistoryStep`.
+
+Verifier-only revision`4bf3c9a`, preserved separately in
+`code-room-online-final-v2`, excludes only records whose requested validation
+fields are all null or absent. Partial records, duplicate complete results,
+missing results, numerical mismatches and nonfinite values still fail. Eleven
+local and eleven remote CPU checks passed, and the saved actual final row
+matches all631 values exactly numerically (37 equal integer/float forms).
+The training execution remains immutable3180ddf; no model, input, weight or
+optimizer changed. The corrected final online query passed and published SHA
+`5b9b372bf78b6417f3a272ea0f18af1b8bbebb8fa53b8035c7abcd08aa099c5a`.
+It records exactly one ignored null-only row and one complete final validation.
+All13 endpoints are now closed. The runner's old`finished_review_pending` status
+is historical; the finish/readback, paired reviews and online closure are complete.
 
 Previous completed epoch, Nov6 05:04 UTC: the expanded training run and all final checks
 are complete. The user-authorized frozen pool contains
