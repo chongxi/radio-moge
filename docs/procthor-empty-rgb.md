@@ -6,6 +6,25 @@ Generation uses official ProcTHOR houses and custom structural rooms rendered
 in the same pinned simulator; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
+Nov6 19:12 UTC: the user authorized a matched LR comparison after the completed
+actual128 epoch. The new frozen arms start independently from checkpoint262121,
+preserve all100 Adam states, RMS and RNG, and compare constant1e-5 against2e-5.
+Each arm has1,000 updates/128,000 RGB presentations (16,000 distinct synthetic
+plus112,000 original), with saved six-view validation every250 updates. This is
+a fixed comparison budget, not a full50,787-image epoch. Both use the same
+continued original cursor314864, synthetic permutation, augmentation seeds and
+one-resolution-per128 grouping; the full actual input bytes must match.
+The initial-state guard allows only Adam group `lr`/`initial_lr` changes and the
+same new constant-scheduler position; betas, epsilon, weight decay and moment
+history remain. Both arms retain F1/G0. Wall bounds are5,400s per arm, with a
+5,700s outer guard, sequential execution under the original GPU lock, no retry
+or deployment. New current-checkpoint first/last actual128 model checks precede
+updates; earlier three-resolution throughput evidence is explicitly historical.
+The46 CPU contract, sampler, initial-state, tiny actual-loop and result-checking
+tests pass locally. GPU-machine tests and actual launch are pending at this
+documentation revision. Fixed final results and all six views will be compared;
+no best-checkpoint selection or higher-LR benefit is presumed.
+
 Completed run, Nov6 08:20 UTC: the user explicitly requested larger **actual**
 model batches (128 preferred, at least64), fast loading and batched inference,
 and authorized continuing training. `room-feature-truebatch128-50787-training-01`
