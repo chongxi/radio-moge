@@ -79,10 +79,11 @@ with maximum1.867ms and peak allocated memory96.21GiB. These are pipeline
 measurements, not validation gains. First saved validation is259196 (+250);
 all startup proofs are complete and must be reused.
 
-The first two actual128 saved validations are complete. All six views retain
-the same images, protocols, frozen teacher and support. Their32,000/64,000
-committed RGB prefixes match the plan, including4,000/8,000 unique synthetic
-images with no repetition. All1,262 online validation scalars match numerically;
+The first four actual128 saved validations are complete. All six views retain
+the same images, protocols, frozen teacher and support. Their32,000/64,000/
+96,000/128,000 committed RGB prefixes match the plan, including4,000/8,000/
+12,000/16,000 unique synthetic images with no repetition. All2,524 online
+validation scalars match numerically;
 each endpoint has37 equal integer/float representation differences only.
 
 | Actual128 comparison | Primary spatial cosine | Primary summary cosine | LiDAR-reference AbsRel |
@@ -90,10 +91,12 @@ each endpoint has37 equal integer/float representation differences only.
 | Immediate parent258946 |0.9646147596|0.9360840607|0.0972530157|
 | +250 /259196 |0.9647335855|0.9361621222|0.0952842571|
 | +500 /259446 |0.9646708565|0.9362329607|0.0943515258|
+| +750 /259696 |0.9647070075|0.9362420658|0.0968443200|
+| +1000 /259946 |0.9646628006|0.9363029492|0.0955888441|
 | Same-population archive232288 |0.9647740929|0.9356613590|0.0921184475|
 
-Both early endpoints meet the three-metric criterion against their immediate
-parent, but neither meets it against the archive. At+500 LiDAR-reference AbsRel
+All four early endpoints meet the three-metric criterion against their immediate
+parent, but none meets it against the archive. At+500 LiDAR-reference AbsRel
 is2.9834% lower than the parent and2.4241% higher than the archive. Spatial
 cosine declines between+250 and+500, while summary and the reference-depth metric
 improve; gains are not uniformly monotonic. This is not proof of a causal batch
@@ -105,6 +108,18 @@ its teacher-depth discrepancy is essentially unchanged (-0.0086%). Synthetic
 populations remain separate from the primary six-dataset macro. At06:24:59 UTC
 the existing run is healthy at554 updates/259500; no input, loss, optimizer,
 inference protocol or training bound changed during these reviews.
+
+The new+750/+1000 reviews reuse the completed startup and earlier reviews.
+At+1000 both primary cosines remain above the parent; LiDAR-reference AbsRel
+is1.7112% below the parent and3.7673% above the archive. Its improvement over
+the parent was only0.4202% at+750, so depth gains are not monotonic. Summary
+cosine has risen at each of these four endpoints, while spatial fluctuates.
+Structural317 at+1000 reaches0.9655911464/0.9820425886 with teacher-depth
+discrepancy5.5595% below the parent. ProcTHOR64 reaches0.9758126494/0.9610970700
+with discrepancy5.4161% below the parent. These remain separate synthetic
+results, not evidence of physical wall-flatness or a unique batch-size cause.
+The06:49:01 UTC snapshot has1,140 finite updates at260086, all actual128 and
+one forward each; viewer3462 remains alive and OOM counters stay zero.
 
 Previous completed epoch, Nov6 05:04 UTC: the expanded training run and all final checks
 are complete. The user-authorized frozen pool contains
