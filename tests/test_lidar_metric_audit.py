@@ -48,3 +48,35 @@ def test_metric_aggregate_mean_can_differ_from_pooled_pixels():
     b=audit.reference_metrics(np.ones(3),np.ones(3))
     assert (a['abs_rel']+b['abs_rel'])/2 == .5
     assert audit.reference_metrics(np.array([2.,1.,1.,1.]),np.ones(4))['abs_rel']==.25
+
+
+def summary_module(monkeypatch):
+    import sys
+    monkeypatch.setitem(sys.modules,'audit_lidar_metric',audit)
+    spec=importlib.util.spec_from_file_location('lidar_summary',Path(__file__).parents[1]/'scripts/summarize_lidar_metric_audit.py')
+    module=importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_analytic_map_retains_registered_camera_rays(monkeypatch):
+    module=summary_module(monkeypatch)
+    mx,my=module.pixel_map({'parameters':[1400,1400,960,720,0,0,0,0]})
+    assert mx[300,300]==pytest.approx(100)
+    assert my[300,300]==pytest.approx(100)
+    assert mx[100,600]==pytest.approx(200)
+    assert my[100,600]==pytest.approx(100/3)
+
+
+def test_independent_native_float_codec_retains_metres_and_frame_indices(tmp_path,monkeypatch):
+    import zlib
+    module=summary_module(monkeypatch)
+    source=tmp_path/'depth.bin'
+    with source.open('wb') as f:
+        for depth in [1.25,2.5,3.75]:
+            payload=zlib.compress(np.full((192,256),depth,dtype='<f4').tobytes(),wbits=-zlib.MAX_WBITS)
+            f.write(len(payload).to_bytes(4,'little'))
+            f.write(payload)
+    result=module.native_selected(source,[1,2],'deflate_float32_metres')
+    assert set(result)=={1,2}
+    assert np.all(result[1]==2.5) and np.all(result[2]==3.75)
