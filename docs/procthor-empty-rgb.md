@@ -2037,3 +2037,27 @@ causal or real-world-planarity improvement is established. Closure SHA
 binds the complete six-view review and online check. The existing three-pass
 run continues at unchanged actual128/F1/G0/LR1e-5; next fixed review is
 global264121 (+1,000). Do not repeat the completed +500 or startup proofs.
+
+Nov7 07:37 UTC: the +1,000/global264121 saved six-view review is complete.
+All128,000 actual RGB keys match the planned prefix, including16,000 distinct
+synthetic images (12,688 ProcTHOR/3,312 structural) and112,000 original images.
+There are no within-pass repeats. All631 online validation scalar values match
+numerically, with37 equal integer/float representation differences. The first
+two endpoints now have1,262 verified online validation values. No model inference,
+checkpoint payload read, old result or startup check was repeated.
+
+The primary1,012-image macro cosines are0.964687818651/0.936400313379,
+respectively6.0200e-6/4.9240e-5 above the immediate Muon263121 parent. LiDAR
+AbsRel is0.095730342204, only0.005191% lower than parent (essentially flat).
+Thus the parent joint criterion passes numerically at this endpoint, without
+establishing significance or a stable trend. The archive joint criterion still
+fails: spatial remains lower and LiDAR AbsRel3.920924% higher than archive232288.
+Spatial declined versus +500 while summary and LiDAR improved; results are not
+monotonic. Structural317 cosines0.966557873912/0.983401935747 both exceed parent,
+but teacher-depth discrepancy increases2.207033%. ProcTHOR64 cosines rise to
+0.976243632846/0.962791934609 and teacher-depth discrepancy falls0.260957%.
+All six views/all metrics are bound by the review; there is no overall physical
+planarity, causal or statistically significant improvement claim. Closure SHA
+`d866ceab7b8f4aeecc191192dcbb571c65a29e4785222551623e8023fac6e458`
+binds this new review and online verification. The same bounded three-pass run
+continues unchanged; next review is +1,500/global264621 when committed.
