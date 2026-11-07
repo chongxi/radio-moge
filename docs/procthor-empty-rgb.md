@@ -2456,3 +2456,89 @@ final online verifier after the completed-run CPU check and final saved review.
 Keep the existing three-pass bound, actual128/F1/G0/LR1e-5 configuration,
 original GPU lock, viewer and all best checkpoints. No new optimizer, retry,
 extra pass, LR change or deployment is authorized by this progress update.
+
+Nov7 12:35 UTC: the existing three-pass Muon run stopped normally at its fixed
+9,525-update/global272646 limit. Wrapper660849 and trainer660850 have exited;
+viewer3462 remains alive and OOM counters remain zero. The producer reports
+final evaluation complete and all twenty predefined validation endpoints are
+committed. Its completion record's `quality_review_pending` field describes
+the state at publication; subsequent review evidence is recorded separately.
+The active-only observer's initial `ps --ppid` call returned1 because the
+trainer had exited. A new temporary observer handles an absent child and reads
+the completed artifacts; this was not a training failure or restart.
+
+The last three saved reviews (+9,000, +9,500 and fixed final +9,525) are now
+complete, with all six views' exact image/protocol/teacher/support identities
+preserved. The full actual input audit binds1,219,200 RGB presentations:
+120,000 ProcTHOR,32,361 structural and1,066,839 original images. Each frozen
+50,787-image synthetic pool was used exactly once in each of three passes,
+with all three identity count arrays equal to one and no within-pass repeats.
+The three complete passes apply to the new synthetic pool, not the entire
+1,597,911-image original pool. The final actual-input SHA is
+`c4803f9f98c2099f3bbfabfa47727f73298aa276de1dd22eaa378ab93a18b204`.
+
+The final CPU readback passes: all adapter and optimizer states and all9,525
+training rows are finite, fixed RMS/statistics and model/data/config/revisions
+are unchanged, cursor is304800,16 continued Muon states/group counters reach
+age10525, and84 auxiliary AdamW states reach272646. All updates used one
+actual128-image forward, four feature weights1 and no geometry loss, at LR1e-5.
+The preserved final checkpoint is hardlinked under
+`room-feature-muon-three-epochs-50787-training-01/finish-verification-01/checkpoint-step272646.pt`,
+SHA`943534362e85d5336cde00d6277cb550c2bbc0b180b1253054f1609de50639c8`.
+Final CPU report SHA is
+`835b9eee6fc2f56a993d48df8877ba3e331f22a159d7d089e5483a30472ac46f`.
+No model inference or optimizer updates were performed by these reviewers.
+
+At +9,000 primary cosines are0.964831478664/0.936512627916 and LiDAR AbsRel
+is0.095469591332 (-0.277557% parent). At +9,500 they are
+0.964848260009/0.936564084383 and0.095301644147 (-0.452986% parent).
+The fixed final endpoint reaches0.964865775802/0.936552661814 versus immediate
+Muon263121 parent0.964681798627/0.936351073495: absolute cosine increases
+0.000183977175/0.000201588319. Both also exceed archive232288's
+0.964774092884/0.935661359016. Both primary cosines exceed archive at the last
+eight fixed endpoints, but the final independent LiDAR AbsRel rebounds to
+0.096869836561,1.185064% worse than parent and5.157913% worse than archive.
+Thus +9,000/+9,500 pass the parent joint criterion and final fails;13/20 fixed
+endpoints pass parent,0/20 pass archive. The final is reported as fixed in
+advance, without substituting a favorable intermediate checkpoint.
+
+At final, all six views' mean spatial and summary cosines exceed parent.
+Structural317 reaches0.968372740016/0.985471062104, with teacher-depth
+discrepancy6.836302% lower; ProcTHOR64 reaches0.977096233517/0.965612616390,
+with discrepancy1.715118% lower. Five views' teacher-depth discrepancies
+decrease, while iPhone/LiDAR discrepancy increases0.898077%. Original and
+native GT AbsRel decrease0.710798% and1.145566%, respectively, alongside the
+independent LiDAR regression. Within the primary macro, all six datasets'
+spatial means rise, but IRS and TartanAir summary means fall by0.000083535910
+and0.000079668127. These are mixed feature/depth results, not every-image gains,
+physical wall-planarity certification, statistical significance or a unique
+optimizer effect. No automatic extra training or deployment follows.
+
+Only the last two periodic online checks (+9,000/+9,500) and the distinct final
+online check are running now. The former verifies those new endpoints in one
+history scan; the latter also verifies finished W&B state, provenance and the
+fixed full endpoint list. Final metrics are checked only by the final helper.
+All seventeen prior paired/online reviews, startup proofs and model checks
+remain complete and are reused.
+
+Nov7 12:42 UTC: both remaining periodic online checks and the final online
+check have completed successfully. All1,893 new validation scalars match
+numerically, completing12,620 comparisons across all twenty fixed endpoints;
+the442 startup scalars remain separate. W&B`f4567959` is finished. Final
+metadata retains only the same three previously documented baseline one-ULP
+serialization differences; training configuration and provenance are unchanged.
+There is no pending verifier, optimizer or generation job. Viewer3462 and the
+original GPU lock are preserved. No further wake-up or extra training is needed
+for the authorized three-pass run.
+
+Final review SHA is
+`352ecf596480739e3d9a9db135f6562907caaa855471e8544ffc8c0bf5871718`,
+final online proof SHA is
+`30949270208997bf97c9a3bb6a17f3af87bb6258264f9d2e27ab8310610e7360`,
+and complete closure SHA is
+`337bb9467923076d48eae188dc8cedff8427dfdaccdc17795095114c67f1700b`
+at `muon-continuation-preparation-20261107-01/final-closure-01.json`.
+The closure binds every original per-step online proof directly, including the
+two early endpoints whose summaries used a combined closure filename. No old
+verification was rerun. The final checkpoint and earlier best checkpoints are
+retained; no model was deployed or selected automatically as a replacement.
