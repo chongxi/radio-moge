@@ -134,6 +134,58 @@ discrepancy falls3.3415%; ProcTHOR64 spatial falls, summary rises, and that
 discrepancy increases5.4489%. Muon has not started; fixed final optimizer
 comparison, significance and real-world planarity remain unresolved.
 
+Nov7 01:29 UTC: reset-AdamW completed its fixed1,000 updates/global263121;
+trainer611617 exited normally and the existing controller611615 started Muon
+trainer633903 at01:15:27. The remaining750/final saved reviews and final CPU
+readback are complete. All four six-view validations retain identical image,
+protocol, teacher and support identities. All2,524 online validation values
+match numerically, and W&B`0c169f21` is finished. The128,000 actual RGB input
+bytes match continued AdamW exactly, including16,000 unique synthetic images
+(12,688 ProcTHOR and3,312 structural) plus112,000 original presentations.
+This is the fixed comparison budget, not a full50,787-image epoch. The final
+checkpoint is finite, preserves RMS/config/data identities and cursor32000,
+and has84 auxiliary Adam states at263121 plus16 core Adam states at age1000.
+Checkpoint SHA`a306f33d0459c17b21da2364d26fbe3680260b3ea1efbef56fab7d7e480c950c`;
+final closure SHA`64d2038d10abdde248967a0bd9580a4733e23298a226cef222fb1fb3219d5b62`.
+The old controller receipt saying review pending is historical; the separate
+closure is complete. These finished proofs must not be repeated.
+
+Reset-AdamW's fixed final primary spatial/summary cosines are
+0.964664730/0.936330270, and LiDAR reference AbsRel is0.095762393. Both cosines
+improve over the common262121 parent, with LiDAR error0.5679% lower; all four
+endpoints pass that parent joint criterion. All four fail archive232288:
+final spatial is lower and LiDAR error is3.9557% higher. Against continued
+AdamW at the same final1,000 updates, cosine differences are only
++0.000000812/+0.000002453, with LiDAR error0.02624% higher. There is no
+established reset advantage. Structural317 spatial rises but summary is
+slightly lower than the parent, and teacher-depth discrepancy increases0.9737%.
+ProcTHOR64 spatial falls, summary rises, and its discrepancy falls2.5380%.
+All six views and every fixed-final contrast are retained in the closure;
+no best endpoint was selected and no new inference was performed.
+
+Muon is now actually training:199 finite retained updates/global262320 were
+observed at01:29:15, with one actual128 tensor/forward per update, peak GPU
+95.46GiB and zero OOMs. Its initial adapter/RMS/RNG match the same262121 source;
+all84 auxiliary Adam moments/counters remain at262121 and16 fresh Muon states
+start at group step0. Both actual128 model cases pass, including finite
+temporary core/auxiliary updates and exact restoration before retained updates.
+The first/tail input keys, pixels, pre-update losses and model digests equal the
+reset control. The first temporary Muon optimizer call took52.15s including
+compilation; the warmed tail call took0.0203s. This is not a per-step52s cost.
+
+The first20 retained updates use exactly the same2,560 actual RGB input bytes
+as both controls (260 ProcTHOR,60 structural,2,240 original), with a measured
+nonzero update norm0.026568871. All442 online training values match numerically.
+Two saved-baseline metadata fields and the start timestamp have display-ULP
+differences; seven metadata/twenty training fields only differ in equal
+integer/float representation. No configuration changed. W&B`569aa52e` is
+running; startup closure SHA
+`a5063978cadacfa9c874fcc7837ed8fcb298d1ffef2ffcd0689db5de3277e0c1` binds all
+actual initial/model/input/online proofs. Do not repeat them. Muon's first
+250-update validation and the fixed-final optimizer comparison are pending.
+The existing bounds and pure-feature policy remain unchanged; no extra run,
+generation, geometry work or deployment was started.
+
 **Completed LR comparison, Nov6:** both matched arms finished1,000 actual128
 updates at263121. All128,000 input presentations per arm have identical bytes,
 including16,000 distinct synthetic and112,000 original presentations. Both
