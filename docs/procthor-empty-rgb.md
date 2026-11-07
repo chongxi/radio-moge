@@ -2211,3 +2211,61 @@ three-pass limit. Next fixed endpoints are +5,000/global268121 and
 +5,500/global268621. Multiple newly reviewed endpoints may share one invocation
 of the existing online helper with --steps STEP1 STEP2; already-verified
 endpoints must be excluded. No new training segment or deployment is launched.
+
+Nov7 10:09 UTC: +5,000/global268121 and +5,500/global268621 saved reviews are
+complete. All six views retain exact image/protocol/teacher/support identity.
+The actual640,000/704,000 RGB prefixes match the plan; second-pass coverage is
+29,200/37,200 distinct synthetic images, respectively, after the completed
+50,787-image first pass, with no within-pass repeats. The +5,500 prefix contains
+69,260 ProcTHOR,18,727 structural and616,013 original RGB presentations. The
+existing online helper is checking both NEW endpoints in one history scan;
+its running verification must not be duplicated. Earlier nine endpoints and
+their5,679 online scalars remain complete.
+
+At +5,000, primary spatial/summary cosines are0.964836152944/0.936510446259.
+Both exceed the immediate Muon263121 parent and archive232288 numerically;
+this is the first endpoint in this continuation with both primary cosines
+above that archive. LiDAR AbsRel0.094117627417 is1.689746% below parent but
+2.170228% above archive, so the parent joint criterion passes and the archive
+joint criterion still fails. The original and native-view GT AbsRel measures
+are1.485850% and0.604781% worse than parent despite the independent LiDAR gain.
+No overall depth improvement follows from that joint criterion alone.
+
+At +5,500, primary cosines are0.964734077328/0.936541841044. Both remain above
+parent; spatial falls below archive again while summary exceeds archive.
+LiDAR AbsRel0.095053705946 is0.711969% below parent and3.186396% above archive.
+Spatial and LiDAR regress versus +5,000 while summary increases. Both new
+endpoints pass the parent joint criterion, giving six passes among eleven
+saved endpoints; all eleven fail the archive joint criterion. Three successive
+endpoints (+4,500/+5,000/+5,500) now pass against parent, but this does not
+establish significance, monotonicity or a unique optimizer cause.
+
+All six fixed views have both mean feature cosines above parent at these two
+new endpoints. This is a statement about view-level averages, not every image
+or pixel. Structural317 at +5,500 reaches0.967798257664/0.984924631540, with
+teacher-depth discrepancy7.756477% below parent. ProcTHOR64 reaches
+0.976664657705/0.964773162268 and teacher-depth discrepancy3.277279% below parent;
+its spatial cosine and decoded discrepancy are worse than +5,000. DSLR
+teacher-depth discrepancy remains0.280372% above parent at +5,500. All metrics
+are retained in the six-view reports; real-wall planarity remains unproven.
+No baseline inference, previous review, startup check, checkpoint payload read,
+training configuration change or new optimizer launch was performed.
+
+Nov7 10:18 UTC: the single existing online scan for +5,000 and +5,500 has
+finished. All1,262 new scalar values match numerically, with37 equal integer/
+float representations per endpoint. Cumulative coverage is6,941 online
+validation values across eleven fixed endpoints; no verifier remains pending.
+The two closure SHAs are
+`a748af0bc6a0e604eeb8408f5c4247062b845808b91ce48c18fdc90f5a3d94cd`
+and `4d0c6bb7f57f45dbecc6f39136a23f1070f31456f4afc60282ddbe97e533461b`.
+The local periodic closure publisher now checks complete and partial pass
+counts from the fixed3,175-update/50,787-image contract, including each short
+tail; it only binds existing reviews and online reports and changes no trainer.
+
+At10:18:04 the original wrapper660849/trainer660850 remains active with5,964
+finite updates/global269085/cursor190848, no OOM and unchanged actual128/F1/G0/
+LR1e-5. Producer coverage at +5,900 reports43,600 distinct second-pass images;
+the independently reviewed +5,500 prefix contains37,200. Next fixed reviews
+are +6,000/global269121 and +6,500/global269621. The second pass ends at
++6,350/global269471 and the same job then continues the already-authorized
+third pass; no restart or new training segment is needed at that boundary.
