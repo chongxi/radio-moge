@@ -82,6 +82,19 @@ it is not evidence about any earlier training regression. The intended update
 rules, paired inputs and fixed budgets are unchanged. Fresh actual GPU gates
 are still required before retained updates in the new execution.
 
+Nov7 00:25 UTC: all28 targeted tests also pass remotely (8.23s). The other653
+Python files, including the trainer, match attempt01 exactly. A prelaunch
+comparison verifies both candidate configs differ from attempt01 only in output
+directory and tracking group; source weights/state, input plan, LR, losses,
+budgets and GPU lock are unchanged. Fresh immutable
+`code-room-optimizer-pair-v2` / `ffce69c` is running in
+`room-feature-optimizer-pair-02`, controller611615, first trainer611617,
+launched00:24:52 UTC. At00:25:18 it had read81,920 of1,597,911 original metadata
+rows; zero retained updates and no actual initial/model proof are reported yet.
+Muon remains queued after the first arm's complete budget. This is a manually
+reviewed corrected attempt; the zero-update failure and its artifacts remain
+intact. The28 CPU tests do not substitute for actual model/state proofs.
+
 **Completed LR comparison, Nov6:** both matched arms finished1,000 actual128
 updates at263121. All128,000 input presentations per arm have identical bytes,
 including16,000 distinct synthetic and112,000 original presentations. Both
