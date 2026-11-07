@@ -607,7 +607,10 @@ def train(
         if config.get('optimizer_trial'):
             fork_provenance['restored'].remove('optimizer_moments')
             fork_provenance['restored'].append('auxiliary_AdamW_moments_and_counters')
-            fork_provenance['reset'].append('core_matrix_optimizer_state')
+            if getattr(reference, 'preserves_core_optimizer', False):
+                fork_provenance['restored'].append('core_Muon_momentum_and_group_counters')
+            else:
+                fork_provenance['reset'].append('core_matrix_optimizer_state')
             fork_provenance['optimizer_trial'] = config['optimizer_trial']
         atomic_json(fork_provenance, output / "fork-state.json")
     if resume:

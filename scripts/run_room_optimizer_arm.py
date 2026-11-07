@@ -263,6 +263,9 @@ class OptimizerArmAudit(RGBInputAudit):
             raise ValueError("Planned input keys differ from the completed reference")
         return self.records
 
+    def check_optimizer_counts(self, counts, updates):
+        check_counts(counts, self.config["optimizer_trial"]["mode"], self.parent["step"], updates)
+
     def before_updates(self, system, adapter, statistics, records, config, output):
         self.progress(len(records), stage="checking_actual_full_batch_model_before_updates")
         modules = dict(
@@ -326,19 +329,14 @@ class OptimizerArmAudit(RGBInputAudit):
                     if squared <= 0:
                         raise ValueError("An optimizer partition did not update")
                 counts = optimizer_counts(self.optimizer.state_dict())
-                check_counts(counts, self.config["optimizer_trial"]["mode"], self.parent["step"], 1)
+                self.check_optimizer_counts(counts, 1)
                 if not equal_finite(
                     cpu(self.optimizer.state_dict()), cpu(self.optimizer.state_dict())
                 ):
                     raise FloatingPointError("Nonfinite optimizer state")
                 adapter.load_state_dict(initial_weights)
                 self.optimizer.load_state_dict(initial_optimizer)
-                check_counts(
-                    optimizer_counts(self.optimizer.state_dict()),
-                    self.config["optimizer_trial"]["mode"],
-                    self.parent["step"],
-                    0,
-                )
+                self.check_optimizer_counts(optimizer_counts(self.optimizer.state_dict()), 0)
                 if not equal_finite(cpu(self.optimizer.state_dict()), initial_optimizer):
                     raise ValueError("Temporary optimizer gate did not restore all state")
                 rows.append(
@@ -362,12 +360,7 @@ class OptimizerArmAudit(RGBInputAudit):
         finally:
             adapter.load_state_dict(initial_weights)
             self.optimizer.load_state_dict(initial_optimizer)
-            check_counts(
-                optimizer_counts(self.optimizer.state_dict()),
-                self.config["optimizer_trial"]["mode"],
-                self.parent["step"],
-                0,
-            )
+            self.check_optimizer_counts(optimizer_counts(self.optimizer.state_dict()), 0)
             adapter.zero_grad(set_to_none=True)
             restore_rng(rng)
         publish_json(

@@ -1925,3 +1925,52 @@ houses2000–2499 and up to10,000 RGB images within7,200s generation/7,500s oute
 bounds. Only source range and output changed. Do not duplicate or modify the
 existing job. Once it closes, freeze that range, combine the five original batch
 reports, and inspect only new samples. No previous tests or reviews were repeated.
+
+Nov7, authorized longer Muon continuation: the user requested a longer run from
+its successful fixed-final checkpoint and asked whether papers support a larger
+Muon learning rate. The literature check distinguishes shape normalization from
+base LR. Moonshot's `Muon is Scalable for LLM Training`, section2.2 and appendixA
+(https://arxiv.org/html/2502.16982v1), uses0.2*sqrt(max(shape)) to permit AdamW LR
+reuse; this is the exact pinned Dion `rms_norm` rule already used here. It is not
+an exact guarantee of matching this late-stage AdamW update magnitude. A ViT
+study (https://arxiv.org/html/2605.24770v1, appendixB) selected Muon1e-3 versus
+AdamW3e-4 in its main classification recipe, while also reporting successful
+MAE/segmentation swaps at unchanged AdamW learning rates. A fine-tuning study
+(https://arxiv.org/html/2605.10468v1, appendixE.3/table11) selected Muon5e-5 for
+two CLIP datasets and1e-5 for four, versus Adam1e-5 for all six. These results
+support task-specific tuning, not a universal multiplier. Raw0.02 examples use
+a different scaling convention and should not be transplanted. The earlier
+2e-5 experiment here used AdamW; it is not a Muon LR result. A future core-only
+Muon LR sweep could compare1e-5/2e-5/5e-5 while holding auxiliary AdamW fixed.
+No new LR sweep was launched or silently inserted into this continuation.
+
+The concrete longer run keeps base LR1e-5, actual128/one forward, F1/G0 and the
+same50,787 synthetic plus1,597,911 original pool. It starts from the completed
+Muon263121 checkpoint, retaining all16 Muon momentum/group states (age1000)
+and84 auxiliary Adam states (age263121), adapter, fixed RMS and RNG. Three NEW
+complete synthetic passes use permutation seeds43/44/45 with continuing original
+crop seeds and original logical cursor346864. The previous comparison's partial
+16,000-image pass is preserved as history, not counted as one of these new full
+passes. Each new pass takes3,175 updates with a3-synthetic/125-original tail.
+Total9,525 updates end at272646, with1,219,200 actual RGB presentations:
+152,361 synthetic and1,066,839 original. Each synthetic identity must occur
+exactly once per pass. Normal updates retain16synthetic/112original images;
+all passes keep a single resolution per actual128 forward. Data sampling is
+explicitly a new three-pass stream, not an exact continuation of the unfinished
+previous synthetic permutation. The constant scheduler counter resets, while
+all optimizer buffers/counters are preserved. Final mixed cursor304800, expected
+Muonage10525 and auxiliaryAdamage272646. Bounds are36,000s and36,600s outer;
+no automatic retry, extra pass or deployment. All existing checkpoints remain.
+
+Implementation introduces a dedicated bounded sampler and per-pass committed
+coverage; reuses the existing first/tail actual128 finite-update gate with a
+counter-validation hook; and adds a strict whole-hybrid-state initial checker.
+The trainer change only records truthful preservation of core Muon state in fork
+provenance; optimizer and feature update rules remain byte-identical. New saved
+six-view reviewers, startup/online and final-checkpoint helpers use the new
+budget and separate Muon/Adam ages; old1000-budget helpers are not reused.
+The initial CPU fixture omitted tracking metadata; it was corrected without
+weakening runtime checks. All29 new CPU tests pass locally (3.10s);28 existing
+optimizer tests also pass (46 combined with the original18new tests,4.72s).
+Actual CUDA/model proof is still pending at this preparation point. All prior
+training/source/generation proofs are reused without rerunning them.
