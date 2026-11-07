@@ -2061,3 +2061,29 @@ planarity, causal or statistically significant improvement claim. Closure SHA
 `d866ceab7b8f4aeecc191192dcbb571c65a29e4785222551623e8023fac6e458`
 binds this new review and online verification. The same bounded three-pass run
 continues unchanged; next review is +1,500/global264621 when committed.
+
+Nov7 08:01 UTC: +1,500/global264621 and +2,000/global265121 are now reviewed
+against all six saved parent views with exact image/protocol/teacher/support
+identity. The actual192,000/256,000 RGB prefixes match planned keys, including
+24,000/32,000 unique synthetic images and zero within-pass repeats. All1,262 new
+online metric values match numerically, with37 equal integer/float differences
+per endpoint; cumulative verified validation values now total2,524. No prior
+result, startup check, model inference or checkpoint payload read was repeated.
+
+At +1,500, primary spatial/summary cosines are0.964681923641/0.936367809132;
+spatial is only1.25e-7 above parent, while LiDAR AbsRel0.096923313849 is1.240924%
+worse than parent. At +2,000, spatial rises to0.964741526938 and summary is
+0.936347960221, just3.11e-6 below parent (essentially flat). LiDAR AbsRel recovers
+to0.095146532403,0.615007% better than parent but3.287165% worse than archive232288.
+Both new endpoints fail both joint criteria. The trajectory is not monotonic;
+small directional changes do not establish significance or an overall gain.
+
+At +2,000, structural317 cosines reach0.967044990898/0.983979029986 and its
+teacher-depth discrepancy falls1.445803% versus parent. ProcTHOR64 cosines also
+exceed parent at0.976424105465/0.963270832784, but teacher-depth discrepancy rises
+3.422139%. The separate iPhone/LiDAR feature cosines both decline even while its
+GT AbsRel improves. All six views and all metrics remain in the reports; there
+is no real-world-planarity or causal claim. Closure SHA
+`bc55a8d4c3be14ecab30fc25d84ebe17526ca03b695a2c8c6703234fb8bc923e`
+binds both new reviews and online proofs. The same actual128/F1/G0/LR1e-5
+three-pass run continues unchanged; next fixed endpoint is +2,500/global265621.
