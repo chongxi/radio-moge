@@ -331,6 +331,10 @@ def train(
     invocation_started = time.monotonic()
     elapsed_before = 0.0
     validate_config(config)
+    if config.get('optimizer_trial') and (reference is None or not fork_from or not data_fork
+            or not callable(getattr(reference, 'make_optimizer', None))
+            or not callable(getattr(reference, 'restore_optimizer', None))):
+        raise ValueError('Optimizer trials require a separately verified optimizer-fork observer')
     if batch_fork and (not fork_from or not data_fork or reference is None
             or not callable(getattr(reference, 'check_batch_transition', None))
             or resume or init or resolution_fork or extension or not performance):
@@ -457,7 +461,7 @@ def train(
         adapter.config["target_dim"], adapter.config["target_summary_dim"]
     )
     statistics.to(accelerator.device)
-    optimizer = torch.optim.AdamW(
+    optimizer = reference.make_optimizer(adapter, settings) if config.get('optimizer_trial') else torch.optim.AdamW(
         adapter.parameters(), lr=settings["lr"], weight_decay=settings["weight_decay"]
     )
     scheduler = torch.optim.lr_scheduler.LambdaLR(
@@ -499,7 +503,10 @@ def train(
                 elif (performance['effective_batch'] != parent_effective
                         or performance.get('autotune') or performance.get('data_autotune')):
                     raise ValueError('Resolution fork preserves effective batch and forbids tuning')
-            optimizer.load_state_dict(state["optimizer"])
+            if config.get('optimizer_trial'):
+                reference.restore_optimizer(optimizer, state)
+            else:
+                optimizer.load_state_dict(state["optimizer"])
             for group in optimizer.param_groups:
                 group["lr"] = group["initial_lr"] = settings["lr"]
             # Keep Adam moments and its update counter. Only the LR policy is reset.
@@ -597,6 +604,11 @@ def train(
                 accumulation_of_model_gradients=False,
                 resolution_policy='one uniform bucket per complete forward batch',
                 learning_rate_policy='unchanged constant learning rate')
+        if config.get('optimizer_trial'):
+            fork_provenance['restored'].remove('optimizer_moments')
+            fork_provenance['restored'].append('auxiliary_AdamW_moments_and_counters')
+            fork_provenance['reset'].append('core_matrix_optimizer_state')
+            fork_provenance['optimizer_trial'] = config['optimizer_trial']
         atomic_json(fork_provenance, output / "fork-state.json")
     if resume:
         atomic_json(

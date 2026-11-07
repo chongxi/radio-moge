@@ -6,6 +6,40 @@ Generation uses official ProcTHOR houses and custom structural rooms rendered
 in the same pinned simulator; ZInD and UnrealZoo are not inputs.
 No synthetic depth labels or geometric loss are introduced.
 
+Nov6 23:59 UTC: the user authorized the proposed Muon comparison. The new
+bounded design reuses the closed LR1e-5 reference above and adds two independent
+forks of262121: reset AdamW state on the16 core attention/FFN matrices, and use
+fresh Muon state on exactly those16 matrices. The84 auxiliary tensors retain
+their original native PyTorch AdamW moments/counters; all weights, RMS and RNG
+start from the same source. Core names are explicit, excluding 2D registers,
+input/output projections and gates. The50787 pool,128 actual images per forward,
+original cursor314864, crop seeds, bucket assignments, F1/G0 and1000-update
+budget remain paired with the saved reference. No data is regenerated.
+
+Muon uses the separately pinned microsoft/dion commit
+`7692479288f928a3d61d1cc58137b4dbe4f71000`, with Nesterov momentum.95,
+base LR1e-5 and RMS scaling0.2*sqrt(max(matrix dimensions)). The stored matrices
+are unsplit. Polar Express, Gram and custom Triton paths are disabled; the exact
+pinned five-stage Newton-Schulz coefficient schedule is retained. This scaling
+does not assert equality to the current late-training Adam update magnitude.
+No PyTorch upgrade or replacement of auxiliary AdamW is needed. New named
+optimizer checkpoints separately record auxiliary Adam ages, fresh-core Adam
+ages or Muon group ages, and the new update count. Old all100-Adam-age verifiers
+are intentionally not used for these arms.
+
+The24 new CPU tests cover named grouping, CPU source immutability, exact save/load
+continuation, native AdamW auxiliary/update parity, missing gradients, scoped
+configuration rejection, production-loop initialization and counter/result
+guards. The58 existing LR/reference tests also pass. Two early fixture mistakes
+(an output-layer name and missing tiny-model config) were corrected without
+changing runtime behavior. Actual GPU/model proofs are still pending at this
+preparation checkpoint. Each arm must verify the first and last actual128
+forward/backward, a temporary optimizer update with finite state and measured
+core/auxiliary norms, then bitwise restore weights/optimizer/RNG before any
+retained training update. Bounds remain5400s/arm and5700s outer; no automatic
+retry, extra training or deployment. All six saved validation views and complete
+actual input bytes must agree with the matched reference protocol.
+
 **Completed LR comparison, Nov6:** both matched arms finished1,000 actual128
 updates at263121. All128,000 input presentations per arm have identical bytes,
 including16,000 distinct synthetic and112,000 original presentations. Both
