@@ -2392,3 +2392,67 @@ unreviewed. Next work is that saved review, then +8,500/global271621 after
 commit, with only new endpoints batched into the existing online verifier.
 Keep the existing actual128/F1/G0/LR1e-5 job and9,525-update/three-pass bound;
 there is no new optimizer, retry, LR sweep, extra pass or deployment.
+
+Nov7 12:02 UTC: +8,000/global271121 and +8,500/global271621 saved reviews are
+complete. All six views retain exact image/protocol/teacher/support identity.
+The actual1,024,000/1,088,000 RGB prefixes match the frozen plan. The first two
+50,787-image synthetic passes remain exactly once each; the third pass has
+26,400/34,400 distinct images respectively, with no within-pass repeats.
+At +8,500 the actual prefix contains107,154 ProcTHOR,28,820 structural and
+952,026 original RGB presentations. The existing online helper is checking
+only these two NEW endpoints in one history scan. The earlier fifteen fixed
+endpoints and9,465 online scalar comparisons remain complete.
+
+At +8,000, primary spatial/summary cosines are0.964839295567/0.936542247865,
+and LiDAR AbsRel0.095373992855 is0.377414% below immediate parentMuon263121
+and3.534086% above archive232288. At +8,500, primary cosines are
+0.964825877636/0.936580228642, and LiDAR AbsRel0.095161186795 is0.599700%
+below parent and3.303073% above archive. Both endpoints pass the parent joint
+criterion and fail the archive criterion; eleven of seventeen now pass parent,
+while all seventeen fail archive. Both primary cosines exceed archive for five
+successive endpoints, +6,500 through +8,500. Latest summary cosine is the
+highest of this continuation's first seventeen fixed endpoints, while spatial
+decreases from +8,000. No monotonicity, significance or unique optimizer cause
+is established by this sequence.
+
+At +8,500, all six views' mean spatial/summary cosines exceed parent and all
+six teacher-depth discrepancies are lower. The original GT AbsRel is1.269339%
+below parent, recovering from0.522940% above parent at +8,000; native GT AbsRel
+is1.511710% below parent. The separate LiDAR GT improvement therefore coincides
+with improvements in these two GT aggregates at this endpoint, but previous
+endpoints remain mixed. Structural317 cosines0.968108556060/0.985224117992
+exceed parent; teacher-depth discrepancy is3.767738% lower, a weaker reduction
+than6.098742% at +8,000 despite its higher feature cosines. ProcTHOR64 reaches
+0.977005110122/0.965362673625 with teacher-depth discrepancy2.510518% lower.
+These are view-level feature and decoded-depth measurements; they do not
+establish every-image improvement or physical wall planarity. All metrics are
+bound by the six-view reports. No earlier proof, inference, checkpoint payload
+read or training configuration change was performed.
+
+Within the same +8,500 primary view, all six datasets (ARKitScenes, Hypersim,
+IRS, NYUv2, Structured3D and TartanAir) have both spatial and summary mean
+cosines above parent. The absolute spatial increases range from6.261957e-5
+to2.631734e-4; summary increases range from6.773137e-5 to4.774188e-4. These
+small dataset-mean changes are already contained in the bound saved report;
+no new inference, source review or physical-accuracy claim is involved.
+
+Nov7 12:13 UTC: the existing batched online verifier has finished for +8,000
+and +8,500, with all1,262 new values numerically exact and37 equal integer/float
+representations per endpoint. Cumulative online validation coverage is10,727
+values across seventeen fixed endpoints; session37881 exited0 and no verifier
+remains pending. The closure SHAs are
+`4d6f058a9f8df10205ada7d9d0911834f5fd2a53937ec6071c4aa8c0e693de27`
+and `2d7a2d797220a78cf1f19debe352fbffe027eb45c30d11b2970d64ba49f20d66`.
+The slow history query completed without a manual retry.
+
+At12:13:05 the same wrapper660849/trainer660850 is active with9,086 finite
+updates/global272207/cursor290752 and no OOM. Producer coverage at +9,000
+reports42,400 distinct third-pass images, while the independently reviewed
++8,500 prefix has34,400. The +9,000/global272121 validation is committed and
+not yet reviewed. Remaining work is that saved review, +9,500/global272621,
+and final +9,525/global272646. Verify only the two new periodic endpoints in
+the periodic online helper; the final endpoint belongs exclusively to the
+final online verifier after the completed-run CPU check and final saved review.
+Keep the existing three-pass bound, actual128/F1/G0/LR1e-5 configuration,
+original GPU lock, viewer and all best checkpoints. No new optimizer, retry,
+extra pass, LR change or deployment is authorized by this progress update.
