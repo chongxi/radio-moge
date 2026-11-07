@@ -46,7 +46,10 @@ def cpu(value):
     if torch.is_tensor(value):
         return value.detach().cpu().clone()
     if isinstance(value, dict):
-        return {k: cpu(v) for k, v in value.items()}
+        result = type(value)((k, cpu(v)) for k, v in value.items())
+        if hasattr(value, "_metadata"):
+            result._metadata = deepcopy(value._metadata)
+        return result
     if isinstance(value, (tuple, list)):
         return type(value)(cpu(v) for v in value)
     return value

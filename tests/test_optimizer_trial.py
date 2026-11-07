@@ -17,7 +17,7 @@ from radio_moge.checkpoint import rng_state
 from verify_corpus_stage_startup import equal_finite
 from test_architecture_screen import small_spec
 from test_room_lr_pair import contract
-from run_room_optimizer_arm import check_contract, compare_arm_configs
+from run_room_optimizer_arm import check_contract, compare_arm_configs, cpu, initial_state_check
 
 
 @pytest.fixture(autouse=True)
@@ -203,7 +203,8 @@ def test_scoped_configuration_rejects_unrelated_changes(mode, bad):
         compare_arm_configs(cfg, other)
 
 
-def test_production_loop_optimizer_hook_and_initial_state(tmp_path):
+@pytest.mark.parametrize("mode", ["core-reset-adamw", "core-muon"])
+def test_production_loop_optimizer_hook_and_initial_state(tmp_path, mode):
     from radio_moge.train import train
     from radio_moge.rgb_input_audit import RGBInputAudit
     from radio_moge.rgb_input_audit import load_reference_records
@@ -213,7 +214,12 @@ def test_production_loop_optimizer_hook_and_initial_state(tmp_path):
 
     cfg = feature_config(tmp_path)
     cfg["train"].update(
-        lr=1e-5, weight_decay=0.01, eval_at_start=False, log_every=1, eval_every=100
+        lr=1e-5,
+        weight_decay=0.01,
+        eval_at_start=False,
+        log_every=1,
+        eval_every=100,
+        lr_schedule="constant",
     )
     cfg["output_dir"] = str(tmp_path / "parent")
     system, _ = tiny_system()
@@ -226,7 +232,7 @@ def test_production_loop_optimizer_hook_and_initial_state(tmp_path):
     manifest.write_text("".join(json.dumps(row) + "\n" for row in records))
     rows = load_reference_records(manifest)
     cfg["train"].update(steps=4, max_seconds=600, lr_schedule="constant")
-    cfg["optimizer_trial"] = policy("core-muon")
+    cfg["optimizer_trial"] = policy(mode)
     cfg["output_dir"] = str(tmp_path / "trial")
     perf = dict(
         profile(2, 0, 16, 8), data_pipeline="prepared", compact_transport=True, gpu_prefetch=False
@@ -250,9 +256,15 @@ def test_production_loop_optimizer_hook_and_initial_state(tmp_path):
 
         def before_updates(self, system, adapter, statistics, records, config, output):
             initial = torch.load(output / "initial.pt", weights_only=True)
+            initial_state_check(initial, parent, cfg, perf)
+            different = deepcopy(initial)
+            first = next(iter(different["adapter"]))
+            different["adapter"][first].add_(1)
+            with pytest.raises(ValueError, match="state differs: adapter"):
+                initial_state_check(different, parent, cfg, perf)
             for section in ("adapter", "statistics", "rng"):
                 assert equal_finite(initial[section], parent[section])
-            check_counts(optimizer_counts(initial["optimizer"]), "core-muon", 2, 0)
+            check_counts(optimizer_counts(initial["optimizer"]), mode, 2, 0)
 
     audit = Audit(cfg["output_dir"], 2, 4, 4, 8)
     system, _ = tiny_system()
@@ -265,10 +277,24 @@ def test_production_loop_optimizer_hook_and_initial_state(tmp_path):
         system_adapter=(system, model()),
     )
     state = torch.load(final, weights_only=True)
-    check_counts(optimizer_counts(state["optimizer"]), "core-muon", 2, 2)
+    check_counts(optimizer_counts(state["optimizer"]), mode, 2, 2)
     assert state["step"] == 4 and state["cursor"] == 8
     assert "optimizer_moments" not in state["fork_provenance"]["restored"]
     assert state["fork_provenance"]["optimizer_trial"] == cfg["optimizer_trial"]
+
+
+def test_cpu_state_copy_keeps_ordered_state_metadata_and_exact_comparator():
+    module = model()
+    source = module.state_dict()
+    copied = cpu(source)
+    assert type(source) is type(copied)
+    assert copied._metadata == source._metadata
+    assert equal_finite(source, copied)
+    assert not equal_finite(source, dict(copied))
+    assert all(source[k].data_ptr() != copied[k].data_ptr() for k in source)
+    name = next(iter(copied))
+    copied[name].add_(1)
+    assert not equal_finite(source, copied)
 
 
 @pytest.mark.parametrize("mode", ["core-reset-adamw", "core-muon"])

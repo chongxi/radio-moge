@@ -52,6 +52,22 @@ Dion tree is loaded by PYTHONPATH with all17 package Python-file hashes bound;
 the training environment has not been upgraded. All prior checkpoints and the
 viewer remain intact. No inference or old completed proof was repeated.
 
+Nov7 00:17 UTC: attempt01 stopped before writing `initial.pt` or executing any
+backward/optimizer step. Controller611086/trainer611088 exited; Muon never
+started. The initial checker copied an OrderedDict model state into a plain
+dict, while `equal_finite` intentionally requires identical container types.
+A two-element equal-tensor reproduction confirms this false rejection. The
+unsaved failed invocation is not claimed to have passed actual tensor equality.
+The original artifacts and W&B167be3c6 remain as a failed attempt, closure SHA
+`d54a48a5062ed4fd013ec9192ebae86669c2968d76de36d42df368a1b6c603ca`.
+The fix preserves the mapping type and PyTorch `_metadata` during CPU copying;
+the exact finite/tensor/type comparator is unchanged. The actual runner's
+initial checker now runs inside both tiny production-loop cases, and deliberate
+weight corruption still fails. All26 targeted tests pass locally (5.07s).
+No loss, optimizer rule, source state, input plan or budget changed. A manually
+reviewed new immutable execution/output is required; attempt01 is never resumed
+or overwritten. Actual GPU initialization and update gates remain pending.
+
 **Completed LR comparison, Nov6:** both matched arms finished1,000 actual128
 updates at263121. All128,000 input presentations per arm have identical bytes,
 including16,000 distinct synthetic and112,000 original presentations. Both
