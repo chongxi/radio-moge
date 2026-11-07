@@ -2087,3 +2087,29 @@ is no real-world-planarity or causal claim. Closure SHA
 `bc55a8d4c3be14ecab30fc25d84ebe17526ca03b695a2c8c6703234fb8bc923e`
 binds both new reviews and online proofs. The same actual128/F1/G0/LR1e-5
 three-pass run continues unchanged; next fixed endpoint is +2,500/global265621.
+
+Nov7 08:27 UTC: +2,500/global265621 is reviewed against all six saved views,
+with exact image/protocol/teacher/support identity and320,000 planned actual RGB
+presentations. The prefix contains40,000 unique synthetic images (31,576 ProcTHOR,
+8,424 structural) and280,000 original images, with zero within-pass repeats.
+The existing online verifier returned after a slower API wait; all631 values
+match numerically with37 equal integer/float representations. Cumulative online
+validation coverage is3,155 values across five endpoints. The verifier finished;
+do not relaunch it or treat online verification as pending. No training or
+runtime configuration was changed.
+
+Primary cosines0.964700529660/0.936465498352 both exceed the immediate Muon263121
+parent, but LiDAR AbsRel0.096079916926 is0.359957% worse than parent and4.300408%
+worse than archive232288. Both joint criteria fail. Spatial and LiDAR worsened
+versus +2,000 while summary improved; there is no monotonic improvement claim.
+Structural317 cosines0.966989202078/0.983886884214 exceed parent but both dip
+versus +2,000; teacher-depth discrepancy is0.685435% below parent. ProcTHOR64
+cosines0.976476046257/0.963635208085 exceed parent, with teacher-depth discrepancy
+5.875655% lower. Separate iPhone/LiDAR feature cosines remain below parent.
+All six views/all metrics are retained, without significance, causality or
+physical-planarity claims. Closure SHA
+`e3f26ff6c5d3fdea5f5ad765192edbef650fd35643ce86b834279bb6d6db9224`
+binds the new saved review and online verification. At08:25:53 the existing run
+had2,842 updates/global265963/cursor90944, no OOM and unchanged actual128/F1/G0/
+LR1e-5. Next fixed review is +3,000/global266121; the first complete synthetic
+pass ends at +3,175 and is followed by the two already-authorized passes.
