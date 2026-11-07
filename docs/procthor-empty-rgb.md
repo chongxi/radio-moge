@@ -111,6 +111,29 @@ Startup closure SHA`574f5cf2f46ef23085957f6e29f82f67b12f572fd024c0f925e945faaca3
 is complete. Do not repeat its initial/model/input/online checks. Muon remains
 queued; these are correctness checks, with no optimizer quality conclusion yet.
 
+Nov7 01:03 UTC: the reset-AdamW arm reached750 finite updates/global262871;
+its third validation is in progress. Saved250/500 reviews are complete for all
+six views, identical image/protocol/teacher/support identities and32,000/64,000
+actual RGB presentations. Their4,000/8,000 synthetic identities are unique,
+and the complete input prefixes match the continued-AdamW reference exactly.
+All1,262 online validation scalar values match numerically, with37 equal
+integer/float representations at each endpoint. Closure SHA
+`6120d3bcc68e25d1a67eaeb6fef36970624f76e18df615d4fac4462ad5e09c57`
+contains every same-step metric contrast across all six views; these proofs
+must not be repeated.
+
+Both endpoints pass the immediate-parent joint criterion and fail the original
+archive criterion. At500, primary spatial/summary cosines are
+0.964727895/0.936308916; LiDAR reference AbsRel0.096069170 is0.2493% lower than
+the common262121 parent but4.2887% higher than archive232288. Compared with
+continued AdamW at the same500 updates, cosine differences are only
++0.000000933/+0.000003151, while LiDAR error is0.0427% higher. This is not an
+established reset advantage. Synthetic outcomes are mixed: structural317
+spatial rises, summary is slightly below its parent, and teacher-depth
+discrepancy falls3.3415%; ProcTHOR64 spatial falls, summary rises, and that
+discrepancy increases5.4489%. Muon has not started; fixed final optimizer
+comparison, significance and real-world planarity remain unresolved.
+
 **Completed LR comparison, Nov6:** both matched arms finished1,000 actual128
 updates at263121. All128,000 input presentations per arm have identical bytes,
 including16,000 distinct synthetic and112,000 original presentations. Both
