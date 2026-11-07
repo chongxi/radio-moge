@@ -2009,3 +2009,31 @@ binds these new proofs; do not repeat them. No fixed validation was committed at
 this snapshot, so there is no new quality conclusion. Next is the saved six-view
 review at global263621 (+500) and its online verification. The run continues
 under its original bounds; no additional run or learning-rate sweep was started.
+
+Nov7 07:14 UTC: the first fixed continuation endpoint, +500/global263621, is
+fully reviewed using the six saved validation views. Image identities, protocols,
+frozen teacher values and support match the immediate Muon263121 parent. All
+64,000 actual RGB keys match the planned prefix:8,000 unique synthetic images
+(6,332 ProcTHOR/1,668 structural),56,000 original images and zero within-pass
+repeats. All631 online validation scalar values match numerically;37 differ only
+as equal integer/float representations. No model inference, checkpoint payload
+read, startup proof or old result was repeated.
+
+The primary1,012-image equal-six-dataset macro spatial cosine rises from
+0.964681798627 to0.964729495150, but summary cosine falls from0.936351073495
+to0.936329222366. Independent LiDAR AbsRel rises from0.095735311400
+to0.096153052819 (+0.436350%); both the immediate-parent and archive joint
+criteria fail at this endpoint. Against archive232288, spatial remains lower,
+summary higher and LiDAR AbsRel4.379802% higher. These are fixed heldout feature
+cosines, not averages over all training images; the primary macro includes both
+real and synthetic datasets.
+
+Structural317 cosine values improve to0.966693474667/0.983271918086 and its
+teacher-depth discrepancy falls1.053819% versus parent. ProcTHOR64 cosine values
+also rise to0.976228285581/0.962584451772, but its teacher-depth discrepancy
+increases2.718799%. Outcomes are mixed; no overall, statistically significant,
+causal or real-world-planarity improvement is established. Closure SHA
+`9249b4f7e82bd31fc895a6c8b3ffbbbf62589d476e442fe2afc9040910861c59`
+binds the complete six-view review and online check. The existing three-pass
+run continues at unchanged actual128/F1/G0/LR1e-5; next fixed review is
+global264121 (+1,000). Do not repeat the completed +500 or startup proofs.
