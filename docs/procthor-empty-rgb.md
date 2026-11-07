@@ -30,7 +30,7 @@ are intentionally not used for these arms.
 The24 new CPU tests cover named grouping, CPU source immutability, exact save/load
 continuation, native AdamW auxiliary/update parity, missing gradients, scoped
 configuration rejection, production-loop initialization and counter/result
-guards. The58 existing LR/reference tests also pass. Two early fixture mistakes
+guards. The61 existing LR/reference tests also pass. Two early fixture mistakes
 (an output-layer name and missing tiny-model config) were corrected without
 changing runtime behavior. Actual GPU/model proofs are still pending at this
 preparation checkpoint. Each arm must verify the first and last actual128
@@ -39,6 +39,18 @@ core/auxiliary norms, then bitwise restore weights/optimizer/RNG before any
 retained training update. Bounds remain5400s/arm and5700s outer; no automatic
 retry, extra training or deployment. All six saved validation views and complete
 actual input bytes must agree with the matched reference protocol.
+
+Nov7 00:02 UTC: all85 tests pass remotely (19.19s); the24 new tests pass locally
+(4.16s), and all61 existing LR/reference tests passed in the preceding local run.
+Immutable `code-room-optimizer-pair-v1` / `ea13727` is launched in
+`room-feature-optimizer-pair-01`, controller611086, first trainer611088.
+At00:02:46 it had read79,872 original metadata rows, with zero retained updates
+verified. The actual model, scoped initial state and first20-input/online proofs
+remain pending. The next Muon arm is already queued in the same controller;
+it starts only after the reset-AdamW arm completes its fixed budget. The pinned
+Dion tree is loaded by PYTHONPATH with all17 package Python-file hashes bound;
+the training environment has not been upgraded. All prior checkpoints and the
+viewer remain intact. No inference or old completed proof was repeated.
 
 **Completed LR comparison, Nov6:** both matched arms finished1,000 actual128
 updates at263121. All128,000 input presentations per arm have identical bytes,
