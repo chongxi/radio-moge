@@ -2269,3 +2269,62 @@ the independently reviewed +5,500 prefix contains37,200. Next fixed reviews
 are +6,000/global269121 and +6,500/global269621. The second pass ends at
 +6,350/global269471 and the same job then continues the already-authorized
 third pass; no restart or new training segment is needed at that boundary.
+
+Nov7 10:54 UTC: +6,000/global269121 and +6,500/global269621 saved reviews are
+complete. All six fixed views retain exact image/protocol/teacher/support
+identity, and the actual768,000/832,000 RGB prefixes match the frozen plan.
+The +6,000 prefix has95,987 synthetic presentations (50,787 in the first pass
+and45,200 in the second). The +6,500 prefix independently verifies BOTH full
+50,787-image passes exactly once each, plus2,400 distinct third-pass images;
+there are no within-pass repeats. Its832,000 actual inputs comprise81,910
+ProcTHOR,22,064 structural and728,026 original presentations. Cross-pass repeats
+are intended, and the same running job crossed the second boundary without a
+restart. The existing online helper is checking only these two NEW endpoints
+in one history scan. Previous eleven endpoints and6,941 online scalars remain
+complete.
+
+At +6,000, primary spatial/summary cosines are0.964755270938/0.936518266376;
+LiDAR AbsRel0.095376749989 is0.374534% below immediate parentMuon263121 and
+3.537079% above archive232288. At +6,500, primary cosines reach
+0.964880844456/0.936485786553, both numerically above parent AND archive. This
+is the highest primary spatial cosine among this continuation's first thirteen
+fixed endpoints. Latest LiDAR AbsRel0.094917460438 is0.854283% below parent but
+3.038493% above archive. Both new endpoints pass the parent joint criterion;
+eight of thirteen now pass, including the last five, while all thirteen fail
+the archive joint criterion. Spatial and LiDAR improve from +6,000 to +6,500
+but summary declines. These measurements do not establish monotonicity,
+statistical significance or a unique optimizer cause.
+
+At +6,500, all six views' mean spatial and summary feature cosines exceed
+parent, and all six teacher-depth discrepancies are lower. Structural317
+reaches0.967960937354/0.985059675546 with teacher-depth discrepancy5.781223%
+lower; ProcTHOR64 reaches0.976881873794/0.964920991100 with discrepancy1.657940%
+lower. The separate iPhone/LiDAR GT AbsRel improves, but the original and
+native-view GT AbsRel measures are3.402314% and1.976332% WORSE than parent.
+Thus neither the cosines nor agreement with the teacher establishes overall
+GT depth improvement or physical wall planarity. At +6,000 the structural and
+ProcTHOR teacher-depth discrepancies were0.801509% and3.260924% worse than
+parent despite higher feature cosines. All metrics remain in the bound reports.
+No earlier proof, model inference or checkpoint payload read was repeated;
+training inputs, optimizer, batch, LR and the three-pass budget are unchanged.
+
+Nov7 11:03 UTC: the same online verifier has finished normally for +6,000 and
++6,500. All1,262 new scalar values match numerically, with37 equal integer/
+float representations per endpoint. Cumulative coverage is8,203 online
+validation values across thirteen fixed endpoints. No verifier remains pending.
+The new closure SHAs are
+`40636dca3751c4c66f2ba986c9f10c88644b791f7e3d45f47525c90de9b8b25b`
+and `b9aa3843b63a8d629cb209e486369342627a22b2c8999bf79341058b992a630e`.
+The latter binds independent actual-input verification of BOTH completed
+50,787-image passes, with the third pass already underway. No completed proof
+was rerun and no training bytes, configuration or budget changed.
+
+At11:03:32 the original wrapper660849/trainer660850 is active at7,176 finite
+updates/global270297/cursor229632, with no OOM. Producer coverage at +7,100
+reports12,000 distinct third-pass images; the independently reviewed +6,500
+prefix contains2,400. The +7,000/global270121 validation is already committed
+but has not yet been reviewed. Next work is that saved review and
++7,500/global270621 after commit, with only new endpoints batched into one
+online history scan. Continue the existing actual128/F1/G0/LR1e-5 job through
+its authorized9,525-update/three-pass limit; no new optimizer, LR sweep,
+extra pass or deployment starts.
