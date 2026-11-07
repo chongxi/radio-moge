@@ -95,6 +95,22 @@ Muon remains queued after the first arm's complete budget. This is a manually
 reviewed corrected attempt; the zero-update failure and its artifacts remain
 intact. The28 CPU tests do not substitute for actual model/state proofs.
 
+Nov7 00:39 UTC: the corrected reset-AdamW arm is now training, with233 finite
+updates/global262354 at00:38:48 and W&B`0c169f21`. Actual initial adapter/RMS/RNG,
+configuration and model revisions match262121 bitwise; all84 auxiliary AdamW
+states retain age262121, and the16 core states are fresh. The two actual128
+model cases (256 RGB) passed, including nonzero core/auxiliary temporary updates,
+finite state and complete restoration before retained training. First20 updates
+use2,560 actual RGB presentations (260 ProcTHOR,60 structural,2,240 original),
+with keys/crops/buckets and complete recorded input bytes identical to the
+continued-AdamW reference. Measured update norm0.038504 is nonzero. All442
+online training scalar values match numerically; two saved-baseline metadata
+fields differ by one display ULP, and seven metadata/twenty training fields
+only differ in equal integer/float representation. Configuration is unchanged.
+Startup closure SHA`574f5cf2f46ef23085957f6e29f82f67b12f572fd024c0f925e945faaca3a2d7`
+is complete. Do not repeat its initial/model/input/online checks. Muon remains
+queued; these are correctness checks, with no optimizer quality conclusion yet.
+
 **Completed LR comparison, Nov6:** both matched arms finished1,000 actual128
 updates at263121. All128,000 input presentations per arm have identical bytes,
 including16,000 distinct synthetic and112,000 original presentations. Both
