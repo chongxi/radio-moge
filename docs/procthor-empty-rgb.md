@@ -215,6 +215,60 @@ real-world planarity. The750 and fixed-final1,000 comparisons remain pending;
 the unchanged existing training continues, with no retry, extra epoch or
 deployment. Viewer3462 is preserved and OOM counters remain zero.
 
+**Completed optimizer comparison, Nov7 02:09 UTC:** both new arms finished their
+fixed1,000 actual128 updates at263121. Controller611615 and trainers611617/633903
+have exited; W&B`0c169f21` and `569aa52e` are finished. The new arms' eight
+six-view validations and5,048 online validation scalar values are verified;
+the continued-AdamW reference's four validations/2,524 online values are reused.
+All three arms have identical128,000 actual RGB input bytes, including16,000
+distinct synthetic and112,000 original presentations. This remains a bounded
+comparison, not a full50,787-image epoch. No new segment or deployment started.
+
+Muon final CPU verification confirms84 auxiliary Adam states at263121 plus16
+Muon momentum states/group step1000, cursor32000, finite adapter/optimizer/RNG,
+and unchanged RMS/config/data/model identities. Its preserved fixed checkpoint
+SHA is`84b36960bed9ac74efb0536e13d9a3f8b188fe0157a1dffdb28cb5a760e8299a`.
+Muon arm closure SHA
+`a5cc64fdfe164e4de91e20f809025629a5e267812ba1444808084d8ad37b4c0f`;
+fixed-final three-arm comparison SHA
+`88189ada1ffe6e89b6cf03068c64e0b305d177fbdd04da4792f1e577121385f7`;
+complete pair closure SHA
+`3270370bd37f278e4a976001dd5969840e1ae4c915d1f0b376b02149866dde20`.
+The controller's preserved review-pending receipt is historical; these separate
+closures are complete. No model inference or earlier checkpoint verification
+was repeated. All original best checkpoints and viewer3462 remain intact.
+
+| Fixed endpoint | Primary spatial cos | Primary summary cos | LiDAR reference AbsRel |
+| --- | ---: | ---: | ---: |
+| Common262121 start | 0.9646276428 | 0.9362591955 | 0.0963093091 |
+| Continued AdamW, +1,000 | 0.9646639170 | 0.9363278162 | 0.0957372693 |
+| Core-reset AdamW, +1,000 | 0.9646647295 | 0.9363302697 | 0.0957623925 |
+| Core Muon, +1,000 | 0.9646817986 | 0.9363510735 | 0.0957353114 |
+
+At the predefined final endpoint, Muon passes the numerical joint contrast
+against both controls: versus continued AdamW, cosines rise by0.000017882 and
+0.000023257, while LiDAR reference error falls only0.002045%. Against reset
+AdamW the cosine differences are0.000017069/0.000020804, with LiDAR error
+0.028279% lower. These small fixed-final differences are not replicated or
+statistically established. Intermediate Muon results were mixed: parent-joint
+outcomes at250/500/750/1,000 are fail/pass/fail/pass. All four fail the original
+archive232288 criterion; final spatial is still below that archive and LiDAR
+error is3.926319% higher. The same nominal LR1e-5 and this one pinned Muon policy
+do not establish its optimal LR or equal update magnitude to AdamW.
+
+Separate structural317 final cosines are0.966276258/0.983085058, compared with
+continued AdamW0.965877677/0.982565414; teacher-depth discrepancy is4.5130% lower
+than continued AdamW (3.5221% below the common parent). ProcTHOR64 final cosines
+are0.976096902/0.962449190 versus0.975938929/0.961967275; teacher discrepancy is
+1.3685% lower than continued AdamW. Both cosines also improve over that control
+on the native-resolution primary view and DSLR holdout. However, the separate
+iPhone-LiDAR holdout has slightly lower feature cosines and0.2169% higher
+teacher-depth discrepancy; its independent LiDAR reference error is nearly
+unchanged. Thus the positive primary result is not an all-metric/all-view win,
+and synthetic alignment gains do not establish physical plane accuracy.
+All six views and every metric, plus all twelve predefined endpoints including
+the historical control, are retained. No best endpoint was selected.
+
 **Completed LR comparison, Nov6:** both matched arms finished1,000 actual128
 updates at263121. All128,000 input presentations per arm have identical bytes,
 including16,000 distinct synthetic and112,000 original presentations. Both
