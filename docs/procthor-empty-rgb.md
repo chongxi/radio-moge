@@ -1985,3 +1985,27 @@ remain pending and must succeed before retained training. CPU tests do not
 substitute for them. Viewer3462 and all original checkpoints are preserved;
 OOM counters remain zero. The user’s research question is addressed above;
 the long run retains1e-5, and no higher-LR experiment was automatically launched.
+
+Nov7 06:55 UTC: the existing longer Muon run is active at 317 retained updates
+(global263438), with finite losses/gradients and one actual128 forward per
+update. W&B run `f4567959` is online. The new actual initial proof now confirms
+bitwise preservation of all16 Muon momentum/group states at age1000, all84
+auxiliary Adam states at age263121, adapter, RMS and RNG. The two first/tail128
+model cases passed finite temporary core/auxiliary updates and fully restored
+weights, optimizer state and RNG before retained training. The first compilation
+took31.98s; the warmed temporary optimizer update took0.01993s. These are gate
+timings, not per-training-step measurements.
+
+The new startup verifier checked the first20 successful updates and all2,560
+actual RGB presentations:260 ProcTHOR,60 structural and2,240 original images.
+Planned keys, original identity/crop seeds, single-bucket actual128 grouping and
+F1/G0 accounting passed; measured adapter update norm was0.0272188000. All442
+online training scalar values match local records numerically. Three saved
+baseline metadata values differ by one floating-point ULP; seven other metadata
+values and20 training values differ only as equal integer/float representations.
+No runtime configuration was changed. Startup closure SHA
+`5d19c328de212dd735542b8806148b23539366e4cf8c7c9c9876bccfde135905`
+binds these new proofs; do not repeat them. No fixed validation was committed at
+this snapshot, so there is no new quality conclusion. Next is the saved six-view
+review at global263621 (+500) and its online verification. The run continues
+under its original bounds; no additional run or learning-rate sweep was started.
