@@ -2328,3 +2328,67 @@ but has not yet been reviewed. Next work is that saved review and
 online history scan. Continue the existing actual128/F1/G0/LR1e-5 job through
 its authorized9,525-update/three-pass limit; no new optimizer, LR sweep,
 extra pass or deployment starts.
+
+Nov7 11:27 UTC: +7,000/global270121 and +7,500/global270621 saved reviews are
+complete. All six views retain exact image/protocol/teacher/support identity.
+The896,000/960,000 actual RGB prefixes match the plan. Both full50,787-image
+passes remain exactly once each; the third pass contains10,400/18,400 distinct
+images respectively, with zero within-pass repeats. The +7,500 prefix comprises
+94,506 ProcTHOR,25,468 structural and840,026 original RGB presentations. The
+existing online helper is checking only these two NEW endpoints in one history
+scan; the earlier thirteen endpoints and8,203 online values are complete.
+
+At +7,000, primary spatial/summary cosines are0.964794626981/0.936572703580 and
+LiDAR AbsRel is0.094971836281,0.797485% below immediate parentMuon263121 and
+3.097522% above archive232288. At +7,500, primary cosines are
+0.964838318204/0.936535889415 and LiDAR AbsRel is0.096137893262, now0.420516%
+WORSE than parent and4.363345% worse than archive. Both new endpoints' primary
+cosines exceed parent and archive numerically; this holds for three successive
+endpoints from +6,500 through +7,500. The parent joint criterion passes at
++7,000 but FAILS at +7,500, ending the six-endpoint passing sequence. Nine of
+fifteen endpoints pass the parent criterion, and all fifteen fail the archive
+joint criterion. Spatial improves from +7,000 to +7,500 while summary and
+LiDAR regress. No monotonicity, significance or unique optimizer cause follows.
+
+At +7,500, structural317 cosines are0.968028514731/0.985221729858, with teacher-
+depth discrepancy5.022655% below parent. Structural spatial is lower than
++7,000 while summary and teacher-depth discrepancy improve. ProcTHOR64 cosines
+are0.976814581081/0.964981783181 and teacher-depth discrepancy5.283195% below
+parent; its summary cosine is lower than +7,000. Separate iPhone/LiDAR spatial
+cosine remains BELOW parent, though summary is higher; its teacher-depth
+discrepancy is0.970690% worse. DSLR teacher-depth discrepancy is0.038730% above
+parent, essentially flat. Original GT AbsRel is0.391952% worse than parent,
+while native-view GT AbsRel is0.850151% better. These are mixed decoded-depth
+results, not evidence of overall GT depth or physical wall-planarity gains.
+All six views and all metrics remain bound by the reports. No earlier proof,
+model inference, checkpoint payload read, training configuration change or
+new optimizer launch was performed.
+
+The same saved +7,500 report also resolves the primary macro by dataset:
+ARKitScenes, Hypersim, IRS, NYUv2, Structured3D and TartanAir each have a small
+spatial-cosine increase over parent. Five have higher summary cosine; IRS is
+lower by1.636334e-6, essentially flat. These are dataset means, not all images
+improving. The primary per-image-weighted aggregate is0.964229933181/
+0.935899221438; the reported primary equal-six-dataset macro remains
+0.964838318204/0.936535889415. These aggregates use different weighting; the primary remains
+the equal-six-dataset macro. These observations reuse the bound saved report and add
+no inference or training changes.
+
+Nov7 11:37 UTC: the existing online verifier has finished for +7,000 and
++7,500. All1,262 new scalars match numerically, with37 equal integer/float
+representations per endpoint. Cumulative online validation coverage is9,465
+values across fifteen fixed endpoints; no verifier remains pending. The
+closure SHAs are
+`bcc6077e71be3fab22a9abb4a2db18adb1e98f6eed339036977a62995506bacb`
+and `4ec89e40cc5bdd4e636f4e8ddbc51374aed132e76fe094340d42ebc0b7ac9de0`.
+The slow history query completed without a manual retry. All earlier proofs,
+startup checks and model evaluations remain reused.
+
+At11:37:34 the same wrapper660849/trainer660850 is active with8,107 finite
+updates/global271228/cursor259424 and no OOM. Producer coverage at +8,100
+reports28,000 distinct third-pass images; the independently reviewed +7,500
+prefix has18,400. The +8,000/global271121 validation is committed and remains
+unreviewed. Next work is that saved review, then +8,500/global271621 after
+commit, with only new endpoints batched into the existing online verifier.
+Keep the existing actual128/F1/G0/LR1e-5 job and9,525-update/three-pass bound;
+there is no new optimizer, retry, LR sweep, extra pass or deployment.
