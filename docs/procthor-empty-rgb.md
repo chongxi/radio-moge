@@ -1974,3 +1974,14 @@ weakening runtime checks. All29 new CPU tests pass locally (3.10s);28 existing
 optimizer tests also pass (46 combined with the original18new tests,4.72s).
 Actual CUDA/model proof is still pending at this preparation point. All prior
 training/source/generation proofs are reused without rerunning them.
+
+Nov7 06:38 UTC: all57 relevant CPU tests pass remotely (7.80s), including29new
+continuation cases. Immutable `code-room-muon-continuation-v1` / `a01ea60` was
+launched at06:38:11 under the original GPU lock, wrapper660849/trainer660850,
+in `room-feature-muon-three-epochs-50787-training-01`. At06:38:46 it had read
+122,880 of1,597,911 original metadata rows; zero retained optimizer updates were
+yet verified. Actual initial full-hybrid-state and first/tail128 model proofs
+remain pending and must succeed before retained training. CPU tests do not
+substitute for them. Viewer3462 and all original checkpoints are preserved;
+OOM counters remain zero. The user’s research question is addressed above;
+the long run retains1e-5, and no higher-LR experiment was automatically launched.
