@@ -186,6 +186,35 @@ actual initial/model/input/online proofs. Do not repeat them. Muon's first
 The existing bounds and pure-feature policy remain unchanged; no extra run,
 generation, geometry work or deployment was started.
 
+Nov7 01:48 UTC: the existing Muon arm reached629 finite updates/global262750,
+cursor20128, with its250/500 validations committed. Both saved six-view
+reviews and1,262 online scalar checks are complete; all online values match
+numerically, with37 equal integer/float representations at each endpoint.
+The32,000/64,000 actual RGB prefixes match both controls byte for byte, with
+4,000/8,000 distinct synthetic identities and no repeats. All images,
+protocols, teacher outputs and support identities remain fixed. Closure SHA
+`df8fc05e969791b0e6f93c7689ac88baa62536f5838f0f46ea6fb4baefd03023`
+binds every same-step metric contrast across all six views against both reset
+and continued AdamW. Do not repeat these reviews or the completed startup proofs.
+
+At500, Muon's primary spatial/summary cosines are0.964667375/0.936324510;
+LiDAR reference AbsRel0.096013977 is0.30665% lower than the common262121 parent
+but4.22883% higher than archive232288. The500 endpoint passes the parent joint
+criterion;250 fails because its LiDAR error rises0.41553%. Both fail the archive
+criterion. Against continued AdamW at500, spatial is lower by0.000059587,
+summary higher by0.000018746, and LiDAR error lower by only0.01482%. Against
+reset AdamW, the respective differences are-0.000060520/+0.000015595 and
+-0.05745%. This is mixed interim evidence, not an overall Muon advantage or a
+statistically established optimizer effect.
+
+Structural317 cosines at500 are0.966176231/0.982952673, both above the parent,
+with teacher-depth discrepancy1.83062% lower. ProcTHOR64 has spatial0.975866191
+below the parent and summary0.962245921 above it; its teacher-depth discrepancy
+is1.70171% higher. These synthetic feature/depth results do not establish
+real-world planarity. The750 and fixed-final1,000 comparisons remain pending;
+the unchanged existing training continues, with no retry, extra epoch or
+deployment. Viewer3462 is preserved and OOM counters remain zero.
+
 **Completed LR comparison, Nov6:** both matched arms finished1,000 actual128
 updates at263121. All128,000 input presentations per arm have identical bytes,
 including16,000 distinct synthetic and112,000 original presentations. Both
