@@ -2113,3 +2113,48 @@ binds the new saved review and online verification. At08:25:53 the existing run
 had2,842 updates/global265963/cursor90944, no OOM and unchanged actual128/F1/G0/
 LR1e-5. Next fixed review is +3,000/global266121; the first complete synthetic
 pass ends at +3,175 and is followed by the two already-authorized passes.
+
+Nov7 08:59 UTC: the existing Muon continuation has entered its second pass.
+The +3,000/global266121 and +3,500/global266621 saved reviews are complete for
+all six views, with exact image/protocol/teacher/support identity. Their actual
+384,000/448,000 RGB prefixes match the plan. At +3,500, the input audit confirms
+all50,787 synthetic identities appeared exactly once in the first pass and5,200
+distinct identities appeared in the second pass, with no within-pass repeats.
+The prefix comprises44,126 ProcTHOR,11,861 structural and392,013 original RGB
+presentations. Cross-pass repetition is intentional. This is an independent
+review of actual input records, not an extrapolation from the producer counter.
+
+Both online verifiers finished after slower API responses: all1,262 new scalar
+values match numerically, with37 equal integer/float representations at each
+endpoint. Cumulative online validation coverage is4,417 values across seven
+fixed endpoints. No verifier remains pending. No previous review, startup
+proof, model inference or checkpoint payload read was repeated.
+
+At +3,000, primary spatial/summary cosines are0.964710487695/0.936489014085 and
+LiDAR AbsRel is0.095030264510,0.736454% below the immediate Muon263121 parent.
+At +3,500, the cosines are0.964768402343/0.936427857569 and LiDAR AbsRel is
+0.095339007365,0.413958% below parent. Both endpoints numerically satisfy the
+parent joint criterion; the archive criterion fails at both. Latest spatial is
+only5.6905e-6 below archive232288, while LiDAR AbsRel remains3.496107% higher.
+Spatial improved between these endpoints, but summary and LiDAR regressed.
+Three of seven endpoints pass the parent joint criterion, all seven fail the
+archive criterion; there is no monotonicity or significance claim.
+
+At +3,500, structural317 cosines are0.967255431395/0.984394618953 and teacher-depth
+discrepancy is0.858328% below parent; spatial and teacher-depth discrepancy are
+worse than +3,000. ProcTHOR64 cosines are0.976588876918/0.963940904476, with
+teacher-depth discrepancy3.599807% below parent. Separate iPhone/LiDAR spatial
+cosine remains below parent although summary and GT AbsRel improve. These are
+feature-alignment and decoded-depth measurements, not proof of improved real
+wall planarity or a unique optimizer effect. All six views/all metrics are
+retained. New closure SHAs are
+`20031db4071c4e16180675c5c960958b0036d3b99a2b3ee8b5bdfa444e94e49e`
+and `824bdbde4a08aa923e7f9ab69407583bca382d2cd29386e8f666dd101aaab766`.
+
+At08:59:31 the same wrapper660849/trainer660850 had3,751 finite updates,
+global266872/cursor120032, with no OOM. Its latest periodic coverage at +3,700
+reports8,400 distinct second-pass images. The read-only observer now includes
+that producer coverage alongside actual training counts; training code and
+configuration remain unchanged. Continue the already-authorized three passes,
+actual128/F1/G0/LR1e-5, with the next fixed reviews at +4,000/global267121 and
++4,500/global267621. No new optimizer, LR sweep, extra pass or deployment starts.
