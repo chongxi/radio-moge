@@ -298,6 +298,23 @@ def test_cpu_state_copy_keeps_ordered_state_metadata_and_exact_comparator():
 
 
 @pytest.mark.parametrize("mode", ["core-reset-adamw", "core-muon"])
+def test_restored_optimizer_never_mutates_the_saved_state_snapshot(mode):
+    m = model()
+    opt = CoreOptimizerTrial(m.named_parameters(), dict(lr=1e-5, weight_decay=0.01), policy(mode))
+    opt.load_parent_adam(warm(m))
+    snapshot = cpu(opt.state_dict())
+    immutable = deepcopy(snapshot)
+    for _ in range(2):
+        opt.load_state_dict(snapshot)
+        for p in m.parameters():
+            p.grad = torch.randn_like(p)
+        opt.step()
+        assert equal_finite(snapshot, immutable), "load_state_dict aliased a saved optimizer tensor"
+        opt.load_state_dict(snapshot)
+        check_counts(optimizer_counts(opt.state_dict()), mode, 3, 0)
+
+
+@pytest.mark.parametrize("mode", ["core-reset-adamw", "core-muon"])
 def test_final_counter_verifier_rejects_global_age_for_reset_core(mode):
     m = model()
     parent = warm(m)

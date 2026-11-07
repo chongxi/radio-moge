@@ -68,6 +68,20 @@ No loss, optimizer rule, source state, input plan or budget changed. A manually
 reviewed new immutable execution/output is required; attempt01 is never resumed
 or overwritten. Actual GPU initialization and update gates remain pending.
 
+The follow-up restoration audit found a second issue before a new launch:
+native optimizer loading can share saved tensor storage, including host Adam
+step counters when parameters are on CUDA. Restoring one snapshot for two
+temporary gate updates could therefore mutate that snapshot. A new regression
+failed for both optimizer modes before the fix. Parent loading and trial-state
+restoration now copy all saved buffers before native loading; each temporary
+restore also explicitly requires zero new steps,84 unchanged auxiliary ages
+and the declared fresh16-core state. The exact equality checks remain in place.
+All28 targeted tests pass locally (5.23s), including repeated restore/update
+snapshot immutability in both modes. This path was never reached by attempt01;
+it is not evidence about any earlier training regression. The intended update
+rules, paired inputs and fixed budgets are unchanged. Fresh actual GPU gates
+are still required before retained updates in the new execution.
+
 **Completed LR comparison, Nov6:** both matched arms finished1,000 actual128
 updates at263121. All128,000 input presentations per arm have identical bytes,
 including16,000 distinct synthetic and112,000 original presentations. Both

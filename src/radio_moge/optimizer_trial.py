@@ -99,9 +99,9 @@ class CoreOptimizerTrial(torch.optim.AdamW):
         group = state["param_groups"][0]
         if len(group["params"]) != len(self.named) or set(state["state"]) != set(group["params"]):
             raise ValueError("Parent AdamW state must cover the complete named adapter")
-        # Keep the CPU source immutable too (Torch otherwise aliases same-device
-        # tensors when loading a state dict). GPU loads already allocate copies.
-        source = deepcopy(state) if self.named[0][1].device.type == "cpu" else state
+        # Torch may retain the CPU step tensor even for CUDA parameters. Copy
+        # all source buffers so neither moments nor counters can alias a receipt.
+        source = deepcopy(state)
         super().load_state_dict(source)
         for _, p in self.core:
             del self.state[p]
@@ -128,6 +128,10 @@ class CoreOptimizerTrial(torch.optim.AdamW):
             )
         if ("muon" in state_dict) != (self.muon is not None):
             raise ValueError("Muon state missing or present in the reset control")
+        # A gate may restore this same saved snapshot more than once. Native
+        # load_state_dict can alias same-device buffers, including host Adam
+        # counters on CUDA. Never let a subsequent step mutate that snapshot.
+        state_dict = deepcopy(state_dict)
         super().load_state_dict({k: state_dict[k] for k in ("state", "param_groups")})
         self.committed_steps = int(proof["committed_steps"])
         if self.muon is not None:

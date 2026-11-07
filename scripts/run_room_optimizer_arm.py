@@ -333,6 +333,12 @@ class OptimizerArmAudit(RGBInputAudit):
                     raise FloatingPointError("Nonfinite optimizer state")
                 adapter.load_state_dict(initial_weights)
                 self.optimizer.load_state_dict(initial_optimizer)
+                check_counts(
+                    optimizer_counts(self.optimizer.state_dict()),
+                    self.config["optimizer_trial"]["mode"],
+                    self.parent["step"],
+                    0,
+                )
                 if not equal_finite(cpu(self.optimizer.state_dict()), initial_optimizer):
                     raise ValueError("Temporary optimizer gate did not restore all state")
                 rows.append(
@@ -356,6 +362,12 @@ class OptimizerArmAudit(RGBInputAudit):
         finally:
             adapter.load_state_dict(initial_weights)
             self.optimizer.load_state_dict(initial_optimizer)
+            check_counts(
+                optimizer_counts(self.optimizer.state_dict()),
+                self.config["optimizer_trial"]["mode"],
+                self.parent["step"],
+                0,
+            )
             adapter.zero_grad(set_to_none=True)
             restore_rng(rng)
         publish_json(
