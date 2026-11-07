@@ -105,7 +105,9 @@ def main():
             rgb = source["rgb"].copy()
             depths = {key: source[key].copy() for key in NAMES[:4]}
         height, width = rgb.shape[:2]
-        image = torch.from_numpy(rgb).permute(2, 0, 1)[None].float().cuda() / 255
+        # Match evaluation_image: divide on CPU before transferring the tensor.
+        # CUDA division can differ by one ULP and perturb BF16 feature rounding.
+        image = (torch.from_numpy(rgb).float().permute(2, 0, 1) / 255)[None].cuda()
         with torch.autocast("cuda", dtype=torch.bfloat16):
             spatial, summary = moge.encoder(image, height // 16, width // 16, return_class_token=True)
             native = EncoderFeatures(spatial.float(), summary.float())
@@ -113,7 +115,10 @@ def main():
             cameras, masks, errors, exacts = {}, {}, {}, {}
             for key, encoded in (("native", native), ("adapter", fitted)):
                 prediction = postprocess(decoder(encoded, (height, width)), image, config["moge_source"])
-                camera, mask, error = verify_geometry(depths["moge_" + key], prediction)
+                try:
+                    camera, mask, error = verify_geometry(depths["moge_" + key], prediction)
+                except AssertionError as exc:
+                    raise AssertionError(f"Geometry replay mismatch: {name}/{key}") from exc
                 cameras[key], masks[key], errors[key] = camera, mask, error
                 current_depth = prediction["depth"][0].cpu().numpy()
                 exacts[key] = bool(np.array_equal(current_depth, depths["moge_" + key]))
