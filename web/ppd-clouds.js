@@ -32,12 +32,26 @@ for(let i=0;i<2;i++){
 function clear(){for(const v of views)for(const child of [...v.scene.children]){v.scene.remove(child);child.geometry?.dispose();child.material?.dispose()}clouds=[]}
 function point(z,k,x,y,s){return [((x+.5)/s.width-k[0][2])/k[0][0]*z,-((y+.5)/s.height-k[1][2])/k[1][1]*z,-z]}
 function reset(mode='oblique'){
-  if(!current)return;const s=current.sample,k=s.cameras.native,[lo,hi]=s.range,d=(lo+hi)/2;
-  const extent=Math.max(d/k[0][0],d/k[1][1],hi-lo),v=views[0];
-  v.controls.target.set(0,0,-d);
-  if(mode==='front')v.camera.position.set(0,0,-d+extent*1.25);
-  else if(mode==='side')v.camera.position.set(extent*1.3,extent*.12,-d+extent*.08);
-  else v.camera.position.set(extent*.42,extent*.22,-d+extent*1.15);
+  if(!current||!clouds.length)return;const v=views[0],bounds=[];
+  // Frame the displayed geometry; the native depth range remains the shared color scale.
+  // Robust framing changes only the camera, never which points are retained.
+  for(let axis=0;axis<3;axis++){
+    const values=[];for(const c of clouds)for(let i=axis;i<c.positions.length;i+=3)values.push(c.positions[i]);
+    values.sort((a,b)=>a-b);bounds.push([values[Math.floor(values.length*.005)],values[Math.floor(values.length*.995)]]);
+  }
+  const center=new THREE.Vector3(...bounds.map(([a,b])=>(a+b)/2));
+  const direction=new THREE.Vector3(...(mode==='front'?[0,0,1]:mode==='side'?[1,.12,.08]:[.42,.22,1.15])).normalize();
+  const right=new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0),direction).normalize();
+  const up=new THREE.Vector3().crossVectors(direction,right);
+  const tanV=Math.tan(THREE.MathUtils.degToRad(v.camera.fov/2));
+  const aspect=Math.min(...views.filter(w=>w.host.clientWidth&&w.host.clientHeight).map(w=>w.host.clientWidth/w.host.clientHeight));
+  const distances=[],p=new THREE.Vector3();
+  for(const c of clouds)for(let i=0;i<c.positions.length;i+=3){
+    p.set(c.positions[i],c.positions[i+1],c.positions[i+2]).sub(center);
+    distances.push(p.dot(direction)+Math.max(Math.abs(p.dot(right))/(tanV*aspect),Math.abs(p.dot(up))/tanV));
+  }
+  distances.sort((a,b)=>a-b);const distance=Math.max(.1,distances[Math.floor(distances.length*.995)]);
+  v.controls.target.copy(center);v.camera.position.copy(center).addScaledVector(direction,distance*1.14);
   v.camera.lookAt(v.controls.target);v.controls.update();synchronize(v);
 }
 function build(){

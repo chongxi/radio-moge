@@ -35,13 +35,19 @@ Additional controls, the same 12 NYU scenes at 1024 × 768:
 | Condition | Native features → PPD | Our features → PPD |
 |---|---:|---:|
 | Original noise | 3.748% | 3.732% |
-| Second noise, seed offset +100000 | 3.798% | 3.799% |
+| Second noise, seed offset +100000, CUDA RGB normalization | 3.798% | 3.799% |
 
 Setting PPD's semantic tensor to zero while retaining the original RGB and noise
 increases AbsRel to **35.169%**, with δ₁ falling to 51.86%. This supports reliance
 on the supplied features. Zero conditioning is out of distribution and is not
 an estimate of a separately trained RGB-only model. Two noise conditions do
 not establish statistical equivalence or broad generalization.
+
+The point-cloud replay later identified a preprocessing detail: `results-01`
+divides RGB by 255 on the CPU before transfer, whereas `controls-01` divides
+on CUDA. The latter is internally paired, but comparison with the original
+noise condition changes this rounding detail as well as the noise seed.
+These two rows must not be interpreted as a strictly noise-only experiment.
 
 Four additional, deterministically selected empty Structured3D scenes were
 rendered at both resolutions. They have no paired ground truth in this probe.
@@ -123,3 +129,54 @@ The next useful investigation is broader PPD transfer and task-specific depth
 quality, including temporal behavior if used in video. These results lower the
 priority of simply extending the same feature-only Muon training to gain a
 small additional cosine increment.
+
+## Interactive 3D point clouds
+
+The completed point-cloud export is `pointclouds-02/` under the same evidence
+root. It contains 160 full-resolution binary RGB PLY files: 16 scenes, two
+resolutions and five routes. The offline page is
+`.kanna/visualizations/ppd-pointclouds-20261107.html`; its default comparison is
+native features → PPD versus our features → PPD. Both cameras rotate, pan and
+zoom together. RGB, geometry lighting, common depth colors, overlay and front/
+side views are available. Original MoGe outputs can also be selected.
+
+The saved PPD predictions are reused without another diffusion run. Frozen
+MoGe and adapter replay recovers the intrinsics and masks omitted from the
+original raw archive. All 32 native and fitted MoGe depth pairs match their
+saved predictions bit for bit before those cameras are accepted. A preliminary
+export using CUDA RGB division failed that check; it wrote no PLY files.
+Matching the original CPU division restored exact equality. The original
+experiment artifacts remain unchanged.
+
+No ground truth or GT-aligned prediction enters these point clouds. PPD's
+official RANSAC routine fits its relative output to a metric depth reference:
+
+| Route | Scale reference, intrinsics and mask |
+|---|---|
+| Native features → MoGe | Native MoGe prediction |
+| Our features → MoGe | Fitted-feature MoGe prediction |
+| Native features → PPD | Native MoGe prediction |
+| Our features → PPD | Fitted-feature MoGe prediction |
+| Our features → PPD, shared native calibration | Native MoGe prediction; separately labeled diagnostic |
+
+All routes use pixel-center unprojection, then x-right, y-up, z-backward
+coordinates in model-estimated metres. No smoothing, outlier filtering or
+registration is applied. Camera framing uses robust bounds of the displayed
+points; it does not remove points. The preview samples every four pixels along
+each axis (up to 49,152 points per high-resolution cloud); preview PLY downloads
+retain that density. The ZIP archives contain every valid original-resolution
+pixel, up to 786,432 points per cloud at 1024 × 768.
+
+- `our-features-ppd-1024x768.zip`: our PPD route, all 16 scenes, about 162 MB.
+- `pointclouds-1024x768.zip`: all five routes, 80 PLY files, about 804 MB.
+- `pointclouds-640x480.zip`: all five low-resolution routes, retained remotely.
+- `report.json`: individual PLY hashes, counts, calibration replay checks,
+  bundle hashes and the explicit no-GT/no-diffusion-update record.
+- `browser-check/browser-verification.json`: real Chromium/WebGL verification
+  of all 32 cases, five routes, synchronized orbit/zoom, geometry shading,
+  overlay, mobile layout and exported PLY coordinates. No external requests.
+
+Code: `scripts/export_ppd_pointclouds.py`, `scripts/build_ppd_cloud_page.py`,
+`scripts/check_ppd_clouds.cjs`, `web/ppd-clouds.html`, `web/ppd-clouds.js`.
+The export uses the original four-step predictions; the upstream point-cloud
+CLI's other sampling or filtering defaults have not been substituted.
