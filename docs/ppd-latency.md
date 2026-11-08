@@ -1,5 +1,9 @@
 # RADIO feature transfer to PPD: 640 × 480 latency
 
+This is the original implementation baseline. The subsequent
+[PPD speedup experiment](ppd-speedup.md) measures cached operations, CUDA graphs
+and compilation with separate output-parity and quality checks.
+
 Measured November 8, 2026 on the existing NVIDIA H200, batch 1, using the same
 fixed adapter and four-step PPD predictions as the 3D comparison. The main
 pipeline averages **140.21 ms per image** to relative depth. Including the
