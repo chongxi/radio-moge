@@ -1,0 +1,38 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>沿视线的拖尾 · 深度边缘过滤对比</title>
+<style>
+:root{color-scheme:dark;font:14px/1.6 system-ui,sans-serif;background:#0d141d;color:#e9f0f8}*{box-sizing:border-box}body{margin:0}main{max-width:1600px;margin:auto;padding:24px}h1{font-size:27px;line-height:1.3;margin:4px 0 9px}p{margin:6px 0;color:#aebed0}.eyebrow{font-size:11px;letter-spacing:2px;color:#71d8bd}.stage{display:flex;align-items:center;gap:16px;padding:14px;background:#152230;border:1px solid #2a3e52;border-radius:10px;margin:18px 0 12px}.thumb{margin:0;flex:none;width:140px}.thumb img,.thumb canvas{display:block;width:140px;height:105px;object-fit:contain;background:#101923;border-radius:5px}.thumb figcaption{font-size:11px;color:#adc0d3;margin-top:4px}.meta{flex:1;min-width:0}#scene{font-size:17px;font-weight:600}.row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.nav{margin-top:10px}button,select{font:inherit;border:1px solid #395069;border-radius:6px;background:#203246;color:#e8f1fb;padding:6px 9px;max-width:100%;cursor:pointer}button:hover,select:hover{border-color:#71d8bd}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid #71d8bd;outline-offset:2px}label{font-size:12px;color:#c3d1df}label select{font-size:13px}.tools{gap:14px;margin:12px 0}input{accent-color:#71d8bd}input[type=range]{width:70px;vertical-align:middle}.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.card{min-width:0;border:1px solid #2a3e52;border-radius:10px;background:#15212e;overflow:hidden}.card h2{font-size:15px;margin:0;padding:13px 13px 1px}.card .subtitle{font-size:11px;margin:0;padding:0 13px 9px;color:#adbed0}.tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:4px;background:#2d3a49;color:#d0dfef;margin-right:6px}.filtered .tag{background:#1b4b40;color:#86e9cc}.ppd .tag{background:#293b60;color:#a9c8ff}.cloud{height:470px;width:100%;touch-action:none;background:#101923}.cloud canvas{display:block}.foot{padding:11px 13px;font-size:12px;color:#aebed0}.foot strong{color:#f0f7ff;font-size:19px;display:block;font-variant-numeric:tabular-nums}.foot button{font-size:11px;margin-top:8px}.fine{font-size:12px;color:#9fb1c5}#status{margin-top:12px;color:#c8d7e6}#stats{margin-top:8px;padding:10px 13px;border-left:2px solid #71d8bd;background:#152230;color:#bcd0df;font-size:12px}details{margin-top:18px;border-top:1px solid #2a3e52;padding:12px 0;font-size:12px;color:#aebed0}summary{cursor:pointer;color:#d9e5f0}a{color:#85d7c4}.removed-key{color:#ff8b9c}.summary{margin-top:5px}.error{color:#ffb5a7!important}@media(max-width:1000px){.cloud{height:380px}.card h2{font-size:13px}.stage{gap:10px}}@media(max-width:750px){main{padding:15px 12px}h1{font-size:23px}.cards{grid-template-columns:1fr}.cloud{height:360px}.stage{flex-wrap:wrap}.thumb,.thumb img,.thumb canvas{width:112px}.thumb img,.thumb canvas{height:84px}.meta{min-width:180px;flex-basis:100%;order:-1}.tools{gap:9px}.foot strong{display:inline;margin-right:8px}.nav select{font-size:12px}#scene{font-size:15px}}
+</style><main>
+<div class="eyebrow">RADIO → MoGe-v2 FEATURES / SAME CAMERA</div>
+<h1>沿视线的拖尾，过滤后还剩多少？</h1>
+<p>同一张图、同一相机：原始 MoGe、深度边缘过滤后的 MoGe，以及 PPD。拖动任一窗口，三个视角同步。</p>
+<section class="stage">
+<figure class="thumb"><img id="rgb" alt="原始输入图像"><figcaption>输入 RGB</figcaption></figure>
+<figure class="thumb"><canvas id="removed-map" aria-label="MoGe 被过滤像素的位置"></canvas><figcaption><span class="removed-key">红色</span>：MoGe 被删位置（预览）</figcaption></figure>
+<div class="meta"><div id="scene"></div><div id="scene-id" class="fine"></div><div class="row nav"><button id="prev" aria-label="上一场景">←</button><select id="sample" aria-label="场景"></select><button id="next" aria-label="下一场景">→</button><select id="resolution" aria-label="分辨率"><option value="480">640 × 480</option><option value="768">1024 × 768</option></select></div></div>
+</section>
+<div class="row tools">
+<label>相对深度阈值 <select id="threshold"><option value="0">1% · 强</option><option value="1">2%</option><option value="2" selected>4% · 官方 CLI 默认</option><option value="3">8% · 弱</option></select></label>
+<label><input id="removed" type="checkbox">标红被删点</label>
+<label><input id="ppd-filter" type="checkbox">PPD 也用相同过滤</label>
+<label>颜色 <select id="color"><option value="rgb">RGB</option><option value="depth">深度</option><option value="model">单色</option></select></label>
+<label>密度 <select id="density"><option value="1">精细预览</option><option value="2">稀疏预览</option></select></label>
+<label>点大小 <input id="size" type="range" min="1" max="5" step=".5" value="1.5"></label>
+<button id="oblique">斜视角</button><button id="side">侧视角</button><button id="front">正视角</button>
+</div>
+<div class="cards">
+<section class="card"><h2><span class="tag">A</span>MoGe · 原始</h2><p class="subtitle">我们的特征 → MoGe-v2 解码器</p><div class="cloud" id="view0"></div><div class="foot"><strong id="total0"></strong><span id="count0"></span><br><button id="download0">下载预览 PLY</button></div></section>
+<section class="card filtered"><h2><span class="tag">B</span>MoGe · 加边缘过滤</h2><p class="subtitle">只删除点，保留点的坐标与颜色不变</p><div class="cloud" id="view1"></div><div class="foot"><strong id="total1"></strong><span id="count1"></span><br><button id="download1">下载保留点 PLY</button> <button id="download-removed">下载被删点 PLY</button></div></section>
+<section class="card ppd"><h2><span class="tag">C</span><span id="title2">PPD · 未过滤</span></h2><p class="subtitle">我们的特征 → PPD，4 步采样</p><div class="cloud" id="view2"></div><div class="foot"><strong id="total2"></strong><span id="count2"></span><br><button id="download2">下载预览 PLY</button></div></section>
+</div>
+<p id="status" role="status">正在解压点云…</p>
+<div id="stats"></div>
+<p class="fine summary">删除比例不等于错误率。请同时检查椅腿、物体轮廓与斜面有没有缺失。选择“侧视角”看沿视线的拖尾，选择“标红被删点”看过滤具体删掉了什么。</p>
+<details><summary>过滤规则与比较条件</summary>
+<p>使用 MoGe 官方 CLI 导出中的相对深度边缘规则：在原分辨率 3×3 邻域内，若（最大深度 − 最小深度）/ 当前深度超过阈值，则删除该点。默认阈值 0.04；这里没有增加平滑、局部平面拟合或统计离群点过滤。官方 Web App 的另一种边缘规则没有混入这次比较。</p>
+<p>三组都使用同一套 RADIO-v4-H → MoGe-v2 拟合特征。复用之前保存的 16 个场景、两种分辨率、4 步 PPD 输出；相机与基础有效掩码均来自对应的 MoGe 解码结果。PPD 使用此前保存的尺度恢复结果，没有重新标定、配准、补点或重新推理，也没有用真值修改点云。</p>
+<p>过滤在完整深度图上计算，之后才抽样显示：640×480 每 2 像素一点，1024×768 每 4 像素一点。下载按钮导出当前预览密度；完整分辨率过滤后 MoGe 的 PLY 压缩包另附。勾选“PPD 也用相同过滤”时，独立检测 PPD 自己的深度边缘，使用相同阈值。</p>
+<p>坐标单位为预测的米制尺度，x 向右、y 向上、z 向后。窗口只同步观察相机，不对点云单独缩放或移动。场景按原实验顺序排列；所有窗口和参数切换共用这一顺序。</p>
+<p>Three.js / OrbitControls · MIT License。全部代码与数据内嵌，浏览时无需联网。</p>
+</details>
+</main><script>window.PPD_EDGES=__DATA__;</script><script>__BUNDLE__</script></html>
