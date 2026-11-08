@@ -29,3 +29,26 @@ def depth_edge_keep_mask(depth, valid, threshold=0.04):
         raise ValueError("Invalid validity mask or positive finite threshold")
     return (valid & np.isfinite(depth) & (depth > 0)
             & ~(relative_depth_edge_score(depth) > threshold))
+
+
+def depth_edge_keep_mask_torch(depth, valid, threshold=0.04):
+    """The same filter on GPU tensors, returning an organized boolean mask.
+
+    Accept H×W or B×H×W depth and validity tensors. There are no host tensor
+    reads, CPU copies, point compaction, or changes to the depth/point maps.
+    """
+    import torch
+    import torch.nn.functional as functional
+
+    if (depth.ndim not in (2, 3) or not depth.is_floating_point()
+            or valid.shape != depth.shape or valid.dtype != torch.bool
+            or valid.device != depth.device
+            or not np.isfinite(threshold) or threshold <= 0):
+        raise ValueError("Expected matching floating depths and boolean validity tensors")
+    shape = depth.shape
+    values = depth.reshape(-1, 1, *shape[-2:])
+    nan = torch.isnan(values)
+    high = functional.max_pool2d(torch.where(nan, -torch.inf, values), 3, 1, 1)
+    low_negative = functional.max_pool2d(torch.where(nan, -torch.inf, -values), 3, 1, 1)
+    score = ((high + low_negative) / values).reshape(shape)
+    return valid & torch.isfinite(depth) & (depth > 0) & ~(score > threshold)
