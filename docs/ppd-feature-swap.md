@@ -180,3 +180,8 @@ Code: `scripts/export_ppd_pointclouds.py`, `scripts/build_ppd_cloud_page.py`,
 `scripts/check_ppd_clouds.cjs`, `web/ppd-clouds.html`, `web/ppd-clouds.js`.
 The export uses the original four-step predictions; the upstream point-cloud
 CLI's other sampling or filtering defaults have not been substituted.
+
+The subsequent [640 × 480 latency measurement](ppd-latency.md) reproduces these
+outputs exactly before timing. On H200 at batch 1, relative depth averages
+140.21 ms; the full metric-depth path averages 177.94 ms. PPD accounts for about
+90% of the relative-depth pipeline's measured time.
