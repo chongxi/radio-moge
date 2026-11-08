@@ -159,7 +159,7 @@ class RadioMoGe(nn.Module):
     def from_pretrained(cls, path_or_repo=DEFAULT_REPO, *, device=None, revision=None,
                         load_backbone=True, radio=None, radio_source=None,
                         moge_source=None, radio_checkpoint=None, moge_checkpoint=None,
-                        cache_dir=None, local_files_only=False):
+                        decoder_checkpoint=None, cache_dir=None, local_files_only=False):
         """Load a local adapter.pt or HF model id and pinned upstream dependencies.
 
         Set load_backbone=False for perception integration. A provided ``radio``
@@ -173,11 +173,16 @@ class RadioMoGe(nn.Module):
         if artifact.get("revisions") != PINS:
             raise ValueError("Upstream revisions do not match the installed inference code")
         target = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+        if target.type == "cuda" and target.index is None:
+            target = torch.device("cuda", torch.cuda.current_device())
         moge_source = ensure_source("MoGe", moge_source, cache_dir, local_files_only)
-        weight_path = moge_checkpoint or hf_hub_download(
-            MOGE_REPO, "model.pt", revision=MOGE_REVISION,
-            cache_dir=cache_dir, local_files_only=local_files_only)
+        weight_path = decoder_checkpoint or moge_checkpoint or hf_hub_download(
+            MOGE_REPO, "model.pt", revision=MOGE_REVISION, cache_dir=cache_dir,
+            local_files_only=local_files_only)
         teacher = torch.load(weight_path, map_location="cpu", weights_only=True, mmap=True)
+        if decoder_checkpoint and (teacher.get("format") != "radio-moge-decoder" or
+                                   teacher.get("revisions") != PINS):
+            raise ValueError("Invalid decoder-only artifact or upstream revisions")
         if teacher["model_config"] != artifact["model_config"]:
             raise ValueError("MoGe decoder configuration differs from the trained teacher")
         decoder = MoGeDecoder.from_config(artifact["model_config"], moge_source)
@@ -235,15 +240,20 @@ class RadioMoGe(nn.Module):
         return RadioFeatures(converted[0], converted[1], tuple(converted[2:]))
 
     @torch.inference_mode()
-    def infer(self, image, *, features=None):
+    def infer(self, image, *, features=None, validate=True):
+        """Infer without filtering; validate=False skips only input value checks.
+
+        The complete filtered RGB-to-point-cloud API is PointCloudPipeline.
+        Skipping value checks avoids CUDA synchronization for trusted GPU inputs.
+        """
         if not isinstance(image, torch.Tensor) or image.ndim not in (3, 4):
             raise ValueError("image must be RGB CHW or BCHW; use preprocess() for PIL images")
         single = image.ndim == 3
         image = image[None] if single else image
         if image.shape[1] != 3 or min(image.shape[-2:]) < 1 or image.shape[0] < 1:
             raise ValueError("image must have three RGB channels and nonempty dimensions")
-        if not image.is_floating_point() or not torch.isfinite(image).all() or \
-                image.min() < 0 or image.max() > 1:
+        if not image.is_floating_point() or (validate and (
+                not torch.isfinite(image).all() or image.min() < 0 or image.max() > 1)):
             raise ValueError("image must be finite floating-point RGB in [0,1]")
         image = image.to(device=self.device, dtype=torch.float32)
         with self._autocast():

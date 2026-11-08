@@ -7,7 +7,8 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = ("__init__", "adapters", "architecture_screen", "spatial_heads", "feature_refinement",
-           "config", "upstream", "decoder", "checkpoint", "deployment")
+           "config", "upstream", "decoder", "checkpoint", "deployment", "depth_edges",
+           "pipeline", "bundle")
 
 
 def main():
@@ -26,11 +27,19 @@ def main():
     subprocess.run(["uv", "build", "--wheel", "--no-create-gitignore", "--out-dir", str(model),
                     str(package)], check=True)
     shutil.copy2(ROOT / "deployment/huggingface/model-card.md", model / "README.md")
+    wheel, = model.glob("radio_moge_inference-*.whl")
+    readme = model / "README.md"
+    readme.write_text(readme.read_text().replace("radio_moge_inference-0.1.0-py3-none-any.whl",
+                                               wheel.name))
     shutil.copy2(ROOT / "THIRD_PARTY.md", model / "THIRD_PARTY.md")
     for path in (ROOT / "deployment/huggingface/space").iterdir():
         if path.is_file() and path.suffix in (".py", ".md", ".txt"):
             shutil.copy2(path, space / path.name)
-    shutil.copy2(model / "radio_moge_inference-0.1.0-py3-none-any.whl", space)
+            if path.suffix in (".md", ".txt"):
+                staged = space / path.name
+                staged.write_text(staged.read_text().replace(
+                    "radio_moge_inference-0.1.0-py3-none-any.whl", wheel.name))
+    shutil.copy2(wheel, space)
     shutil.copy2(ROOT / "THIRD_PARTY.md", space / "THIRD_PARTY.md")
     print(f"Staged model: {model}\nStaged Space: {space}")
 

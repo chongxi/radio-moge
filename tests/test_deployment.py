@@ -155,3 +155,20 @@ def test_revision_mismatch_rejected_before_fetch(tmp_path, monkeypatch):
 def test_source_offline_cache_miss(tmp_path):
     with pytest.raises(FileNotFoundError, match="not cached"):
         api.ensure_source("RADIO", cache_dir=tmp_path, local_files_only=True)
+
+
+def test_decoder_only_load_is_offline_and_exact(release, tmp_path, monkeypatch):
+    loaded, _, _, output, _ = release
+    decoder = tmp_path / "decoder.pt"
+    torch.save(dict(format="radio-moge-decoder", format_version=1, revisions=api.PINS,
+                    model_config=loaded.metadata["model_config"], model=loaded.decoder.state_dict()),
+               decoder)
+    monkeypatch.setattr(api, "hf_hub_download", lambda *a, **k: pytest.fail("network called"))
+    compact = api.RadioMoGe.from_pretrained(
+        output, device="cpu", load_backbone=False, local_files_only=True,
+        moge_source=ROOT / "vendor/MoGe", decoder_checkpoint=decoder)
+    image, feats = torch.rand(3, 32, 48), features()
+    expected = loaded.infer(image, features=feats)
+    actual = compact.infer(image, features=feats)
+    for key in expected:
+        torch.testing.assert_close(actual[key], expected[key], atol=0, rtol=0, equal_nan=True)

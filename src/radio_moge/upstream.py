@@ -17,7 +17,10 @@ def source_path(name, commit, override=None):
     if not path.exists():
         raise FileNotFoundError(f"Missing {path}. Run python scripts/setup_upstream.py first.")
     actual = subprocess.check_output(
-        ["git", "-C", str(path), "rev-parse", "HEAD"], text=True
+        # Shared volumes can map checkout ownership to another UID. Trust only
+        # this explicitly requested directory for this read-only revision check.
+        ["git", "-c", f"safe.directory={path}", "-C", str(path), "rev-parse", "HEAD"],
+        text=True
     ).strip()
     if actual != commit:
         raise ValueError(f"{name} source is {actual}; expected pinned revision {commit}")

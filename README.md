@@ -1,8 +1,13 @@
 # RADIO → MoGe-2 distillation
 
 Train a geometry adapter on **frozen C-RADIOv4-H** and reuse MoGe-2's frozen
-decoder. The MoGe encoder is a teacher during training only. Deployment accepts
-precomputed RADIO features and does not own or run either backbone.
+decoder. The MoGe encoder is a teacher during training only. Deployment can reuse
+precomputed RADIO features or run RADIO once through the complete point-cloud API.
+
+For the current **step 272646** weights and the complete **RGB → RADIO-v4-H →
+adapter → MoGe-v2 → depth-edge filter → colored XYZ** interface, see the
+[installable point-cloud API](docs/pointcloud-api.md) and its
+[real-weight verification and latency](docs/pointcloud-api-validation.md).
 
 ```text
 Training:   RGB ── frozen RADIO ── adapter ── frozen MoGe decoder ── geometry

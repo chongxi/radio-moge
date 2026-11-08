@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "radio-moge-inference"
-version = "0.1.0"
+version = "0.2.0"
 description = "Perception-style inference for the RADIO to MoGe-2 adapter"
 requires-python = ">=3.11"
 license-files = ["THIRD_PARTY.md"]
@@ -15,6 +15,9 @@ dependencies = [
   "opencv-python-headless==4.12.0.88", "filelock>=3.18,<4",
   "utils3d-moge @ git+https://github.com/EasternJournalist/utils3d-moge.git@62f09d58509485564e24d5d9f6aac9ee9ebc0c37",
 ]
+
+[project.scripts]
+radio-moge-pointcloud = "radio_moge.pipeline:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
